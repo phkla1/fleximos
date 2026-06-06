@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fleximotion Admin Console</title>
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail">
+        <a class="brand" href="#dashboard">
+          <span>F</span>
+          <strong>Fleximotion</strong>
+          <small>Identity / Amoeba Admin</small>
+        </a>
+        <nav>
+          <a href="#people">People</a>
+          <a href="#users">Users</a>
+          <a href="#amoebas">Amoebas</a>
+          <a href="#sites">Sites</a>
+          <a href="#service-accounts">Service Accounts</a>
+        </nav>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p>Foundation APIs</p>
+            <h1>Manage identity and amoeba reference data.</h1>
+          </div>
+          <div class="connection">
+            <label>
+              API base
+              <input id="apiBase" value="http://127.0.0.1:4010" />
+            </label>
+            <label>
+              Bearer token
+              <input id="apiToken" value="flexi-dev-service-token" />
+            </label>
+            <button id="refreshButton" type="button">Refresh</button>
+          </div>
+        </header>
+
+        <section class="status-grid" aria-label="API status">
+          <article>
+            <span>People</span>
+            <strong id="peopleCount">0</strong>
+          </article>
+          <article>
+            <span>Users</span>
+            <strong id="usersCount">0</strong>
+          </article>
+          <article>
+            <span>Amoebas</span>
+            <strong id="amoebasCount">0</strong>
+          </article>
+          <article>
+            <span>Sites</span>
+            <strong id="sitesCount">0</strong>
+          </article>
+          <article>
+            <span>Service Accounts</span>
+            <strong id="serviceAccountsCount">0</strong>
+          </article>
+        </section>
+
+        <p id="notice" class="notice" role="status"></p>
+
+        <section id="people" class="panel">
+          <div class="panel-heading">
+            <div>
+              <p>Identity API</p>
+              <h2>People</h2>
+            </div>
+          </div>
+          <form id="personForm" class="form-grid">
+            <label>Display name <input name="display_name" required /></label>
+            <label>Legal name <input name="legal_name" /></label>
+            <label>Phone <input name="phone" placeholder="+234..." /></label>
+            <label>Email <input name="email" type="email" /></label>
+            <button type="submit">Create person</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Save</th><th>ID</th></tr>
+              </thead>
+              <tbody id="peopleRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="users" class="panel">
+          <div class="panel-heading">
+            <div>
+              <p>Identity API</p>
+              <h2>Users</h2>
+            </div>
+          </div>
+          <form id="userForm" class="form-grid">
+            <label>Person <select name="person_id" required></select></label>
+            <label>Roles <input name="roles" placeholder="admin,manager" required /></label>
+            <button type="submit">Create user</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>User</th><th>Person</th><th>Roles</th><th>Status</th><th>Save</th></tr>
+              </thead>
+              <tbody id="userRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="amoebas" class="panel">
+          <div class="panel-heading">
+            <div>
+              <p>Amoeba API</p>
+              <h2>Amoebas</h2>
+            </div>
+          </div>
+          <form id="amoebaForm" class="form-grid">
+            <label>Name <input name="name" required /></label>
+            <label>
+              Classification
+              <select name="classification" required>
+                <option value="operating">Operating</option>
+                <option value="shared_services">Shared services</option>
+                <option value="investment">Investment</option>
+              </select>
+            </label>
+            <label>Coordinator <select name="coordinator_person_id"></select></label>
+            <button type="submit">Create amoeba</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Class</th><th>Coordinator</th><th>Status</th><th>Save</th><th>ID</th></tr>
+              </thead>
+              <tbody id="amoebaRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="sites" class="panel">
+          <div class="panel-heading">
+            <div>
+              <p>Amoeba API</p>
+              <h2>Sites</h2>
+            </div>
+          </div>
+          <form id="siteForm" class="form-grid site-form">
+            <label>Amoeba <select name="amoeba_id" required></select></label>
+            <label>Name <input name="name" required /></label>
+            <label>Latitude <input name="gps_lat" type="number" step="0.000001" /></label>
+            <label>Longitude <input name="gps_lng" type="number" step="0.000001" /></label>
+            <label>Radius m <input name="alert_radius_m" type="number" min="1" value="1000" required /></label>
+            <label class="checkbox-label"><input name="is_primary" type="checkbox" /> Primary</label>
+            <button type="submit">Create site</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Site</th><th>Amoeba</th><th>GPS</th><th>Radius</th><th>Primary</th><th>Status</th><th>Save</th><th>ID</th></tr>
+              </thead>
+              <tbody id="siteRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="service-accounts" class="panel">
+          <div class="panel-heading">
+            <div>
+              <p>Identity API</p>
+              <h2>Service Accounts</h2>
+            </div>
+          </div>
+          <form id="serviceAccountForm" class="form-grid">
+            <label>Name <input name="name" required /></label>
+            <label>Scopes <input name="scopes" value="identity:read,amoeba:read" required /></label>
+            <button type="submit">Create service account</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Scopes</th><th>Status</th><th>Token</th></tr>
+              </thead>
+              <tbody id="serviceAccountRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12362f" />
+    <title>Fleximotion Ops</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#overview" aria-label="Fleximotion Ops home">
+        <span>F</span>
+        <div><strong>Fleximotion Ops</strong><small>Supervisor workspace</small></div>
+      </a>
+      <div class="connection-status"><span id="connectionDot"></span><span id="connectionText">Connecting</span></div>
+    </header>
+
+    <nav class="tabs" aria-label="Ops sections">
+      <a href="#overview">Overview</a>
+      <a href="#alerts">Alerts</a>
+      <a href="#operators">Roster</a>
+      <a href="#vehicles">Vehicles</a>
+      <a href="#settings">API</a>
+    </nav>
+
+    <main>
+      <section id="overview" class="overview-band">
+        <div>
+          <p class="eyebrow">Live operations</p>
+          <h1>Today’s operating picture</h1>
+          <p id="todayLabel" class="subtle"></p>
+        </div>
+        <button id="refreshButton" type="button">Refresh data</button>
+      </section>
+
+      <section class="metrics" aria-label="Operational summary">
+        <article><span>Active operators</span><strong id="activeOperatorCount">0</strong></article>
+        <article><span>Open alerts</span><strong id="openAlertCount">0</strong></article>
+        <article><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></article>
+        <article><span>Platform feeds</span><strong id="activePlatformCount">0</strong></article>
+      </section>
+
+      <p id="notice" class="notice" role="status"></p>
+
+      <section id="alerts" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Action queue</p><h2>Alert inbox</h2></div>
+          <label class="compact-field">Status
+            <select id="alertFilter">
+              <option value="">All alerts</option>
+              <option value="open">Open</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </label>
+        </div>
+        <div id="alertList" class="alert-list"></div>
+      </section>
+
+      <section id="operators" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Fleet roster</p><h2>Operators</h2></div>
+        </div>
+        <form id="operatorForm" class="entry-form">
+          <label>Person<select name="person_id" required></select></label>
+          <label>Type
+            <select name="operator_type">
+              <option value="driver">Driver</option>
+              <option value="rider">Rider</option>
+              <option value="courier">Courier</option>
+            </select>
+          </label>
+          <label>Amoeba<select name="amoeba_id" required></select></label>
+          <label>Site<select name="site_id" required></select></label>
+          <label>Supervisor<select name="supervisor_person_id"></select></label>
+          <label>Daily target (NGN)<input name="daily_revenue_target_ngn" type="number" min="0" step="100" /></label>
+          <button type="submit">Add operator</button>
+        </form>
+        <div id="operatorList" class="data-list"></div>
+      </section>
+
+      <section id="vehicles" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Fleet assets</p><h2>Vehicles</h2></div>
+        </div>
+        <form id="vehicleForm" class="entry-form">
+          <label>Plate<input name="plate" required /></label>
+          <label>Type
+            <select name="vehicle_type">
+              <option value="car">Car</option>
+              <option value="motorbike">Motorbike</option>
+              <option value="van">Van</option>
+            </select>
+          </label>
+          <label>Amoeba<select name="amoeba_id" required></select></label>
+          <label>Make / model<input name="make_model" /></label>
+          <label>Color<input name="color" /></label>
+          <button type="submit">Add vehicle</button>
+        </form>
+        <div id="vehicleList" class="data-list"></div>
+      </section>
+
+      <section id="settings" class="workspace-section api-settings">
+        <div class="section-heading">
+          <div><p class="eyebrow">Development</p><h2>API connection</h2></div>
+        </div>
+        <div class="entry-form">
+          <label>Ops API<input id="opsApiBase" value="http://127.0.0.1:4030" /></label>
+          <label>Foundation API<input id="foundationApiBase" value="http://127.0.0.1:4010" /></label>
+          <label>Bearer token<input id="apiToken" value="flexi-dev-service-token" /></label>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="actionDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="dialogTitle">Alert action</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="dialogContext" class="subtle"></p>
+        <label>Notes<textarea id="dialogNotes" rows="4"></textarea></label>
+        <div class="dialog-actions">
+          <button value="cancel" class="secondary">Cancel</button>
+          <button id="confirmActionButton" value="default">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

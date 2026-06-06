@@ -1,0 +1,395 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fleximotion Amoeba API",
+    "version": "1.0.0",
+    "description": "Shared reference API for amoeba definitions, hierarchy, classification, coordinator assignment, and operational performance source links."
+  },
+  "servers": [
+    { "url": "https://api.fleximotion.example/amoeba/v1", "description": "Production placeholder" },
+    { "url": "http://localhost:4020/v1", "description": "Local development" }
+  ],
+  "security": [{ "BearerAuth": [] }],
+  "tags": [
+    { "name": "Amoebas" },
+    { "name": "Sites" },
+    { "name": "History" }
+  ],
+  "paths": {
+    "/amoebas": {
+      "get": {
+        "tags": ["Amoebas"],
+        "summary": "List amoebas",
+        "responses": {
+          "200": {
+            "description": "Amoebas",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AmoebaPage" },
+                "examples": {
+                  "initial": {
+                    "value": {
+                      "data": [
+                        {
+                          "amoeba_id": "amoeba_island",
+                          "name": "Island",
+                          "classification": "operating",
+                          "status": "active",
+                          "parent_amoeba_id": null,
+                          "coordinator_person_id": null
+                        },
+                        {
+                          "amoeba_id": "amoeba_mainland",
+                          "name": "Mainland",
+                          "classification": "operating",
+                          "status": "active",
+                          "parent_amoeba_id": null,
+                          "coordinator_person_id": null
+                        },
+                        {
+                          "amoeba_id": "amoeba_central",
+                          "name": "Central",
+                          "classification": "shared_services",
+                          "status": "active",
+                          "parent_amoeba_id": null,
+                          "coordinator_person_id": null
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Amoebas"],
+        "summary": "Create amoeba",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateAmoebaRequest" } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Amoeba created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Amoeba" } } } }
+        }
+      }
+    },
+    "/amoebas/{amoeba_id}": {
+      "get": {
+        "tags": ["Amoebas"],
+        "summary": "Get amoeba",
+        "parameters": [{ "$ref": "#/components/parameters/AmoebaId" }],
+        "responses": {
+          "200": { "description": "Amoeba", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Amoeba" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["Amoebas"],
+        "summary": "Update amoeba",
+        "parameters": [
+          { "$ref": "#/components/parameters/AmoebaId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateAmoebaRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated amoeba", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Amoeba" } } } }
+        }
+      }
+    },
+    "/amoebas/{amoeba_id}/classify": {
+      "post": {
+        "tags": ["Amoebas"],
+        "summary": "Classify amoeba",
+        "description": "Changes the management classification while preserving history.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AmoebaId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ClassifyAmoebaRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated amoeba", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Amoeba" } } } }
+        }
+      }
+    },
+    "/amoebas/{amoeba_id}/assign-coordinator": {
+      "post": {
+        "tags": ["Amoebas"],
+        "summary": "Assign team coordinator",
+        "parameters": [
+          { "$ref": "#/components/parameters/AmoebaId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AssignCoordinatorRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated amoeba", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Amoeba" } } } }
+        }
+      }
+    },
+    "/amoebas/{amoeba_id}/history": {
+      "get": {
+        "tags": ["History"],
+        "summary": "Get amoeba history",
+        "parameters": [{ "$ref": "#/components/parameters/AmoebaId" }],
+        "responses": {
+          "200": { "description": "History", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AmoebaHistoryPage" } } } }
+        }
+      }
+    },
+    "/sites": {
+      "get": {
+        "tags": ["Sites"],
+        "summary": "List physical operating sites",
+        "parameters": [
+          {
+            "name": "amoeba_id",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "pattern": "^amoeba_" },
+            "description": "Limit sites to one amoeba."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sites",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SitePage" },
+                "examples": {
+                  "operatorMonitoringSeed": {
+                    "value": {
+                      "data": [
+                        {
+                          "site_id": "site_island_1",
+                          "amoeba_id": "amoeba_island",
+                          "name": "Lekki Awudu Ekpegha",
+                          "gps_lat": 6.44487546164212,
+                          "gps_lng": 3.47798504327489,
+                          "alert_radius_m": 500,
+                          "is_primary": true,
+                          "status": "active"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Sites"],
+        "summary": "Create physical operating site",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateSiteRequest" } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Site created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Site" } } } }
+        }
+      }
+    },
+    "/sites/{site_id}": {
+      "get": {
+        "tags": ["Sites"],
+        "summary": "Get physical operating site",
+        "parameters": [{ "$ref": "#/components/parameters/SiteId" }],
+        "responses": {
+          "200": { "description": "Site", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Site" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["Sites"],
+        "summary": "Update physical operating site",
+        "parameters": [
+          { "$ref": "#/components/parameters/SiteId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateSiteRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated site", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Site" } } } }
+        }
+      }
+    },
+    "/sites/{site_id}/history": {
+      "get": {
+        "tags": ["History"],
+        "summary": "Get physical operating site history",
+        "parameters": [{ "$ref": "#/components/parameters/SiteId" }],
+        "responses": {
+          "200": { "description": "History", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AmoebaHistoryPage" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT or service token" }
+    },
+    "parameters": {
+      "AmoebaId": { "name": "amoeba_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^amoeba_" } },
+      "SiteId": { "name": "site_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^site_" } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 160 } }
+    },
+    "responses": {
+      "NotFound": { "description": "Resource not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+    },
+    "schemas": {
+      "Amoeba": {
+        "type": "object",
+        "required": ["amoeba_id", "name", "classification", "status"],
+        "properties": {
+          "amoeba_id": { "type": "string" },
+          "name": { "type": "string" },
+          "classification": { "type": "string", "enum": ["operating", "shared_services", "investment"] },
+          "status": { "type": "string", "enum": ["active", "archived"] },
+          "parent_amoeba_id": { "type": ["string", "null"] },
+          "coordinator_person_id": { "type": ["string", "null"] }
+        }
+      },
+      "AmoebaPage": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Amoeba" } } }
+      },
+      "CreateAmoebaRequest": {
+        "type": "object",
+        "required": ["name", "classification"],
+        "properties": {
+          "name": { "type": "string" },
+          "classification": { "type": "string", "enum": ["operating", "shared_services", "investment"] },
+          "parent_amoeba_id": { "type": ["string", "null"] }
+        }
+      },
+      "UpdateAmoebaRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "classification": { "type": "string", "enum": ["operating", "shared_services", "investment"] },
+          "status": { "type": "string", "enum": ["active", "archived"] },
+          "parent_amoeba_id": { "type": ["string", "null"] },
+          "coordinator_person_id": { "type": ["string", "null"] }
+        }
+      },
+      "Site": {
+        "type": "object",
+        "required": ["site_id", "amoeba_id", "name", "alert_radius_m", "is_primary", "status"],
+        "properties": {
+          "site_id": { "type": "string" },
+          "amoeba_id": { "type": "string" },
+          "name": { "type": "string" },
+          "gps_lat": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+          "gps_lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+          "alert_radius_m": { "type": "integer", "minimum": 1 },
+          "is_primary": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["active", "inactive"] }
+        }
+      },
+      "SitePage": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Site" } } }
+      },
+      "CreateSiteRequest": {
+        "type": "object",
+        "required": ["amoeba_id", "name"],
+        "properties": {
+          "amoeba_id": { "type": "string" },
+          "name": { "type": "string" },
+          "gps_lat": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+          "gps_lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+          "alert_radius_m": { "type": "integer", "minimum": 1, "default": 1000 },
+          "is_primary": { "type": "boolean", "default": false },
+          "status": { "type": "string", "enum": ["active", "inactive"], "default": "active" }
+        }
+      },
+      "UpdateSiteRequest": {
+        "type": "object",
+        "properties": {
+          "amoeba_id": { "type": "string" },
+          "name": { "type": "string" },
+          "gps_lat": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+          "gps_lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+          "alert_radius_m": { "type": "integer", "minimum": 1 },
+          "is_primary": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["active", "inactive"] }
+        }
+      },
+      "ClassifyAmoebaRequest": {
+        "type": "object",
+        "required": ["classification", "reason"],
+        "properties": {
+          "classification": { "type": "string", "enum": ["operating", "shared_services", "investment"] },
+          "reason": { "type": "string" }
+        }
+      },
+      "AssignCoordinatorRequest": {
+        "type": "object",
+        "required": ["coordinator_person_id"],
+        "properties": { "coordinator_person_id": { "type": "string" } }
+      },
+      "AmoebaHistoryPage": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "changed_at": { "type": "string", "format": "date-time" },
+                "actor_person_id": { "type": "string" },
+                "change_type": { "type": "string" },
+                "diff": { "type": "object" }
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "request_id"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "request_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,391 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fleximotion Ops API",
+    "version": "1.0.0",
+    "description": "Operational source of truth for operators, vehicles, platform accounts, daily activity, alerts, cash, P&L inputs, and transfer-price events."
+  },
+  "servers": [
+    { "url": "https://api.fleximotion.example/ops/v1", "description": "Production placeholder" },
+    { "url": "http://127.0.0.1:4030/ops/v1", "description": "Local development" }
+  ],
+  "security": [{ "BearerAuth": [] }],
+  "tags": [
+    { "name": "Operators" },
+    { "name": "Vehicles" },
+    { "name": "Platform Accounts" },
+    { "name": "Daily Activity" },
+    { "name": "Alerts" },
+    { "name": "Cash" },
+    { "name": "Performance" },
+    { "name": "Transfer Pricing" },
+    { "name": "Audit" }
+  ],
+  "paths": {
+    "/operators": {
+      "get": {
+        "tags": ["Operators"],
+        "summary": "List operators",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending_activation", "active", "inactive", "suspended"] } },
+          { "name": "amoeba_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Operators", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperatorPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Operators"],
+        "summary": "Create operator",
+        "description": "Creates the operational actor linked to Identity person_id. HR may call this through the onboarding handoff.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOperatorRequest" } } } },
+        "responses": {
+          "201": { "description": "Operator", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Operator" } } } }
+        }
+      }
+    },
+    "/operators/{operator_id}/activate": {
+      "post": {
+        "tags": ["Operators"],
+        "summary": "Activate operator",
+        "parameters": [
+          { "$ref": "#/components/parameters/OperatorId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "200": { "description": "Activated operator", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Operator" } } } }
+        }
+      }
+    },
+    "/operators/{operator_id}": {
+      "get": {
+        "tags": ["Operators"],
+        "summary": "Get operator",
+        "parameters": [{ "$ref": "#/components/parameters/OperatorId" }],
+        "responses": {
+          "200": { "description": "Operator", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Operator" } } } }
+        }
+      },
+      "patch": {
+        "tags": ["Operators"],
+        "summary": "Update operational assignment or status",
+        "parameters": [
+          { "$ref": "#/components/parameters/OperatorId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateOperatorRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Updated operator", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Operator" } } } }
+        }
+      }
+    },
+    "/operators/{operator_id}/platform-registrations": {
+      "post": {
+        "tags": ["Platform Accounts"],
+        "summary": "Register operator with a platform account",
+        "parameters": [
+          { "$ref": "#/components/parameters/OperatorId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePlatformRegistrationRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Registration created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformRegistration" } } } }
+        }
+      }
+    },
+    "/vehicles": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "List vehicles",
+        "responses": {
+          "200": { "description": "Vehicles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VehiclePage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Vehicles"],
+        "summary": "Create vehicle",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateVehicleRequest" } } } },
+        "responses": {
+          "201": { "description": "Vehicle", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Vehicle" } } } }
+        }
+      }
+    },
+    "/platform-accounts": {
+      "get": {
+        "tags": ["Platform Accounts"],
+        "summary": "List platform accounts",
+        "responses": {
+          "200": { "description": "Platform accounts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformAccountPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Platform Accounts"],
+        "summary": "Create platform connector configuration",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePlatformAccountRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Platform account created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformAccount" } } } }
+        }
+      }
+    },
+    "/operators/{operator_id}/daily-activity": {
+      "get": {
+        "tags": ["Daily Activity"],
+        "summary": "Get operator daily activity",
+        "parameters": [
+          { "$ref": "#/components/parameters/OperatorId" },
+          { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Daily records", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyActivityPage" } } } }
+        }
+      }
+    },
+    "/alerts": {
+      "get": {
+        "tags": ["Alerts"],
+        "summary": "List alerts",
+        "parameters": [
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "resolution_status", "in": "query", "schema": { "type": "string", "enum": ["open", "acknowledged", "resolved", "snoozed", "escalated"] } }
+        ],
+        "responses": {
+          "200": { "description": "Alerts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AlertPage" } } } }
+        }
+      }
+    },
+    "/alerts/{alert_id}/acknowledge": {
+      "post": {
+        "tags": ["Alerts"],
+        "summary": "Acknowledge alert",
+        "parameters": [
+          { "$ref": "#/components/parameters/AlertId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AcknowledgeAlertRequest" } } } },
+        "responses": {
+          "200": { "description": "Alert", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Alert" } } } }
+        }
+      }
+    },
+    "/alerts/{alert_id}/resolve": {
+      "post": {
+        "tags": ["Alerts"],
+        "summary": "Resolve alert",
+        "parameters": [
+          { "$ref": "#/components/parameters/AlertId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolveAlertRequest" } } } },
+        "responses": {
+          "200": { "description": "Alert", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Alert" } } } }
+        }
+      }
+    },
+    "/cash-remittances": {
+      "post": {
+        "tags": ["Cash"],
+        "summary": "Record cash remittance",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCashRemittanceRequest" } } } },
+        "responses": {
+          "201": { "description": "Cash remittance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashRemittance" } } } }
+        }
+      }
+    },
+    "/amoebas/{amoeba_id}/performance": {
+      "get": {
+        "tags": ["Performance"],
+        "summary": "Get amoeba performance",
+        "description": "Canonical operational performance snapshot for TMS and management dashboards.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AmoebaId" },
+          { "name": "window", "in": "query", "schema": { "type": "string", "enum": ["day", "week", "month", "quarter"] } },
+          { "name": "period_start", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Performance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AmoebaPerformance" } } } }
+        }
+      }
+    },
+    "/transfer-price-events": {
+      "post": {
+        "tags": ["Transfer Pricing"],
+        "summary": "Accept transfer-price event from TMS",
+        "description": "Records TMS-created transfer-price events as Ops P&L inputs. This endpoint is idempotent and service-token only.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransferPriceEventRequest" } } } },
+        "responses": {
+          "202": { "description": "Accepted transfer-price event", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferPriceEvent" } } } }
+        }
+      },
+      "get": {
+        "tags": ["Transfer Pricing"],
+        "summary": "List transfer-price events",
+        "responses": {
+          "200": { "description": "Events", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferPriceEventPage" } } } }
+        }
+      }
+    },
+    "/audit": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "List append-only Ops audit entries",
+        "responses": {
+          "200": { "description": "Audit entries", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuditEntryPage" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT or service token" }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 160 } },
+      "OperatorId": { "name": "operator_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^operator_" } },
+      "AlertId": { "name": "alert_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^alert_" } },
+      "AmoebaId": { "name": "amoeba_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^amoeba_" } }
+    },
+    "schemas": {
+      "Operator": {
+        "type": "object",
+        "required": ["operator_id", "person_id", "operator_status", "amoeba_id"],
+        "properties": {
+          "operator_id": { "type": "string" },
+          "person_id": { "type": "string" },
+          "operator_type": { "type": "string", "enum": ["driver", "rider", "courier"] },
+          "operator_status": { "type": "string", "enum": ["pending_activation", "active", "inactive", "suspended"] },
+          "amoeba_id": { "type": "string" },
+          "site_id": { "type": ["string", "null"] },
+          "supervisor_person_id": { "type": ["string", "null"] },
+          "vehicle_id": { "type": ["string", "null"] },
+          "daily_revenue_target_ngn": { "type": ["number", "null"] }
+        }
+      },
+      "CreateOperatorRequest": {
+        "type": "object",
+        "required": ["person_id", "operator_type", "amoeba_id", "site_id"],
+        "properties": {
+          "person_id": { "type": "string" },
+          "operator_type": { "type": "string", "enum": ["driver", "rider", "courier"] },
+          "amoeba_id": { "type": "string" },
+          "site_id": { "type": ["string", "null"] },
+          "supervisor_person_id": { "type": ["string", "null"] },
+          "daily_revenue_target_ngn": { "type": ["number", "null"] },
+          "legacy_source": { "type": "object" }
+        }
+      },
+      "UpdateOperatorRequest": {
+        "type": "object",
+        "properties": {
+          "operator_type": { "type": "string", "enum": ["driver", "rider", "courier"] },
+          "operator_status": { "type": "string", "enum": ["pending_activation", "active", "inactive", "suspended"] },
+          "amoeba_id": { "type": "string" },
+          "site_id": { "type": "string" },
+          "supervisor_person_id": { "type": ["string", "null"] },
+          "vehicle_id": { "type": ["string", "null"] },
+          "daily_revenue_target_ngn": { "type": ["number", "null"] }
+        }
+      },
+      "OperatorPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Operator" } } } },
+      "Vehicle": {
+        "type": "object",
+        "required": ["vehicle_id", "plate", "vehicle_type", "status"],
+        "properties": {
+          "vehicle_id": { "type": "string" },
+          "plate": { "type": "string" },
+          "vehicle_type": { "type": "string", "enum": ["car", "motorbike", "van"] },
+          "amoeba_id": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "inactive", "in_repair"] }
+        }
+      },
+      "CreateVehicleRequest": { "type": "object", "required": ["plate", "vehicle_type", "amoeba_id"], "properties": { "plate": { "type": "string" }, "vehicle_type": { "type": "string" }, "amoeba_id": { "type": "string" } } },
+      "VehiclePage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Vehicle" } } } },
+      "PlatformAccount": {
+        "type": "object",
+        "required": ["platform_account_id", "platform", "display_name", "vehicle_type", "account_subtype", "credentials_key", "is_active"],
+        "properties": {
+          "platform_account_id": { "type": "string" },
+          "platform": { "type": "string", "enum": ["bolt", "uber", "indrive", "other"] },
+          "display_name": { "type": "string" },
+          "vehicle_type": { "type": "string", "enum": ["car", "motorbike", "any"] },
+          "account_subtype": { "type": "string", "enum": ["ride_hailing", "courier", "general"] },
+          "credentials_key": { "type": "string", "description": "Environment/secrets prefix only; credentials are never returned." },
+          "external_account_id": { "type": ["string", "null"] },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "CreatePlatformAccountRequest": {
+        "type": "object",
+        "required": ["platform", "display_name", "vehicle_type", "account_subtype", "credentials_key"],
+        "properties": {
+          "platform": { "type": "string", "enum": ["bolt", "uber", "indrive", "other"] },
+          "display_name": { "type": "string" },
+          "vehicle_type": { "type": "string", "enum": ["car", "motorbike", "any"] },
+          "account_subtype": { "type": "string", "enum": ["ride_hailing", "courier", "general"] },
+          "credentials_key": { "type": "string" },
+          "external_account_id": { "type": ["string", "null"] },
+          "is_active": { "type": "boolean", "default": true }
+        }
+      },
+      "PlatformRegistration": {
+        "type": "object",
+        "required": ["registration_id", "operator_id", "platform_account_id", "platform_operator_id", "registration_status"],
+        "properties": {
+          "registration_id": { "type": "string" },
+          "operator_id": { "type": "string" },
+          "platform_account_id": { "type": "string" },
+          "platform_operator_id": { "type": "string" },
+          "registration_status": { "type": "string", "enum": ["registered", "active", "inactive", "suspended"] }
+        }
+      },
+      "CreatePlatformRegistrationRequest": {
+        "type": "object",
+        "required": ["platform_account_id", "platform_operator_id"],
+        "properties": {
+          "platform_account_id": { "type": "string" },
+          "platform_operator_id": { "type": "string" },
+          "registration_status": { "type": "string", "enum": ["registered", "active", "inactive", "suspended"] }
+        }
+      },
+      "PlatformAccountPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlatformAccount" } } } },
+      "DailyActivityPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } },
+      "Alert": {
+        "type": "object",
+        "required": ["alert_id", "operator_id", "alert_type", "resolution_status"],
+        "properties": {
+          "alert_id": { "type": "string" },
+          "operator_id": { "type": "string" },
+          "platform": { "type": "string" },
+          "alert_type": { "type": "string" },
+          "alert_date": { "type": "string", "format": "date" },
+          "tier": { "type": "integer" },
+          "resolution_status": { "type": "string", "enum": ["open", "acknowledged", "resolved", "snoozed", "escalated"] },
+          "metadata": { "type": "object" }
+        }
+      },
+      "AlertPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Alert" } } } },
+      "AcknowledgeAlertRequest": { "type": "object", "properties": { "note": { "type": "string" } } },
+      "ResolveAlertRequest": { "type": "object", "required": ["resolution_notes"], "properties": { "resolution_notes": { "type": "string" } } },
+      "CreateCashRemittanceRequest": { "type": "object", "required": ["operator_id", "amount_ngn", "paid_at"], "properties": { "operator_id": { "type": "string" }, "amount_ngn": { "type": "number" }, "paid_at": { "type": "string", "format": "date-time" }, "receipt_media_id": { "type": ["string", "null"] } } },
+      "CashRemittance": { "type": "object", "properties": { "cash_remittance_id": { "type": "string" }, "operator_id": { "type": "string" }, "amount_ngn": { "type": "number" } } },
+      "AmoebaPerformance": { "type": "object", "properties": { "amoeba_id": { "type": "string" }, "window": { "type": "string" }, "period_start": { "type": "string", "format": "date" }, "revenue_ngn": { "type": "number" }, "utilisation_pct": { "type": "number" }, "he_ngn_per_hour": { "type": "number" }, "active_operator_count": { "type": "integer" } } },
+      "CreateTransferPriceEventRequest": { "type": "object", "required": ["transfer_price_event_id", "date", "provider_amoeba_id", "consumer_amoeba_id", "amount_ngn"], "properties": { "transfer_price_event_id": { "type": "string" }, "date": { "type": "string", "format": "date" }, "provider_amoeba_id": { "type": "string" }, "consumer_amoeba_id": { "type": "string" }, "amount_ngn": { "type": "number" }, "source_tms_url": { "type": "string" } } },
+      "TransferPriceEvent": { "type": "object", "properties": { "transfer_price_event_id": { "type": "string" }, "ops_record_id": { "type": "string" }, "status": { "type": "string", "enum": ["accepted", "posted_to_pnl"] } } },
+      "TransferPriceEventPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/TransferPriceEvent" } } } },
+      "AuditEntryPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } }
+    }
+  }
+}

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fleximotion Developer Portal</title>
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="API navigation">
+        <a class="brand" href="#overview" aria-label="Fleximotion developer portal home">
+          <span class="brand-mark" aria-hidden="true">F</span>
+          <span>
+            <strong>Fleximotion</strong>
+            <small>Developer Portal</small>
+          </span>
+        </a>
+
+        <nav class="nav-groups">
+          <section>
+            <h2>Start</h2>
+            <a href="#overview" data-route="overview">Overview</a>
+            <a href="#integration-model" data-route="integration-model">Integration model</a>
+            <a href="#events" data-route="events">Events & webhooks</a>
+            <a href="#build-sequence" data-route="build-sequence">Build sequence</a>
+          </section>
+          <section>
+            <h2>REST APIs</h2>
+            <a href="#api-identity" data-api="identity">Identity API</a>
+            <a href="#api-amoeba" data-api="amoeba">Amoeba API</a>
+            <a href="#api-ops" data-api="ops">Ops API</a>
+            <a href="#api-hr" data-api="hr">HR / Recruitment API</a>
+            <a href="#api-tms" data-api="tms">TMS API</a>
+          </section>
+          <section>
+            <h2>Guides</h2>
+            <a href="#guide-auth" data-route="guide-auth">Auth & service tokens</a>
+            <a href="#guide-errors" data-route="guide-errors">Errors & idempotency</a>
+            <a href="#guide-frontend-review" data-route="guide-frontend-review">Frontend review loop</a>
+          </section>
+        </nav>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="context">API-first app suite</p>
+            <h1>Build against stable Fleximotion contracts.</h1>
+          </div>
+          <div class="topbar-actions">
+            <a class="button secondary" href="../../api-contracts/openapi/ops.v1.json">OpenAPI JSON</a>
+            <a class="button primary" href="#api-ops">Explore APIs</a>
+            <a class="button secondary" href="http://127.0.0.1:4030/ops/developer">Live Ops Swagger</a>
+            <a class="button secondary" href="../ops-console/">Ops console</a>
+          </div>
+        </header>
+
+        <section id="overview" class="hero-section">
+          <div class="hero-copy">
+            <h2>One portal for every future API consumer.</h2>
+            <p>
+              This first portal turns the build sequence into something executable: versioned REST
+              contracts, integration rules, webhook conventions, and review expectations that every
+              Fleximotion frontend, backend service, vendor, and automation can share.
+            </p>
+            <div class="metrics-grid" aria-label="Developer portal coverage">
+              <article>
+                <strong>5</strong>
+                <span>domain APIs drafted</span>
+              </article>
+              <article>
+                <strong>/v1</strong>
+                <span>versioned from day one</span>
+              </article>
+              <article>
+                <strong>API</strong>
+                <span>contracts before apps</span>
+              </article>
+            </div>
+          </div>
+          <div class="system-map" aria-label="Suite architecture map">
+            <div class="node identity">Identity</div>
+            <div class="node amoeba">Amoeba</div>
+            <div class="node hr">HR</div>
+            <div class="node ops">Ops</div>
+            <div class="node tms">TMS</div>
+            <div class="connector c1"></div>
+            <div class="connector c2"></div>
+            <div class="connector c3"></div>
+            <div class="connector c4"></div>
+            <div class="map-caption">Frontends compose. Backends own.</div>
+          </div>
+        </section>
+
+        <section class="content-band" id="integration-model">
+          <div class="section-heading">
+            <p class="context">Integration model</p>
+            <h2>Rules that keep systems from drifting.</h2>
+          </div>
+          <div class="rule-grid">
+            <article>
+              <h3>APIs are authority</h3>
+              <p>Events notify consumers that something changed. Current state is fetched from the owning API.</p>
+            </article>
+            <article>
+              <h3>One owner per entity</h3>
+              <p>Identity owns people, Amoeba owns org units, HR owns prospects, Ops owns operations, TMS owns management work.</p>
+            </article>
+            <article>
+              <h3>Idempotent writes</h3>
+              <p>Every cross-system mutation requires an <code>Idempotency-Key</code> header and audit history.</p>
+            </article>
+            <article>
+              <h3>No database bypass</h3>
+              <p>Frontends and services integrate through documented APIs, never direct writes to another domain database.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-band api-section" id="api-explorer">
+          <div class="section-heading inline-heading">
+            <div>
+              <p class="context">REST APIs</p>
+              <h2>Contract explorer</h2>
+            </div>
+            <label class="select-label">
+              API
+              <select id="apiSelect" aria-label="Select API contract">
+                <option value="identity">Identity</option>
+                <option value="amoeba">Amoeba</option>
+                <option value="ops" selected>Ops</option>
+                <option value="hr">HR / Recruitment</option>
+                <option value="tms">TMS</option>
+              </select>
+            </label>
+          </div>
+          <div class="api-layout">
+            <aside class="endpoint-list" aria-label="Endpoint list">
+              <div class="endpoint-list-header">
+                <strong id="apiTitle">Ops API</strong>
+                <span id="apiVersion">v1.0.0</span>
+              </div>
+              <div id="endpointList"></div>
+            </aside>
+            <article class="endpoint-detail">
+              <div class="endpoint-title-row">
+                <span id="methodBadge" class="method post">POST</span>
+                <h3 id="endpointTitle">/transfer-price-events</h3>
+              </div>
+              <p id="endpointDescription"></p>
+              <div class="detail-grid">
+                <div>
+                  <h4>Auth</h4>
+                  <p id="authText">Bearer token or scoped service token.</p>
+                </div>
+                <div>
+                  <h4>Operational notes</h4>
+                  <p id="notesText">Use an Idempotency-Key on writes. Store request IDs in logs.</p>
+                </div>
+              </div>
+              <h4>Example request</h4>
+              <pre><code id="requestExample"></code></pre>
+              <h4>Example response</h4>
+              <pre><code id="responseExample"></code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-band" id="events">
+          <div class="section-heading">
+            <p class="context">Events & webhooks</p>
+            <h2>At-least-once delivery, API-backed truth.</h2>
+          </div>
+          <div class="event-strip">
+            <span>personnel.ready_for_ops_onboarding</span>
+            <span>operator.activated</span>
+            <span>alert.resolved</span>
+            <span>transfer_price_event.published_to_ops</span>
+          </div>
+          <pre><code>{
+  "event_id": "evt_01JZ7QAJ5V6VGZB1WTP3NQ9JGN",
+  "event_type": "operator.activated",
+  "source_system": "ops",
+  "schema_version": "1.0",
+  "occurred_at": "2026-06-04T09:00:00Z",
+  "idempotency_key": "operator_activated:operator_01JZ7Q...",
+  "data": {
+    "operator_id": "operator_01JZ7Q...",
+    "person_id": "person_01JZ7M..."
+  }
+}</code></pre>
+        </section>
+
+        <section class="content-band" id="build-sequence">
+          <div class="section-heading">
+            <p class="context">Build sequence</p>
+            <h2>Contract-first rollout.</h2>
+          </div>
+          <ol class="timeline">
+            <li><strong>Contract foundation + developer portal</strong><span>Shared IDs, auth, events, OpenAPI skeletons, docs website.</span></li>
+            <li><strong>Identity + Amoeba</strong><span>People, users, service tokens, amoeba definitions, initial seed data.</span></li>
+            <li><strong>Ops MVP</strong><span>Bolt/Uber ingestion, alerts, acknowledgement, mobile PWA, migration tools.</span></li>
+            <li><strong>Ops depth</strong><span>Cash, closeout, incidents, inspections, P&L, leaderboards, exports.</span></li>
+            <li><strong>HR, TMS, analytics</strong><span>Recruitment workflows, management work system, warehouse and automation.</span></li>
+          </ol>
+        </section>
+
+        <section class="content-band guide-grid">
+          <article id="guide-auth">
+            <h2>Auth & service tokens</h2>
+            <p>Human users authenticate through Identity. Cross-system clients use scoped service accounts and pass <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+            <pre><code>curl -H "Authorization: Bearer $FLEXI_TOKEN" \
+  https://api.fleximotion.example/ops/v1/alerts?date=2026-06-04</code></pre>
+          </article>
+          <article id="guide-errors">
+            <h2>Errors & idempotency</h2>
+            <p>Mutating requests include <code>Idempotency-Key</code>. Errors always include a stable code, message, request ID, and optional field details.</p>
+            <pre><code>{
+  "error": {
+    "code": "validation_failed",
+    "message": "target_amoeba_id is required",
+    "request_id": "req_01JZ7RQF2H...",
+    "details": [{ "field": "target_amoeba_id", "reason": "required" }]
+  }
+}</code></pre>
+          </article>
+          <article id="guide-frontend-review">
+            <h2>Frontend review loop</h2>
+            <p>Every frontend phase should expose a local preview URL, run browser checks on mobile and desktop, and capture screenshots so stakeholders can give feedback while screens are still cheap to change.</p>
+            <pre><code>npm run dev
+npm run test:e2e
+# Share localhost URL and verified screenshots for review.</code></pre>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>
