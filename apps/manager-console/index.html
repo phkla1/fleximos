@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#14231f" />
+    <title>Fleximotion Manager Console</title>
+    <link rel="stylesheet" href="../role-console-assets/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#portfolio"><span>F</span><div><strong>Fleximotion Ops</strong><small>Manager workspace</small></div></a>
+      <div class="connection-status"><span></span><span id="connectionText">Connecting</span></div>
+    </header>
+    <nav class="tabs" aria-label="Manager sections">
+      <a href="#portfolio">Portfolio</a>
+      <a href="#escalations">Escalations</a>
+      <a href="#reports">Daily reports</a>
+    </nav>
+    <main>
+      <section id="portfolio" class="overview-band">
+        <div><p class="eyebrow">Scoped management view</p><h1>Operations across your teams</h1><p class="subtle">Visibility follows the active Manager assignments on your identity profile.</p></div>
+        <div class="overview-actions"><label>Operating date<input id="operatingDate" type="date" /></label><button id="refreshButton" type="button">Refresh</button></div>
+      </section>
+      <section class="metrics" aria-label="Manager summary">
+        <article><span>Active operators</span><strong id="activeCount">0</strong></article>
+        <article><span>Live operators</span><strong id="liveCount">0</strong></article>
+        <article><span>Net Earnings</span><strong id="revenueTotal">₦0</strong></article>
+        <article><span>Net Earnings target</span><strong id="expectedTotal">₦0</strong></article>
+        <article><span>Manager escalations</span><strong id="escalationCount">0</strong></article>
+      </section>
+      <p id="notice" class="notice" role="status"></p>
+
+      <section class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Amoeba owner oversight</p><h2>Team portfolio</h2></div><span id="updatedLabel" class="subtle"></span></div>
+        <p class="section-intro">Teams are ranked by operational attention required. Net Earnings remains split between cars and bikes.</p>
+        <div id="teamPortfolio" class="summary-grid"></div>
+      </section>
+
+      <section id="escalations" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Manager action queue</p><h2>Escalations</h2></div></div>
+        <p class="section-intro">Tier 2+ alerts and unresolved conditions are separated from the supervisor inbox.</p>
+        <div id="escalationList" class="data-list"></div>
+      </section>
+
+      <section id="reports" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Meeting-ready snapshots</p><h2>Daily reports</h2></div></div>
+        <div id="reportList" class="data-list"></div>
+      </section>
+    </main>
+    <dialog id="actionDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="dialogTitle">Alert action</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="dialogContext" class="subtle"></p>
+        <label>Notes<textarea id="dialogNotes" rows="4"></textarea></label>
+        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="default">Confirm</button></div>
+      </form>
+    </dialog>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

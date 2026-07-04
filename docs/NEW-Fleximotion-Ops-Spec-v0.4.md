@@ -205,11 +205,17 @@ BullMQ (backed by Redis) handles all async work:
 | Queue | Jobs |
 |-------|------|
 | `platform-ingest` | Hourly Bolt/Uber data pull, triggered by cron (07:00–21:00 WAT) |
+| `platform-distance-backfill` | Delayed and periodic distance reports, including Uber multi-day reports |
+| `tracker-ingest` | CarTracker daily distance and location-summary ingestion |
+| `mileage-reconcile` | Fuel, platform-distance, and tracker-distance reconciliation after source updates |
 | `alert-engine` | Alert evaluation after each ingest cycle |
 | `notification-dispatch` | Push/SMS/email delivery with retry |
 | `media-process` | Compress and store uploaded photos/videos |
 | `report-generate` | On-demand and scheduled report generation |
 | `export` | PDF/CSV export jobs |
+| `housekeeping` | Token refresh, stale-job watchdogs, retention, and integrity checks |
+
+Every recurring job is registered in a production **Scheduled Job Registry**. The registry is version-controlled and records: stable job name, owning module, trigger mechanism, WAT schedule, queue, timeout, retry/backoff policy, idempotency key strategy, expected freshness SLA, dependencies, and alert recipients. A recurring workflow is not production-ready until it appears in this registry and on the Admin data-health surface.
 
 ---
 
@@ -294,9 +300,24 @@ One row per platform data source (e.g., "Bolt Lagos", "Uber Cars – Acct 1", "U
 This model allows an unlimited number of accounts per platform. Adding a new Uber account (e.g., a third city) requires a new `PlatformAccount` row and credential set — no code change.
 
 **PlatformDailyRecord**  
-The normalised daily performance row ingested from a platform data source. One row per (operator_id, platform_account_id, date). Keyed this way — not on `platform` string — so that if an operator has registrations on two Uber accounts, their records are stored and displayed separately. Fields: operator_id (FK), platform_account_id (FK), date, trips_total, trips_completed, trips_cancelled, trips_no_response, ride_revenue, net_earnings, booking_fees, cash_trips, card_trips, acceptance_pct, cancellation_pct, completion_pct, hours_worked, raw_payload (JSONB), source (live / migration).
+The normalised daily performance row ingested from a platform data source. One row per (operator_id, platform_account_id, date). Keyed this way — not on `platform` string — so that if an operator has registrations on two Uber accounts, their records are stored and displayed separately. Fields: operator_id (FK), platform_account_id (FK), date, trips_total, trips_completed, trips_cancelled, trips_no_response, ride_revenue, net_earnings, booking_fees, cash_trips, card_trips, acceptance_pct, cancellation_pct, completion_pct, hours_worked, official_distance_km (nullable — distance reported by the ride-hailing platform), raw_payload (JSONB), source (live / migration).
 
-Reporting views that show "total revenue" across all platforms for an operator aggregate across all `platform_account_id` rows for that operator and date.
+Reporting views that show "total revenue" across all platforms for an operator aggregate across all `platform_account_id` rows for that operator and date. Supervisor and manager summary views must also split revenue by `PlatformAccount.vehicle_type`, at minimum into car and motorbike totals.
+
+**RevenuePaceProfile**
+Admin-managed expected cumulative revenue checkpoints by vehicle type. Fields: id, vehicle_type (car/motorbike/other), day_type (weekday/weekend/specific weekday), effective_from, effective_to (nullable), daily_target_ngn, checkpoints (JSONB array of `{ time, expected_pct }`, e.g. 12:00/40%, 16:00/65%, 19:00/90%, close/100%), warning_tolerance_pct, critical_tolerance_pct, created_by, created_at, updated_at. An operator-specific daily target may override the profile's monetary target, but the profile supplies the expected shape of revenue through the day.
+
+**VehicleEfficiencyPolicy**
+Admin-managed fuel and mileage expectations by vehicle type and optionally make/model. Fields: id, vehicle_type, make_model (nullable), fuel_type, standard_daily_fuel_quantity, fuel_unit (litres/kWh), expected_distance_km, allowed_variance_pct (default 10), effective_from, effective_to (nullable), created_by, created_at, updated_at.
+
+**FuelIssue**
+Supervisor confirmation of fuel or charging allowance issued to an operator for a vehicle on an operating date. Fields: id, operator_id, vehicle_id, operating_date, quantity, unit, issued_at, confirmed_by, notes (nullable), created_at, updated_at. There is at most one active daily issue record per operator/vehicle/date; corrections are audit-logged.
+
+**TrackerDailyRecord**
+Normalised daily distance from a vehicle-tracking connector. Fields: id, vehicle_id, tracker_account_id, date, actual_distance_km, first_seen_at, last_seen_at, data_quality, raw_payload (JSONB), source, ingested_at. A missing tracker integration or missing record is represented as `tracker_unavailable` or `no_tracker_data`, never as zero distance.
+
+**MileageReconciliation**
+Computed daily reconciliation per operator/vehicle. Fields: id, operator_id, vehicle_id, date, fuel_issue_id (nullable), expected_distance_km, official_distance_km (nullable), tracker_distance_km (nullable), fuel_efficiency_variance_pct (nullable), unexplained_distance_km (nullable), unexplained_distance_pct (nullable), official_distance_status (acceptable/warning/exception/not_available), tracker_variance_status (acceptable/warning/exception/tracker_unavailable/no_tracker_data), review_status (open/accepted/explained/escalated/resolved), reviewed_by, reviewed_at, explanation, created_at, updated_at.
 
 **ShiftEvent**  
 One row per state transition in an operator's shift. Fields: id, operator_id, event_type (check_in / check_out / platform_online / platform_offline), occurred_at, gps_lat, gps_lng, source (app / platform_api), notes.
@@ -518,7 +539,7 @@ Components:
 
 #### 6.2.3 Target Progress View
 Accessible from the home screen. Shows:
-- **Revenue progress:** Graphical day-progress bar (time axis) with current revenue overlaid. Target line marked. Operator can see if they are "ahead of pace" or "behind pace" based on time elapsed.
+- **Revenue progress:** Graphical day-progress bar (time axis) with current revenue overlaid. The expected cumulative revenue at the current time is calculated from the active `RevenuePaceProfile` for the operator's vehicle type and day type. The operator can see actual revenue, expected revenue by now, daily target, variance, and a plain-language status: Ahead / On track / Behind / At risk.
 - **Midday check (14:00):** Highlights whether the operator was above/below 50% at midday.
 - **End of day:** Final revenue vs target, overage or shortage.
 - **Time online today:** Hours logged vs target hours.
@@ -549,7 +570,7 @@ Unlike the current system which only notifies supervisors, smart nudges go to th
 
 | Nudge | Trigger | Timing |
 |-------|---------|--------|
-| Revenue pace warning | On track to miss daily target | At 12:00 if < 40% of target earned |
+| Revenue pace warning | Actual cumulative revenue below the configured vehicle-type pace curve | Evaluated after each hourly ingest; default checkpoint is 12:00 at 40% |
 | Offline duration warning | Approaching offline threshold | At 75 min offline (threshold is 90 min before alert fires) |
 | Vehicle return reminder | End of day approaching | At 19:30 WAT if vehicle GPS > site radius |
 | Midday target reminder | Approaching midday check | At 13:45 WAT if below 50% of target |
@@ -557,7 +578,7 @@ Unlike the current system which only notifies supervisors, smart nudges go to th
 
 Nudges are push notifications. If push is not available, they are shown as in-app banners on next app open.
 
-Nudge thresholds are configurable by Admin/Manager.
+Nudge thresholds and revenue pace profiles are configurable by Admin/Manager.
 
 #### 6.2.6 Deviation Reason Capture
 When an alert fires for an operator (late resumption, offline, below target, etc.), the operator receives the alert in-app with a prompt: "Your supervisor has been notified about [alert type]. Would you like to explain?"
@@ -575,9 +596,10 @@ The submitted reason is attached to the alert record and visible to the supervis
 #### 6.2.7 Cash / Earnings View
 Shows the operator's financial picture. This view is driven by Monnify transaction data ingested via the Monnify Service.
 
-- **Expected cash today:** Sum of cash trips (from platform data). This is what the system expects the operator to have in hand.
+- **Expected cash today:** Sum of platform cash activity. Where the connector provides exact cash-trip value, that exact value is used. Where only cash-trip count and total ride revenue are available, the interim basis is the cash-trip share of ride revenue (`ride_revenue * cash_trips / completed_trips`) and the row is marked as derived.
 - **Amount remitted:** Total of Monnify transactions matched to this operator for today.
 - **Status:** In credit (operator has remitted more than expected) / Balanced / Shortfall (operator owes).
+- **Finance adjustments:** Finance can apply audited credits, debits, or reversals. Supervisors can explain shortfalls during closeout but cannot approve financial adjustments.
 - **Transaction history:** List of remittances by date, with Monnify reference.
 
 _Note: Manual entry of cash remittance is NOT in scope for Ops App v1. Monnify is the source of truth for remittance data. If a cash payment is made outside of Monnify, it must be reconciled by Admin._
@@ -597,12 +619,14 @@ Submitted reports appear in the supervisor's maintenance queue and are visible t
 #### 6.3.1 Live Team Board
 The supervisor's primary screen. Shows all operators in their amoeba at a glance.
 
+For supervisor summary counts, **active operators** means active roster assignments. **Live operators** means active operators with usable activity for the selected operating date; operators classified as `offline` or `not_seen_today` are excluded. This business-facing count is distinct from the instantaneous platform status `online`.
+
 Each operator tile shows:
 - Name and vehicle plate
-- Platform badge (Bolt / Uber)
+- Platform and vehicle-class badge (e.g. Bolt · Bike, Uber Ride-Hailing · Car, Uber Courier · Bike)
 - Current status: Online / Offline / Not seen today / Checked out
 - Last seen timestamp
-- Revenue progress bar (today vs target), colour-coded
+- Revenue progress bar showing actual revenue, expected revenue by the current time, daily target, variance, and Ahead / On track / Behind / At risk status
 - Risk indicator: None / Watch / Alert (based on active unacknowledged alerts)
 - Cash status indicator: OK / Shortfall / Unknown
 
@@ -638,8 +662,9 @@ Supervisors are required to submit their daily closeout by **19:00 WAT**. A push
 Steps:
 1. **Review cash status:** For each operator, the Monnify-derived remittance status is shown. Supervisor can add a note against any operator with a shortfall.
 2. **Review open alerts:** List of unresolved alerts. Supervisor must either resolve or escalate each one before closeout can be submitted.
-3. **Amoeba summary review:** Today's aggregate stats for the amoeba (trips, revenue, hours, cash). Supervisor adds an optional overall note for the day.
-4. **Submit:** Closeout is stamped with supervisor's ID and timestamp. This triggers finalisation of the amoeba's daily summary record.
+3. **Fuel and mileage review:** Confirm fuel issued for each applicable operator/vehicle and review official platform mileage, tracker mileage where available, fuel-efficiency variance, and unexplained mileage exceptions. Missing bike tracker coverage is shown explicitly as "Tracker unavailable" and does not imply compliance or failure.
+4. **Amoeba summary review:** Today's aggregate stats for the amoeba (trips, car revenue, bike revenue, hours, cash, fuel, and mileage exceptions). Supervisor adds an optional overall note for the day.
+5. **Submit:** Closeout is stamped with supervisor's ID and timestamp. This triggers finalisation of the amoeba's daily summary record.
 
 If closeout is not submitted by 19:00 WAT, the manager receives an alert. If still missing by 20:00 WAT, it escalates to Admin.
 
@@ -663,7 +688,9 @@ Supervisor submits a vehicle inspection. Required at least once every 48 hours p
 #### 6.3.5 Amoeba Performance View
 Shows today's and historical performance for the supervisor's amoeba.
 
-- **Today's summary tiles:** Active riders, total trips, ride revenue vs target, hours worked, efficiency %, total cash remitted, net shortage/overage.
+- **Today's summary tiles:** Active operators, live operators, total trips, car revenue vs target, bike revenue vs target, hours worked, efficiency %, total cash remitted, net shortage/overage.
+- **Revenue pace:** Current car and bike revenue compared with the configured expected revenue by this time. Shows monetary and percentage variance and Ahead / On track / Behind / At risk status.
+- **Fuel and mileage:** Fuel issued, expected distance, official platform distance, tracker distance where available, and counts of open fuel-efficiency or unexplained-mileage exceptions.
 - **Timeline selector:** Today / This week / This month / Custom range. When a range is selected, metrics aggregate and trend charts render.
 - **Trend charts:** Revenue per day (bar chart with target line), trips per day, hours online per day, alert count per day. All charts are simple, low-data, SVG-rendered.
 - **Individual operator performance:** Ranked table showing each operator's trips, revenue, target attainment, acceptance rate, hours. Tap any row for operator detail.
@@ -754,6 +781,10 @@ Manager or Admin can adjust alert thresholds without a code deploy.
 | Currently offline | Grace period (minutes) | 15 |
 | Vehicle not returned | Distance from site (km) | 10 |
 | Below target midday | Target % at 14:00 | 50% |
+| Revenue pace warning | Variance below expected checkpoint | 10% |
+| Revenue pace critical | Variance below expected checkpoint | 20% |
+| Fuel efficiency variance | Allowed variance from expected distance for fuel issued | ±10% |
+| Unexplained mileage | Allowed variance between tracker and official platform distance | ±10% |
 | Smart nudge — offline | Warn before threshold (minutes) | 15 |
 | Smart nudge — vehicle return | Hours before close | 0.5 (19:30) |
 | Media capture time tolerance | Max delta between capture and upload (minutes) | 5 |
@@ -774,6 +805,19 @@ Manager (and Admin) can manage the fleet roster in-app, replacing the Google She
 - Add vehicle: plate, type, amoeba, site
 - Assign/unassign to operator
 - Mark in-repair / reactivate
+- Configure fuel and mileage expectation by vehicle type and optional make/model
+
+**Revenue pace profiles:**
+- Configure cumulative revenue checkpoints by vehicle type and day type
+- Default checkpoints: 12:00, 16:00, 19:00, and end of operating day
+- Preview the monetary expected revenue for representative operator targets
+- Apply changes from an effective date; retain prior profiles for historical calculations
+
+**Fuel and mileage controls:**
+- Configure standard daily fuel/charging allowance and expected distance by vehicle type or make/model
+- Configure the acceptable variance band (default ±10%)
+- Review and correct supervisor-entered fuel issues with a complete audit trail
+- View unresolved fuel-efficiency and unexplained-mileage exceptions, filterable by operator, vehicle, amoeba, and date
 
 **Amoebas and Sites:**
 - View all amoebas with operator count and current P/L
@@ -799,12 +843,13 @@ In addition to the global leaderboard (visible to all), managers see enriched ve
 A richer version of the supervisor daily report, aggregated across all amoebas. Designed to support the daily operations meeting.
 
 **Sections:**
-1. **Quantitative summary:** Total operators active today, total trips, total revenue vs target, total cash expected vs remitted, net P/L vs target. Compared to yesterday and same day last week.
+1. **Quantitative summary:** Total operators active and live today, total trips, car revenue and bike revenue vs their pace/targets, total cash expected vs remitted, net P/L vs target. Compared to yesterday and same day last week.
 2. **Amoeba breakdown:** Table with one row per amoeba showing all key metrics.
 3. **Alerts summary:** Total alerts today by type, compared to yesterday and 7-day average.
 4. **Unresolved issues:** Open incidents, unacknowledged high-tier alerts, missed closeouts, overdue inspections.
 5. **Anomalies:** Automatically flagged unusual events — e.g., an operator with unusually high trip count, an amoeba with revenue 30% below its 7-day average, a vehicle with two maintenance reports this week.
 6. **Cash exposure detail:** List of operators with open shortfalls.
+7. **Fuel and mileage exceptions:** Fuel-efficiency and unexplained-mileage exceptions by operator and vehicle, including official distance, tracker distance or tracker-availability status, supervisor explanation, and review state.
 
 The report is generated on demand (one tap) and can be exported as PDF or shared as a formatted WhatsApp message with key metrics and a link to the full report.
 
@@ -930,6 +975,7 @@ Known quirks (to be carried forward):
 - Uber Courier DRIVER_QUALITY CSV may 500 intermittently; driver rows still written with approximate rates from timeline data.
 - DRIVER_QUALITY report is rate-limited; fetched once per day at the 07:00 cycle and cached.
 - Live-location endpoint is quota-sensitive; called only at the 20:00 WAT cycle.
+- Driver time-and-distance reports may return an empty dataset for a single-day range but return aggregate data for a multi-day range. The connector therefore imports these as explicit report windows (`window_start`, `window_end`) and does not divide the aggregate into synthetic daily distances. Uber bike mileage reconciliation remains `pending_source` during the week and becomes weekly-final after the scheduled report backfill.
 
 ### 7.4 Monnify Integration (via dedicated Monnify Service)
 
@@ -992,7 +1038,15 @@ The Ops App does not push data back to the HR App in v1. If HR App needs operati
 **API contract:** The exact payload schemas for the three inbound events above must be agreed between the Ops App and HR App teams before either side builds their respective endpoints. These are the only cross-app contracts in v1.
 
 ### 7.6 CarTracker
-The existing CarTracker GPS reconciliation remains in scope for v1. It is used to cross-check vehicle GPS against platform GPS. Implementation via the existing session-based (email/password) connector — this is what CarTracker supports. Results are surfaced on the Admin data health dashboard and on the manager's vehicle tracking view.
+The existing CarTracker GPS reconciliation remains in scope for v1. It is used to cross-check actual vehicle distance against official platform distance and to detect unexplained vehicle use. Implementation uses the existing session-based (email/password) connector — this is what CarTracker supports.
+
+The connector normalises daily distance into `TrackerDailyRecord`. For each vehicle/day the reconciliation engine compares:
+1. Official platform distance against the expected distance implied by fuel issued and the active `VehicleEfficiencyPolicy`.
+2. Tracker distance against official platform distance to identify significant unexplained mileage.
+
+The default acceptable variance is ±10% for both comparisons and is Admin-configurable. Variances beyond the configured band create review exceptions for the supervisor and manager/accountant. The supervisor may record an explanation; acceptance, escalation, and resolution are audit-logged.
+
+Cars with an active CarTracker integration use tracker mileage immediately. Bikes currently have no tracker API; their records must display `tracker_unavailable`, while preserving the connector and reconciliation interfaces so bike tracking can be activated later without redesigning the workflow. Tracker absence must never be converted to zero mileage or interpreted as acceptable performance.
 
 ### 7.7 Firebase Cloud Messaging (FCM)
 FCM is the recommended push notification delivery infrastructure. Reasons: free at this scale, excellent reliability on low-spec Android, supports PWA web push, handles offline queuing (messages are delivered when the device comes online). Each user's FCM token is stored on the `User` record and refreshed on each app login.
@@ -1228,12 +1282,34 @@ GET    /api/v1/reports/amoeba-summary  ?from=&to=&amoeba_id=
 GET    /api/v1/reports/executive       ?from=&to=
 GET    /api/v1/reports/revenue-profile ?from=&to=   (revenue by hour of day)
 GET    /api/v1/reports/leaderboard     ?scope=company|amoeba&from=&to=  (revenue component hidden based on caller role)
+GET    /api/v1/reports/revenue-pace    ?date=&amoeba_id=&vehicle_type=
+
+# Revenue pace configuration
+GET    /api/v1/revenue-pace-profiles
+POST   /api/v1/revenue-pace-profiles          (Admin/Manager)
+PATCH  /api/v1/revenue-pace-profiles/:id      (Admin/Manager)
+
+# Fuel and mileage
+GET    /api/v1/vehicle-efficiency-policies
+POST   /api/v1/vehicle-efficiency-policies    (Admin/Manager)
+PATCH  /api/v1/vehicle-efficiency-policies/:id
+GET    /api/v1/fuel-issues                     ?date=&amoeba_id=&operator_id=
+POST   /api/v1/fuel-issues                     (Supervisor, scoped)
+PATCH  /api/v1/fuel-issues/:id                 (Supervisor/Admin, audited)
+GET    /api/v1/mileage-reconciliations         ?from=&to=&status=&amoeba_id=
+PATCH  /api/v1/mileage-reconciliations/:id/review
 
 # Cash (data pushed from Monnify Service)
 GET    /api/v1/cash/operator/:id/today
 GET    /api/v1/cash/operator/:id/history
+GET    /api/v1/cash/status                    ?record_date=&amoeba_id=&operator_id=  (Finance/Manager)
+POST   /api/v1/cash/adjustments               (Finance/Manager; audited credits, debits, reversals)
 POST   /api/v1/cash/transactions              (internal — called by Monnify Service, HMAC-auth)
 PATCH  /api/v1/operators/:id/monnify-account  (internal — called by Monnify Service on provisioning)
+
+# Daily closeout
+GET    /api/v1/daily-closeouts                ?record_date=&amoeba_id=  (Supervisor/Manager/Finance scoped)
+POST   /api/v1/daily-closeouts                (Supervisor/Manager; audited daily submission)
 
 # Inter-app integrations (all HMAC-authenticated, not user-facing)
 POST   /api/v1/integrations/hr/user-activated
@@ -1290,9 +1366,32 @@ Nginx is the public-facing reverse proxy. It handles TLS termination, static fil
 Media files (photos, videos) are stored in object storage rather than local disk, for durability and scalability. Recommended: Cloudflare R2 (S3-compatible, no egress fees) or AWS S3. Local disk is used as a TUS upload staging area only; files are moved to object storage after upload completion.
 
 ### 12.3 Cron Schedule
-External cron (cron-job.org or system cron) triggers the platform ingestion job via `POST /api/v1/ingest/run`. Runs hourly 07:00–21:00 WAT. The BullMQ scheduler handles job retry and the API server itself does not own the cron clock (lesson from the existing system's missed-run incident of 2026-04-29).
+External cron (prefer system cron or a managed scheduler; cron-job.org is acceptable during early deployment) triggers durable API enqueue endpoints. BullMQ executes the jobs and handles retry. The API server itself does not own the cron clock (lesson from the existing system's missed-run incident of 2026-04-29).
 
-A watchdog worker checks that an ingest has run within the expected window and fires an alert to Admin via push/email if a run is missed.
+Initial production Scheduled Job Registry:
+
+| Job | Schedule (WAT) | Purpose | Freshness / finality |
+|-----|----------------|---------|----------------------|
+| `bolt-operational-ingest` | Hourly 07:00–21:00 | Status, revenue, trips, and available trip distance | Operational within 75 minutes; distance may be partial |
+| `uber-operational-ingest` | Hourly 07:00–21:00 | Status, revenue, trips, and quality data available from APIs | Operational within 75 minutes; daily distance not assumed available |
+| `cartracker-daily-ingest` | Hourly 07:00–22:00, plus 23:30 final pull | Actual car movement and distance, including dead mileage | Provisional hourly; final after 23:30 |
+| `distance-daily-retry` | Daily 02:00 for previous 7 days | Backfill late Bolt or other daily distance data | Final when source confirms complete |
+| `uber-distance-report-backfill` | Monday 03:00 for previous Monday–Sunday | Import Uber multi-day driver time-and-distance report | Weekly final; never allocated into invented daily values |
+| `mileage-reconcile-provisional` | After each distance/fuel update | Recalculate currently available reconciliation results | Labelled provisional where a required source is pending |
+| `mileage-reconcile-final` | Daily 23:45 for cars; Monday 04:00 for Uber report windows | Finalise eligible reconciliation windows and create exceptions | Cars daily; Uber bikes weekly |
+| `alert-watchdog` | Every 15 minutes, 07:00–22:00 | Detect missed ingestion, stalled jobs, and stale operational data | Admin notified within 30 minutes |
+| `closeout-reminder` | Daily 18:30 | Remind supervisors to complete closeout | One delivery episode per supervisor/day |
+| `closeout-escalation` | Daily 19:05 and 20:05 | Escalate missing closeouts to Manager, then Admin | Idempotent per amoeba/date/tier |
+| `daily-report-generate` | Daily 19:15 and on demand | Produce management report; flag incomplete closeouts | Regenerated when late source data arrives |
+| `uber-token-refresh` | Daily check; refresh before configured expiry margin | Maintain both Uber account credentials | Alert before token expiry |
+| `backup-postgres` | Daily 01:00 | Encrypted database backup to object storage | Retain and verify per backup policy |
+| `retention-housekeeping` | Daily 04:30 | Expire temporary uploads, old job logs, and signed artifacts | Deletions audit-logged |
+
+Schedules are configuration, not hidden constants. Production and staging may use different cron expressions, but job names, idempotency behavior, and freshness semantics remain identical.
+
+A watchdog worker checks every registered job against its freshness SLA and fires an alert to Admin via push/email if a run is missed, late, repeatedly failing, or stuck. Recovery actions enqueue the same idempotent job for the affected date/window rather than bypassing the queue.
+
+Each run writes a durable `ScheduledJobRun` record containing job name, requested window, scheduler trigger ID, BullMQ job ID, status, attempt, records received/upserted/rejected, started/completed timestamps, error summary, and next retry. The Admin data-health dashboard shows last success, next expected run, freshness status, and a scoped manual replay action.
 
 ### 12.4 Backups
 - PostgreSQL: daily `pg_dump`, compressed, uploaded to object storage. Retain 30 days.
@@ -1303,6 +1402,8 @@ A watchdog worker checks that an ingest has run within the expected window and f
 - PM2 process monitoring for uptime.
 - Application-level health endpoint: `GET /api/v1/health` (returns DB connection, Redis connection, queue depths, last ingest time).
 - Admin data health dashboard reads from this endpoint.
+- Job health includes every Scheduled Job Registry entry, not only platform ingestion: last success, last failure, next expected run, freshness SLA, current lag, retry state, and source finality.
+- Metrics and alerts distinguish `pending_source`, `provisional`, `final`, `failed`, and `stale`; delayed Uber distance must not be reported as a system failure before its weekly report window is due.
 - For production-grade uptime monitoring: use UptimeRobot or similar to ping the health endpoint and alert Admin via SMS/email if the server is unreachable.
 
 ---
@@ -1349,7 +1450,7 @@ Deliverables:
 - Admin user management and fleet roster
 - HR App integration endpoints
 
-**Explicitly deferred to Phase 2:** Monnify integration, AI operator profile, vehicle inspection UI, P&L with fixed costs, export features, leaderboards
+**Explicitly deferred to Phase 2:** Monnify integration, AI operator profile, vehicle inspection UI, fuel and mileage reconciliation UI, P&L with fixed costs, export features, leaderboards
 
 ### Phase 2 — Operational Depth
 Deliverables:
@@ -1358,8 +1459,12 @@ Deliverables:
 - Daily closeout workflow
 - Operator deviation reason capture
 - Smart nudges to operators
-- Supervisor amoeba performance view with trend charts
+- Admin-configurable car/bike revenue pace profiles and supervisor on-track status
+- Fuel issuance confirmation and vehicle efficiency policies
+- Platform mileage and CarTracker mileage reconciliation with ±10% default variance alerts
+- Supervisor amoeba performance view with car/bike revenue totals, pace, fuel, mileage, and trend charts
 - Manager executive dashboard + P&L view
+- Manager/accountant fuel-efficiency and unexplained-mileage exception reporting
 - Leaderboards with Performance Score
 - Export (PDF, CSV, WhatsApp share)
 - AI operator weekly profile (on-demand OpenAI call)
@@ -1367,11 +1472,11 @@ Deliverables:
 ### Phase 3 — Advanced & Extensibility
 Deliverables:
 - In-app announcements and policy acknowledgements
-- Revenue profile / hourly trend analysis
+- Revenue profile / hourly trend analysis beyond the Phase 2 operational pacing checkpoints
 - Escalation queue (manager)
 - Daily report (manager view, meeting-ready)
 - Third platform connector (inDrive or other)
-- CarTracker reconciliation surface (admin health dashboard)
+- Extended CarTracker data-health and fleet-history analysis
 - Multi-amoeba performance comparison
 
 ---

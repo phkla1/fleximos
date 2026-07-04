@@ -1,0 +1,139 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fleximotion HR / Recruitment API",
+    "version": "1.0.0",
+    "description": "Prospect funnel, recruitment workflow, verification, approvals, contracts, and handoff to Ops."
+  },
+  "servers": [
+    { "url": "https://api.fleximotion.example/hr/v1", "description": "Production placeholder" },
+    { "url": "http://localhost:4040/v1", "description": "Local development" }
+  ],
+  "security": [{ "BearerAuth": [] }],
+  "tags": [
+    { "name": "Prospects" },
+    { "name": "Lifecycle" },
+    { "name": "Approvals" },
+    { "name": "Contracts" },
+    { "name": "Ops Handoff" }
+  ],
+  "paths": {
+    "/prospects": {
+      "get": {
+        "tags": ["Prospects"],
+        "summary": "List prospects",
+        "responses": {
+          "200": { "description": "Prospects", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProspectPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Prospects"],
+        "summary": "Create prospect",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateProspectRequest" } } } },
+        "responses": {
+          "201": { "description": "Prospect", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Prospect" } } } }
+        }
+      }
+    },
+    "/prospects/{prospect_id}/transition": {
+      "post": {
+        "tags": ["Lifecycle"],
+        "summary": "Transition prospect stage",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProspectId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransitionProspectRequest" } } } },
+        "responses": {
+          "200": { "description": "Prospect", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Prospect" } } } }
+        }
+      }
+    },
+    "/prospects/{prospect_id}/timeline": {
+      "get": {
+        "tags": ["Lifecycle"],
+        "summary": "Get prospect timeline",
+        "parameters": [{ "$ref": "#/components/parameters/ProspectId" }],
+        "responses": {
+          "200": { "description": "Lifecycle events", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LifecycleEventPage" } } } }
+        }
+      }
+    },
+    "/approvals/hiring/{approval_id}/approve": {
+      "post": {
+        "tags": ["Approvals"],
+        "summary": "Approve hiring request",
+        "parameters": [
+          { "$ref": "#/components/parameters/ApprovalId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "200": { "description": "Approval updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HiringApproval" } } } }
+        }
+      }
+    },
+    "/prospects/{prospect_id}/contracts": {
+      "post": {
+        "tags": ["Contracts"],
+        "summary": "Generate contract",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProspectId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "201": { "description": "Contract record", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractRecord" } } } }
+        }
+      }
+    },
+    "/prospects/{prospect_id}/create-or-link-person": {
+      "post": {
+        "tags": ["Ops Handoff"],
+        "summary": "Create or link canonical person",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProspectId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "200": { "description": "Prospect with person link", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Prospect" } } } }
+        }
+      }
+    },
+    "/prospects/{prospect_id}/ready-for-ops-onboarding": {
+      "post": {
+        "tags": ["Ops Handoff"],
+        "summary": "Mark personnel ready for Ops onboarding",
+        "description": "Emits personnel.ready_for_ops_onboarding and optionally calls the Ops onboarding endpoint. HR remains owner of recruitment state; Ops owns activation.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProspectId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadyForOpsRequest" } } } },
+        "responses": {
+          "202": { "description": "Handoff accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OpsHandoff" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT or service token" }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 160 } },
+      "ProspectId": { "name": "prospect_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^prospect_" } },
+      "ApprovalId": { "name": "approval_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^approval_" } }
+    },
+    "schemas": {
+      "Prospect": { "type": "object", "required": ["prospect_id", "current_stage"], "properties": { "prospect_id": { "type": "string" }, "person_id": { "type": ["string", "null"] }, "display_name": { "type": "string" }, "phone": { "type": ["string", "null"] }, "source": { "type": ["string", "null"] }, "current_stage": { "type": "string" }, "duplicate_status": { "type": "string", "enum": ["unchecked", "possible_duplicate", "resolved_unique", "resolved_duplicate"] } } },
+      "CreateProspectRequest": { "type": "object", "required": ["display_name"], "properties": { "display_name": { "type": "string" }, "phone": { "type": "string" }, "source": { "type": "string" }, "amoeba_id": { "type": ["string", "null"] } } },
+      "ProspectPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Prospect" } } } },
+      "TransitionProspectRequest": { "type": "object", "required": ["target_stage", "reason"], "properties": { "target_stage": { "type": "string" }, "reason": { "type": "string" }, "metadata": { "type": "object" } } },
+      "LifecycleEventPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } },
+      "HiringApproval": { "type": "object", "properties": { "approval_id": { "type": "string" }, "status": { "type": "string" } } },
+      "ContractRecord": { "type": "object", "properties": { "contract_id": { "type": "string" }, "status": { "type": "string" }, "download_url": { "type": "string" } } },
+      "ReadyForOpsRequest": { "type": "object", "required": ["operator_type", "target_amoeba_id"], "properties": { "operator_type": { "type": "string", "enum": ["driver", "rider", "courier"] }, "target_amoeba_id": { "type": "string" }, "notes": { "type": "string" } } },
+      "OpsHandoff": { "type": "object", "properties": { "handoff_id": { "type": "string" }, "event_type": { "type": "string", "const": "personnel.ready_for_ops_onboarding" }, "status": { "type": "string", "enum": ["queued", "sent_to_ops"] } } }
+    }
+  }
+}

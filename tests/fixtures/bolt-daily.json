@@ -1,0 +1,31 @@
+{
+  "2026-06-10": [
+    {
+      "platform_operator_id": "bolt-demo-driver",
+      "trips_total": 14,
+      "trips_completed": 12,
+      "trips_cancelled": 1,
+      "trips_no_response": 1,
+      "trips_rejected": 0,
+      "ride_revenue_ngn": 28500,
+      "net_earnings_ngn": 24750,
+      "booking_fees_ngn": 1500,
+      "cash_trips": 4,
+      "card_trips": 8,
+      "acceptance_pct": 92.86,
+      "cancellation_pct": 7.14,
+      "completion_pct": 85.71,
+      "hours_online": 8.5,
+      "last_seen_at": "2026-06-10T19:30:00+01:00",
+      "current_status": "checked_out",
+      "data_quality": "authoritative",
+      "provenance": {
+        "connector": "bolt",
+        "fixture": true
+      },
+      "raw_payload": {
+        "fixture": true
+      }
+    }
+  ]
+}

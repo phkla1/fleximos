@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#14231f" />
+    <title>Fleximotion Finance Console</title>
+    <link rel="stylesheet" href="../role-console-assets/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#collections"><span>F</span><div><strong>Fleximotion Ops</strong><small>Finance workspace</small></div></a>
+      <div class="connection-status"><span></span><span id="connectionText">Connecting</span></div>
+    </header>
+    <nav class="tabs" aria-label="Finance sections">
+      <a href="#collections">Collections readiness</a>
+      <a href="#periods">Close history</a>
+      <a href="#provisioning">Operator accounts</a>
+      <a href="#exceptions">Operational exceptions</a>
+    </nav>
+    <main>
+      <section id="collections" class="overview-band">
+        <div><p class="eyebrow">Scoped finance view</p><h1>Collections and reconciliation status</h1><p class="subtle">The workspace is ready for Monnify events; unavailable monetary states are shown explicitly.</p></div>
+        <div class="overview-actions"><label>Operating date<input id="operatingDate" type="date" /></label><button id="refreshButton" type="button">Refresh</button></div>
+      </section>
+      <section class="metrics" aria-label="Finance summary">
+        <article><span>Operators in scope</span><strong id="operatorCount">0</strong></article>
+        <article class="metric-pending"><span>Reserved accounts</span><strong id="reservedAccountMetric">Checking</strong><small id="reservedAccountMetricNote">Payments Integration</small></article>
+        <article class="metric-pending"><span>Deposits received</span><strong id="depositMetric">Checking</strong><small id="depositMetricNote">Payments ledger</small></article>
+        <article class="metric-pending"><span>Platform vs Monnify variance</span><strong id="cashExposureMetric">Checking</strong><small id="cashExposureMetricNote">Expected minus received</small></article>
+        <article><span>Fuel / mileage exceptions</span><strong id="exceptionCount">0</strong></article>
+      </section>
+      <p id="notice" class="notice" role="status"></p>
+
+      <section class="workspace-section">
+        <div class="readiness-band">
+          <article class="readiness-panel">
+            <p class="eyebrow">Integration state</p><h2>Monnify service readiness</h2>
+            <p id="paymentsContext">Checking the Payments Integration API...</p>
+            <div class="checklist">
+              <div><span>Provider mode</span><strong id="providerMode">Checking</strong></div>
+              <div><span>Access mode</span><strong id="accessMode">Checking</strong></div>
+              <div><span>Reserved accounts</span><strong id="reservedAccountCount">0</strong></div>
+              <div><span>Webhook events</span><strong id="webhookEventCount">0</strong></div>
+              <div><span>Reconciliation runs</span><strong id="reconciliationRunCount">0</strong></div>
+              <div><span>Period closes</span><strong id="periodCloseCount">0</strong></div>
+              <div><span>Last webhook</span><strong id="lastWebhookAt">None</strong></div>
+            </div>
+            <div class="panel-actions">
+              <button id="runSandboxTest" type="button">Run sandbox test</button>
+              <button id="closePeriod" type="button" class="secondary">Close selected period</button>
+              <a class="button-link" href="../developer-portal/#api-payments">Payments API docs</a>
+            </div>
+          </article>
+          <article class="readiness-panel">
+            <p class="eyebrow">Operational context</p><h2>Platform Net Earnings</h2>
+            <p id="revenueContext">Loading scoped activity...</p>
+            <div class="checklist">
+              <div><span>Car Net Earnings</span><strong id="carRevenue">₦0</strong></div>
+              <div><span>Bike Net Earnings</span><strong id="bikeRevenue">₦0</strong></div>
+              <div><span>Online hours</span><strong id="onlineHours">0.0</strong></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Daily closeout</p><h2>Platform cash vs Monnify remittance</h2></div><button id="exportCashCsv" type="button" class="secondary">Export cash CSV</button></div>
+        <p class="section-intro">Platform cash expected is compared with Monnify deposits received, including any Finance adjustments. Operator rows appear here only when there is a shortfall or credit to review.</p>
+        <div id="periodCloseBanner" class="period-banner"></div>
+        <div id="cashSummaryList" class="summary-grid"></div>
+        <div id="cashExceptionList" class="data-list"></div>
+      </section>
+
+      <section id="periods" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Accounting lock history</p><h2>Recent period closes</h2></div></div>
+        <p class="section-intro">Closed periods remain visible for audit review. Exception counts separate provider/deposit issues from Ops cash variance that was still open at close time.</p>
+        <div id="periodCloseList" class="data-list"></div>
+      </section>
+
+      <section id="provisioning" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Future provisioning queue</p><h2>Operator reserved accounts</h2></div><button id="exportAccountsCsv" type="button" class="secondary">Export accounts CSV</button></div>
+        <p class="section-intro">Every scoped operator is visible now. Account numbers and provisioning states come from the Payments Integration service; simulated mode lets us keep building while Monnify production KYC is under review.</p>
+        <div id="operatorAccountList" class="summary-grid"></div>
+      </section>
+
+      <section id="exceptions" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Finance review context</p><h2>Fuel and mileage exceptions</h2></div></div>
+        <p class="section-intro">These operational exceptions can affect cost review. Financial approval and adjustment workflows arrive with the cash ledger.</p>
+        <div id="exceptionList" class="data-list"></div>
+      </section>
+    </main>
+    <dialog id="operatorDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="operatorDialogTitle">Operators</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="operatorDialogSummary" class="subtle"></p>
+        <div id="operatorDialogList" class="data-list"></div>
+      </form>
+    </dialog>
+    <dialog id="adjustmentDialog">
+      <form id="adjustmentForm" class="dialog-body">
+        <div class="dialog-heading"><h2 id="adjustmentDialogTitle">Record adjustment</h2><button value="cancel" type="button" aria-label="Close" data-close-adjustment>×</button></div>
+        <p id="adjustmentDialogSummary" class="subtle"></p>
+        <input id="adjustmentOperatorId" type="hidden" />
+        <div class="form-grid">
+          <label>Adjustment type
+            <select id="adjustmentType">
+              <option value="credit">Credit operator</option>
+              <option value="debit">Debit operator</option>
+              <option value="reversal">Reversal</option>
+            </select>
+          </label>
+          <label>Amount
+            <input id="adjustmentAmount" type="number" min="0" step="0.01" required />
+          </label>
+          <label>Reason
+            <input id="adjustmentReason" type="text" required placeholder="e.g. Bank statement correction" />
+          </label>
+          <label>Evidence reference
+            <input id="adjustmentEvidence" type="text" placeholder="Receipt, bank statement, or file reference" />
+          </label>
+          <label class="wide-field">Notes
+            <textarea id="adjustmentNotes" rows="3" placeholder="Optional finance review notes"></textarea>
+          </label>
+        </div>
+        <div class="dialog-actions"><button type="button" class="secondary" data-close-adjustment>Cancel</button><button type="submit">Save adjustment</button></div>
+      </form>
+    </dialog>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

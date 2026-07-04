@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#14231f" />
+    <title>Fleximotion Analytics Console</title>
+    <link rel="stylesheet" href="../role-console-assets/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#overview"><span>F</span><div><strong>Fleximotion Ops</strong><small>Analytics control room</small></div></a>
+      <div class="connection-status"><span></span><span id="connectionText">Connecting</span></div>
+    </header>
+    <nav class="tabs" aria-label="Analytics sections">
+      <a href="#overview">Today</a>
+      <a href="#economics">Economics</a>
+      <a href="#amoebas">Amoebas</a>
+      <a href="#operators">Operators</a>
+      <a href="#leakage">Leakage</a>
+    </nav>
+    <main>
+      <section id="overview" class="overview-band">
+        <div>
+          <p class="eyebrow">Founder / GM / Finance</p>
+          <h1>Net Earnings control room</h1>
+          <p class="subtle">Anomalies, growth, cash leakage and operating efficiency across assigned amoebas.</p>
+        </div>
+        <div class="overview-actions">
+          <div class="segmented-actions" aria-label="Analytics period">
+            <button type="button" data-period-mode="day">Day</button>
+            <button type="button" data-period-mode="week">Week</button>
+            <button type="button" data-period-mode="month">Month</button>
+          </div>
+          <label>Operating date<input id="operatingDate" type="date" /></label>
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Analytics summary">
+        <article><span>Net Earnings</span><strong id="netEarningsTotal">₦0</strong><small id="netEarningsGrowth">No prior day</small><small id="netEarningsWeek">No same weekday data</small></article>
+        <article id="hourlyEfficiencyCard"><span>Hourly Efficiency</span><strong id="hourlyEfficiency">₦0/h</strong><small id="hourlyEfficiencyNote">Expected labour hours</small><small id="hourlyEfficiencyThreshold">Labour cost not configured</small></article>
+        <article><span>Utilisation</span><strong id="utilisationMetric">0%</strong><small id="utilisationNote">0 active / 0 available</small></article>
+        <article class="metric-pending"><span>Cash variance</span><strong id="cashVarianceMetric">₦0</strong><small id="cashVarianceNote">Platform expected vs Monnify</small></article>
+        <article><span>Grouped alerts</span><strong id="alertGroupCount">0</strong><small id="alertGroupNote">Open issues</small></article>
+      </section>
+      <p id="notice" class="notice" role="status"></p>
+
+      <section class="workspace-section">
+        <div class="readiness-band">
+          <article class="readiness-panel">
+            <p class="eyebrow">Pace and growth</p>
+            <h2>Daily Net Earnings pace</h2>
+            <p id="paceContext">Loading current operating pace...</p>
+            <div class="progress-label"><span id="paceLabel">₦0 vs ₦0 target by now</span><strong id="pacePercent">0%</strong></div>
+            <div class="progress-track"><span id="paceBar"></span></div>
+            <div class="checklist">
+              <div><span>Cars</span><strong id="carNetEarnings">₦0</strong></div>
+              <div><span>Bikes</span><strong id="bikeNetEarnings">₦0</strong></div>
+              <div><span>Trips / deliveries</span><strong id="tripTotal">0</strong></div>
+              <button type="button" class="checklist-action" data-detail-type="data-quality"><span>Data quality impact</span><strong id="dataQuality">Checking</strong></button>
+            </div>
+            <div id="vehicleMixChart" class="split-chart" aria-label="Car and bike Net Earnings split"></div>
+            <div id="dataQualityImpactChart" class="quality-impact" aria-label="Data quality Net Earnings impact"></div>
+          </article>
+          <article class="readiness-panel">
+            <p class="eyebrow">Control signals</p>
+            <h2>Today’s attention map</h2>
+            <p id="attentionContext">Loading anomalies and exceptions...</p>
+            <div id="attentionList" class="checklist"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Charts and comparisons</p><h2>Net Earnings trend</h2></div>
+          <span id="trendLegend" class="subtle"></span>
+        </div>
+        <p class="section-intro">Trend bars overlay each day with the matching prior-week point when available, so weekly demand patterns are not hidden.</p>
+        <div id="trendChart" class="chart-card"></div>
+      </section>
+
+      <section id="economics" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Unit economics</p><h2>Breakeven and platform mix</h2></div>
+          <span id="economicsAssumptions" class="subtle"></span>
+        </div>
+        <p class="section-intro">These are operational control indicators, not accounting revenue. Admin salaries are fixed labour cost; operator labour is modelled as a configurable share of Net Earnings until accountant-managed policy controls land.</p>
+        <div class="readiness-band">
+          <article class="readiness-panel">
+            <p class="eyebrow">Breakeven signal</p>
+            <h2 id="breakevenStatus">Checking</h2>
+            <p id="breakevenContext">Loading expected labour cost and overhead comparison...</p>
+            <div class="checklist">
+              <div><span>Expected labour cost</span><strong id="expectedLabourCost">₦0</strong></div>
+              <div><span>Net contribution after labour</span><strong id="netContribution">₦0</strong></div>
+              <div><span>Daily overhead assumption</span><strong id="dailyOverheads">₦0</strong></div>
+              <div><span>Breakeven surplus / shortfall</span><strong id="breakevenVariance">₦0</strong></div>
+            </div>
+          </article>
+          <article class="readiness-panel">
+            <p class="eyebrow">Platform and cash</p>
+            <h2>Demand and cash position</h2>
+            <p id="cashOnHandNote">Checking Payments Integration...</p>
+            <div class="checklist">
+              <div><span>Cash on hand</span><strong id="cashOnHand">₦0</strong></div>
+              <div><span>Upcoming payments</span><strong id="upcomingPayments">Not configured</strong></div>
+            </div>
+            <div id="platformMixChart" class="split-chart" aria-label="Platform Net Earnings split"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Amoeba comparison</p><h2>Performance bars</h2></div>
+        </div>
+        <p class="section-intro">Amoebas are ranked against today’s scope on target pace, hourly efficiency, utilisation and cash variance before card-level drilldown.</p>
+        <div id="amoebaComparisonChart" class="chart-card"></div>
+      </section>
+
+      <section id="amoebas" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Amoeba owner performance</p><h2>Amoeba portfolio</h2></div>
+          <span id="updatedLabel" class="subtle"></span>
+        </div>
+        <p class="section-intro">Amoebas are grouped before operator drilldown so leaders can see where attention is needed without scrolling through every operator first.</p>
+        <div id="amoebaPortfolio" class="summary-grid"></div>
+      </section>
+
+      <section id="operators" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Operator foundation</p><h2>Operator signals</h2></div>
+          <div class="segmented-actions" aria-label="Operator sort">
+            <button type="button" data-sort-operators="attention">Attention</button>
+            <button type="button" data-sort-operators="net">Net Earnings</button>
+            <button type="button" data-sort-operators="he">HE</button>
+            <button type="button" data-sort-operators="cash">Cash</button>
+          </div>
+        </div>
+        <p class="section-intro">Operators are grouped by action first. Drill into a group instead of scanning every operator on large teams.</p>
+        <div id="operatorSignals" class="summary-grid"></div>
+        <div class="section-heading sub-section-heading">
+          <div><p class="eyebrow">Sortable leaderboard</p><h2>Operator leaderboard</h2></div>
+          <div class="segmented-actions" aria-label="Leaderboard sort">
+            <button type="button" data-sort-leaderboard="net">Net Earnings</button>
+            <button type="button" data-sort-leaderboard="acceptance">Acceptance</button>
+            <button type="button" data-sort-leaderboard="trips">Trips</button>
+            <button type="button" data-sort-leaderboard="online">Online</button>
+            <button type="button" data-sort-leaderboard="cash">Cash</button>
+          </div>
+        </div>
+        <p class="section-intro">Sortable metrics stay separate instead of hiding performance inside one composite score.</p>
+        <div id="operatorLeaderboard" class="data-list"></div>
+      </section>
+
+      <section id="leakage" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Finance and anomaly review</p><h2>Leakage watch</h2></div></div>
+        <p class="section-intro">Cash shortfalls, stale data, missing operators and unresolved escalations are grouped first, with drilldown rows below.</p>
+        <div id="leakageSummaryChart" class="chart-card compact-chart"></div>
+        <div id="leakageList" class="data-list"></div>
+      </section>
+    </main>
+    <dialog id="detailDialog" class="wide-dialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="detailTitle">Details</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="detailSummary" class="subtle"></p>
+        <div id="detailBody" class="data-list"></div>
+      </form>
+    </dialog>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

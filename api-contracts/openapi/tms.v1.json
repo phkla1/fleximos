@@ -1,0 +1,158 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fleximotion TMS API",
+    "version": "1.0.0",
+    "description": "Management work system for backlog, learning, substrates, points, performance snapshots, and transfer-price event publication."
+  },
+  "servers": [
+    { "url": "https://api.fleximotion.example/tms/v1", "description": "Production placeholder" },
+    { "url": "http://localhost:4050/v1", "description": "Local development" }
+  ],
+  "security": [{ "BearerAuth": [] }],
+  "tags": [
+    { "name": "Backlog" },
+    { "name": "Learning" },
+    { "name": "Substrates" },
+    { "name": "Transfer Pricing" },
+    { "name": "Performance Snapshots" },
+    { "name": "Points" }
+  ],
+  "paths": {
+    "/backlog-items": {
+      "get": {
+        "tags": ["Backlog"],
+        "summary": "List backlog items",
+        "responses": {
+          "200": { "description": "Backlog items", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BacklogItemPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Backlog"],
+        "summary": "Create backlog item",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateBacklogItemRequest" } } } },
+        "responses": {
+          "201": { "description": "Backlog item", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BacklogItem" } } } }
+        }
+      }
+    },
+    "/backlog-items/{backlog_item_id}/accept": {
+      "post": {
+        "tags": ["Backlog"],
+        "summary": "Accept backlog item",
+        "parameters": [
+          { "$ref": "#/components/parameters/BacklogItemId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "200": { "description": "Backlog item", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BacklogItem" } } } }
+        }
+      }
+    },
+    "/learning-entries": {
+      "get": {
+        "tags": ["Learning"],
+        "summary": "List learning entries",
+        "responses": {
+          "200": { "description": "Learning entries", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LearningEntryPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Learning"],
+        "summary": "Create learning entry",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateLearningEntryRequest" } } } },
+        "responses": {
+          "201": { "description": "Learning entry", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LearningEntry" } } } }
+        }
+      }
+    },
+    "/substrates": {
+      "get": {
+        "tags": ["Substrates"],
+        "summary": "List substrates",
+        "responses": {
+          "200": { "description": "Substrates", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SubstratePage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Substrates"],
+        "summary": "Create substrate",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSubstrateRequest" } } } },
+        "responses": {
+          "201": { "description": "Substrate", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Substrate" } } } }
+        }
+      }
+    },
+    "/transfer-price-events": {
+      "post": {
+        "tags": ["Transfer Pricing"],
+        "summary": "Create transfer-price event",
+        "description": "Creates a TMS-owned event and queues publication to Ops. The TMS must not require live Ops P&L before creating the event.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransferPriceEventRequest" } } } },
+        "responses": {
+          "201": { "description": "Transfer-price event", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferPriceEvent" } } } }
+        }
+      }
+    },
+    "/transfer-price-events/{transfer_price_event_id}/publish-to-ops": {
+      "post": {
+        "tags": ["Transfer Pricing"],
+        "summary": "Publish transfer-price event to Ops",
+        "parameters": [
+          { "$ref": "#/components/parameters/TransferPriceEventId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "202": { "description": "Publish queued", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferPriceEvent" } } } }
+        }
+      }
+    },
+    "/amoeba-performance-snapshots": {
+      "get": {
+        "tags": ["Performance Snapshots"],
+        "summary": "List cached Ops performance snapshots",
+        "responses": {
+          "200": { "description": "Snapshots", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PerformanceSnapshotPage" } } } }
+        }
+      }
+    },
+    "/points-awards": {
+      "get": {
+        "tags": ["Points"],
+        "summary": "List points awards",
+        "responses": {
+          "200": { "description": "Points awards", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PointsAwardPage" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT or service token" }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 160 } },
+      "BacklogItemId": { "name": "backlog_item_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^backlog_" } },
+      "TransferPriceEventId": { "name": "transfer_price_event_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^tp_event_" } }
+    },
+    "schemas": {
+      "BacklogItem": { "type": "object", "properties": { "backlog_item_id": { "type": "string" }, "title": { "type": "string" }, "owning_amoeba_id": { "type": "string" }, "originating_amoeba_id": { "type": "string" }, "status": { "type": "string" }, "wsjf_score": { "type": "number" } } },
+      "CreateBacklogItemRequest": { "type": "object", "required": ["title", "owning_amoeba_id", "originating_amoeba_id", "value_band", "duration_band", "size_band"], "properties": { "title": { "type": "string" }, "description": { "type": "string" }, "owning_amoeba_id": { "type": "string" }, "originating_amoeba_id": { "type": "string" }, "value_band": { "type": "string", "enum": ["small", "medium", "large"] }, "duration_band": { "type": "string", "enum": ["week", "month", "quarter"] }, "size_band": { "type": "string", "enum": ["hours", "days", "week_plus"] } } },
+      "BacklogItemPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BacklogItem" } } } },
+      "LearningEntry": { "type": "object", "properties": { "learning_entry_id": { "type": "string" }, "insight": { "type": "string" }, "status": { "type": "string" } } },
+      "CreateLearningEntryRequest": { "type": "object", "required": ["insight", "affected_substrate_ids"], "properties": { "insight": { "type": "string" }, "triggering_event": { "type": "string" }, "affected_substrate_ids": { "type": "array", "items": { "type": "string" } } } },
+      "LearningEntryPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/LearningEntry" } } } },
+      "Substrate": { "type": "object", "properties": { "substrate_id": { "type": "string" }, "name": { "type": "string" }, "type": { "type": "string" }, "location_url": { "type": "string" } } },
+      "CreateSubstrateRequest": { "type": "object", "required": ["name", "type", "location_url", "owner_amoeba_id"], "properties": { "name": { "type": "string" }, "type": { "type": "string" }, "location_url": { "type": "string" }, "owner_amoeba_id": { "type": "string" } } },
+      "SubstratePage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Substrate" } } } },
+      "CreateTransferPriceEventRequest": { "type": "object", "required": ["date", "provider_amoeba_id", "consumer_amoeba_id", "amount_ngn"], "properties": { "date": { "type": "string", "format": "date" }, "provider_amoeba_id": { "type": "string" }, "consumer_amoeba_id": { "type": "string" }, "amount_ngn": { "type": "number" }, "triggering_backlog_item_id": { "type": ["string", "null"] } } },
+      "TransferPriceEvent": { "type": "object", "properties": { "transfer_price_event_id": { "type": "string" }, "published_to_ops_at": { "type": ["string", "null"], "format": "date-time" }, "publication_status": { "type": "string", "enum": ["queued", "published", "failed_retrying"] } } },
+      "PerformanceSnapshotPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } },
+      "PointsAwardPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } }
+    }
+  }
+}

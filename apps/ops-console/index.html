@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12362f" />
+    <title>Fleximotion Ops</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#team" aria-label="Fleximotion Ops home">
+        <span>F</span>
+        <div><strong>Fleximotion Ops</strong><small>Supervisor workspace</small></div>
+      </a>
+      <div class="connection-status"><span></span><span id="connectionText">Connecting</span></div>
+    </header>
+
+    <nav class="tabs" aria-label="Supervisor sections">
+      <a href="#team">Team</a>
+      <a href="#alerts">Alerts</a>
+      <a href="#performance">Performance</a>
+      <a href="#fuel">Fuel & mileage</a>
+    </nav>
+
+    <main>
+      <section id="team" class="overview-band">
+        <div>
+          <p class="eyebrow">My team</p>
+          <h1>Today’s operating picture</h1>
+          <p id="scopeLabel" class="subtle">Operators assigned to this supervisor</p>
+        </div>
+        <div class="overview-actions">
+          <label>Operating date<input id="operatingDate" type="date" /></label>
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Team summary">
+        <article><span>Active operators</span><strong id="activeOperatorCount">0</strong></article>
+        <article><span>Live operators</span><strong id="liveOperatorCount">0</strong></article>
+        <article><span>Open alerts</span><strong id="openAlertCount">0</strong></article>
+        <article class="revenue-metric car"><span>Car revenue</span><strong id="carRevenueTotal">₦0</strong></article>
+        <article class="revenue-metric bike"><span>Bike revenue</span><strong id="bikeRevenueTotal">₦0</strong></article>
+      </section>
+
+      <p id="notice" class="notice" role="status"></p>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Live operations</p><h2>Team board</h2></div>
+          <span id="boardUpdated" class="subtle"></span>
+        </div>
+        <div id="teamBoard" class="team-board"></div>
+      </section>
+
+      <section id="alerts" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Action queue</p><h2>Alert inbox</h2></div>
+          <label class="compact-field">Status
+            <select id="alertFilter">
+              <option value="">All alerts</option>
+              <option value="open">Open</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </label>
+        </div>
+        <div id="alertList" class="alert-list"></div>
+      </section>
+
+      <section id="performance" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Daily report</p><h2>Operator performance</h2></div>
+          <span class="subtle">One row per platform account</span>
+        </div>
+        <div id="performanceList" class="performance-list"></div>
+      </section>
+
+      <section id="fuel" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Daily control</p><h2>Fuel and mileage</h2></div>
+          <span class="subtle">Supervisor confirmation</span>
+        </div>
+        <form id="fuelIssueForm" class="fuel-form">
+          <label>Operator and vehicle<select name="operator_id" required></select></label>
+          <label>Fuel issued (litres)<input name="quantity" type="number" min="0" step="0.1" required /></label>
+          <label>Notes<input name="notes" placeholder="Optional" /></label>
+          <button type="submit">Confirm fuel</button>
+        </form>
+        <div id="mileageList" class="mileage-list"></div>
+      </section>
+    </main>
+
+    <dialog id="actionDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="dialogTitle">Alert action</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="dialogContext" class="subtle"></p>
+        <label>Notes<textarea id="dialogNotes" rows="4"></textarea></label>
+        <div class="dialog-actions">
+          <button value="cancel" class="secondary">Cancel</button>
+          <button id="confirmActionButton" value="default">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>
