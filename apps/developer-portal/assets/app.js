@@ -2,6 +2,7 @@ const apiFiles = {
   identity: "../../api-contracts/openapi/identity.v1.json",
   amoeba: "../../api-contracts/openapi/amoeba.v1.json",
   ops: "../../api-contracts/openapi/ops.v1.json",
+  payments: "../../api-contracts/openapi/payments-integration.v1.json",
   hr: "../../api-contracts/openapi/hr.v1.json",
   tms: "../../api-contracts/openapi/tms.v1.json"
 };
@@ -98,10 +99,12 @@ function renderEndpoint(row) {
   const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(row.method);
   authText.textContent =
     row.operation.security && row.operation.security.length === 0
-      ? "Public endpoint by explicit contract exception."
+      ? "Public provider endpoint. Authenticate with the provider signature defined by this contract."
       : "Bearer JWT for humans or scoped service token for integrations.";
   notesText.textContent = isMutation
-    ? "Mutation endpoint. Send Idempotency-Key and persist the returned request_id."
+    ? row.operation.security && row.operation.security.length === 0
+      ? "Preserve the raw request, verify its provider signature, and deduplicate by provider reference."
+      : "Mutation endpoint. Send Idempotency-Key and persist the returned request_id."
     : "Read endpoint. Use cursor pagination where supported and avoid local copies as source of truth.";
   const template = examples[row.method] || examples.GET;
   requestExample.textContent = template.request.replace("{path}", row.path);

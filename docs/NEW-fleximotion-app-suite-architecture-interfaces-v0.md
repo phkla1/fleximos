@@ -814,87 +814,144 @@ The current Google Sheets-oriented systems should be treated as legacy operation
 
 ---
 
-## 14. Build Sequence
+## 14. Revised Build Sequence
 
-The sequencing should minimize dependency loops while replacing the highest-pain operational systems early.
+**Roadmap status: 12 June 2026.** The sequencing minimizes dependency loops while replacing the highest-pain operational systems early. API contracts, developer documentation, and reviewable frontend previews are continuous deliverables in every phase.
 
-### Phase 0: Contract Foundation
+### Phase 1: Contract Foundation and Developer Portal — Complete
 
-Deliver:
+Delivered:
 
-- This architecture document agreed and versioned.
-- Shared ID conventions.
-- Initial OpenAPI skeletons.
-- Auth/service-token strategy.
-- Event envelope standard.
-- Decision on deployment topology.
+- Shared ID conventions, authentication and service-token model.
+- Event envelope and idempotency standards.
+- Versioned OpenAPI skeletons for suite domains.
+- Initial deployment topology.
+- Developer documentation portal with integration standards and API guidance.
 
-### Phase 1: Identity and Amoeba Foundation
+### Phase 2: Identity and Amoeba Foundation — Complete
 
-Deliver:
+Delivered:
 
-- Minimal Identity API: people, users, auth/service tokens.
-- Minimal Amoeba API: amoeba definitions, classifications, coordinator assignment.
-- Seed initial amoebas: Island, Mainland, Central.
-- Seed initial personnel/users required for Ops and TMS.
+- People, users, human authentication and service accounts.
+- Amoeba and site definitions, classifications and coordinator assignments.
+- Initial Island, Mainland and Central structures.
+- Admin console CRUD workflows and documented APIs.
 
-This phase can be implemented inside one backend if necessary, but the public contracts should remain distinct.
+The public Identity and Amoeba contracts remain distinct even where development infrastructure is shared.
 
-### Phase 2: Ops App
+### Phase 3: Ops MVP — Complete for Local Review
 
-Deliver:
+Delivered:
 
-- Operator registry.
-- Vehicle registry.
-- Platform account registry.
-- Bolt/Uber connector consolidation.
-- Daily activity ingestion and reporting.
-- Alert engine and alert resolution workflow.
-- Cash/remittance workflow.
-- Amoeba P&L and HE.
-- Replacement of current daily report and operator monitoring Google Sheets as operational inputs.
+- Operator, vehicle and platform-account registries.
+- Consolidated Bolt and dual-Uber ingestion boundaries.
+- Durable scheduled-job registry, Lagos-time scheduler, worker execution, retry and idempotency controls.
+- Alert generation, acknowledgement, resolution and notification outbox.
+- Supervisor console, operator PWA and scoped admin operations.
+- Immutable daily report snapshots with report history and JSON/CSV download.
+- Historical migration tooling, API documentation and desktop/mobile Playwright coverage.
 
-Ops should be prioritized because it replaces live operational systems and becomes the source of performance data required by TMS.
+Production activation remains gated on production PostgreSQL, Redis/BullMQ, live provider credentials, migration execution and a live end-to-end trial.
 
-### Phase 3: HR / Recruitment System
+### Phase 4: Ops Operational Depth — Revised / In Design
 
-Deliver:
+Phase 4 begins by correcting the access and product-surface model before adding Monnify or detailed financial analytics.
 
-- Prospect database.
-- Intake/import/referral flow.
-- Duplicate handling.
-- Presentation and preverification.
-- Platform checks as recruitment evidence.
-- Physical verification.
-- Training/test.
-- Hiring approval.
-- Contract generation.
+#### 4A. Scoped Business Access Foundation
+
+- Replace the assumption that business roles form one simple hierarchy with **role assignments plus scopes**.
+- Model each assignment as `person + role + scope + validity`.
+- Allow one person to hold multiple assignments and allow multiple people to hold the same role over the same scope.
+- Compute effective visibility as the union of all active assignments.
+- Support company, region/group, amoeba, site and team scopes without creating role variants such as "executive manager".
+- Keep operational reporting lines separate from access assignments.
+- Distinguish System Admin, Manager, Finance, Supervisor and Operator permissions.
+- Update Identity APIs, service authorization, audit events and the developer portal.
+
+Example assignments:
+
+- Manager A: Manager over Mainland.
+- Manager B: Manager over Island.
+- Cofounder C: Manager over Mainland and Island.
+- Accountant D: Finance over Mainland.
+- Finance lead E: Finance company-wide.
+
+#### 4B. Manager and Finance Experiences
+
+- Build a Manager Console for multi-supervisor operational oversight, escalations, closeouts, fleet health, cash exposure and scoped P&L.
+- Build a Finance Console for reserved-account provisioning, deposits, matching, reconciliation, settlement, adjustments, exceptions, period close and audit evidence.
+- Keep System Admin focused on users, permissions, integrations, configuration, data health and recovery.
+- Allow Manager and Finance users to share read-only analytical components while retaining different action permissions.
+
+#### 4C. Monnify Service and Cash Ledger
+
+- Publish a step-by-step Monnify sandbox, testing and production-onboarding guide.
+- Agree exact Monnify Service to Ops API contracts before implementation.
+- Provision one Monnify reserved account per operator.
+- Receive, preserve and validate raw webhook events.
+- Verify transactions, deduplicate delivery, match account numbers to operators and forward normalized ledger events to Ops.
+- Track deposit states separately: received, verified, matched, reconciled, settled and finance-approved.
+- Add periodic API reconciliation so the ledger does not depend on webhook delivery alone.
+- Test the complete sandbox flow with an approved internal test identity and simulated deposits.
+- Begin production compliance and account activation in parallel so external approval does not block engineering.
+
+#### 4D. Cash Operations and Closeout
+
+- Real-time expected cash, remitted cash, credits, shortfalls and unmatched receipts.
+- Operator, supervisor, manager and finance views appropriate to each role and scope.
+- Supervisor explanations without authority to approve financial adjustments.
+- Finance-controlled reversals, adjustments, reconciliation approval and accounting-period close.
+- Daily closeout and escalation workflows.
+
+#### 4E. Finance and Analytics Dashboard Design
+
+- Design the shared finance and analytics workspace with stakeholder input before implementation.
+- Define the precise KPIs, comparisons, drill-down paths, period controls and visual hierarchy at that point.
+- Do not treat the current Admin dashboard as the Manager or Finance landing experience.
+- Detailed dashboard inputs are captured in `docs/Finance-Analytics-Dashboard-Design-Brief.md`; use that brief as the source for wireframes, read models and implementation slices.
+
+#### 4F. Remaining Operational Depth
+
+- Deviation reasons and structured excuse workflows.
+- Inspections, incidents, maintenance and media.
+- Fuel and mileage reconciliation, including CarTracker data and missing bike-tracker states.
+- Expenses, amoeba P&L and central-cost allocation.
+- Exports, leaderboards, operator motivation features and executive views.
+
+### Phase 5: HR System — Planned
+
+- Prospect funnel, imports, referrals and duplicate handling.
+- Verification, platform checks, training and tests.
+- Approval, contracts and personnel lifecycle.
 - `personnel.ready_for_ops_onboarding` handoff.
+- Scoped employment-role assignments feeding Identity and suite authorization.
 
-If recruitment pressure is high, a thin HR onboarding handoff can be built earlier, before the full funnel dashboard.
+A thin HR-to-Ops onboarding handoff may be delivered earlier if recruitment pressure requires it.
 
-### Phase 4: TMS
+### Phase 6: TMS — Planned
 
-Deliver:
-
-- Backlog, learning, substrates, substrate revisions.
-- TMS members.
-- Transfer price rules/events.
-- Publication of transfer-price events to Ops.
-- Performance snapshots from Ops.
+- Backlog, learning, substrates and substrate revisions.
+- TMS membership and governance.
+- Transfer-price rules and events.
+- Ops performance snapshots.
 - Points ledger, initially disabled until management tunes multipliers.
-- Governance views.
 
-TMS can start earlier in standalone mode for tasks and learning, but its HE, trajectory, pool points, and transfer-pricing value depend on Ops being available.
+TMS may begin earlier in standalone task/learning mode, while its HE, trajectory, points and transfer-pricing value depend on Ops data.
 
-### Phase 5: Cross-Suite Analytics and Automation
+### Phase 7: Cross-Suite Analytics and Automation — Planned
 
-Deliver:
-
-- Unified reporting/warehouse.
-- More automation around platform checks, outreach, OCR, notifications, and recommendations.
+- Unified warehouse and cross-suite reporting.
+- Advanced workflows, recommendations and connector expansion.
+- OCR, outreach and notification automation.
 - Stronger mobile/PWA capabilities.
-- Advanced event-driven workflows.
+- Mature event-driven integration across suite domains.
+
+### Phase Acceptance Standards
+
+- **Backend:** contract validation, integration tests, idempotency tests, migration dry runs and cross-system handoff tests.
+- **Frontend:** continuously available local previews plus Playwright checks at mobile and desktop sizes.
+- **Documentation:** every public endpoint includes authentication, request/response examples, errors and integration guidance.
+- **Operations:** recurring or delayed work must appear in the Scheduled Job Registry with retry, freshness and monitoring behavior.
 
 ---
 

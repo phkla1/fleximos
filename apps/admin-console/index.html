@@ -17,6 +17,7 @@
         <nav>
           <a href="#people">People</a>
           <a href="#users">Users</a>
+          <a href="#access-assignments">Access Assignments</a>
           <a href="#amoebas">Amoebas</a>
           <a href="#sites">Sites</a>
           <a href="#service-accounts">Service Accounts</a>
@@ -50,6 +51,10 @@
           <article>
             <span>Users</span>
             <strong id="usersCount">0</strong>
+          </article>
+          <article>
+            <span>Access Assignments</span>
+            <strong id="roleAssignmentsCount">0</strong>
           </article>
           <article>
             <span>Amoebas</span>
@@ -100,7 +105,7 @@
           </div>
           <form id="userForm" class="form-grid">
             <label>Person <select name="person_id" required></select></label>
-            <label>Roles <input name="roles" placeholder="admin,manager" required /></label>
+            <label>System roles <input name="roles" placeholder="owner, admin" required /></label>
             <button type="submit">Create user</button>
           </form>
           <div class="table-wrap">
@@ -109,6 +114,48 @@
                 <tr><th>User</th><th>Person</th><th>Roles</th><th>Status</th><th>Save</th></tr>
               </thead>
               <tbody id="userRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="access-assignments" class="panel">
+          <div class="panel-heading">
+            <div>
+              <p>Identity API</p>
+              <h2>Access assignments</h2>
+            </div>
+          </div>
+          <form id="roleAssignmentForm" class="form-grid assignment-form">
+            <label>Person <select name="person_id" required></select></label>
+            <label>
+              Business role
+              <select name="role" required>
+                <option value="manager">Manager</option>
+                <option value="finance">Finance</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="operator">Operator</option>
+              </select>
+            </label>
+            <label>
+              Scope type
+              <select name="scope_type" required>
+                <option value="company">Whole company</option>
+                <option value="amoeba">Amoeba</option>
+                <option value="site">Site</option>
+                <option value="team">Supervisor team</option>
+              </select>
+            </label>
+            <label>Scope <select name="scope_id" disabled></select></label>
+            <label>Valid from <input name="valid_from" type="datetime-local" /></label>
+            <label>Valid until <input name="valid_to" type="datetime-local" /></label>
+            <button type="submit">Assign access</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Person</th><th>Role</th><th>Scope</th><th>Valid from</th><th>Valid until</th><th>Status</th><th>Save</th></tr>
+              </thead>
+              <tbody id="roleAssignmentRows"></tbody>
             </table>
           </div>
         </section>

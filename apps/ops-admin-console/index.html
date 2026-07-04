@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12362f" />
+    <title>Fleximotion Ops Admin</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#overview" aria-label="Fleximotion Ops home">
+        <span>F</span>
+        <div><strong>Fleximotion Ops</strong><small>Admin and data operations</small></div>
+      </a>
+      <div class="connection-status"><span id="connectionDot"></span><span id="connectionText">Connecting</span></div>
+    </header>
+
+    <nav class="tabs" aria-label="Ops sections">
+      <a href="#overview">Overview</a>
+      <a href="#team">Team board</a>
+      <a href="#alerts">Alerts</a>
+      <a href="#ingestion">Manual entry</a>
+      <a href="#reports">Reports</a>
+      <a href="#data-health">Data health</a>
+      <a href="#operators">Roster</a>
+      <a href="#vehicles">Vehicles</a>
+      <a href="#controls">Controls</a>
+      <a href="#settings">System settings</a>
+    </nav>
+
+    <main>
+      <section id="overview" class="overview-band">
+        <div>
+          <p class="eyebrow">Live operations</p>
+          <h1>Today’s operating picture</h1>
+          <p id="todayLabel" class="subtle"></p>
+        </div>
+        <div class="overview-actions">
+          <label>Operating date<input id="operatingDate" type="date" /></label>
+          <button id="refreshButton" type="button">Refresh data</button>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Operational summary">
+        <article><span>Active operators</span><strong id="activeOperatorCount">0</strong></article>
+        <article><span>Open alerts</span><strong id="openAlertCount">0</strong></article>
+        <article><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></article>
+        <article><span>Platform feeds</span><strong id="activePlatformCount">0</strong></article>
+      </section>
+
+      <p id="notice" class="notice" role="status"></p>
+
+      <section id="team" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Company operations</p><h2>Team summary</h2></div>
+          <span id="boardUpdated" class="subtle"></span>
+        </div>
+        <p class="section-intro">Teams are grouped by supervisor and operating unit. Open a team to inspect individual operators.</p>
+        <div id="teamBoard" class="team-board"></div>
+      </section>
+
+      <section id="alerts" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Action queue</p><h2>Alert inbox</h2></div>
+          <label class="compact-field">Status
+            <select id="alertFilter">
+              <option value="">All alerts</option>
+              <option value="open" selected>Open</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </label>
+        </div>
+        <p class="section-intro">Conditions are grouped so their scale is visible first. Open a condition to see affected teams and operators.</p>
+        <div id="alertList" class="alert-list"></div>
+      </section>
+
+      <section id="ingestion" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Exceptional workflow</p><h2>Manual data entry</h2></div>
+        </div>
+        <p class="section-intro">Use this only to correct or add records when an automated platform feed is unavailable. Automated feed status is monitored under Data health.</p>
+        <details class="management-panel">
+          <summary>Enter a performance record</summary>
+          <form id="ingestionForm" class="entry-form ingestion-form">
+          <label>Operator<select name="operator_id" required></select></label>
+          <label>Platform registration<select name="registration_id" required></select></label>
+          <label>Record date<input name="record_date" type="date" required /></label>
+          <label>Status
+            <select name="current_status">
+              <option value="online">Online</option>
+              <option value="offline">Offline</option>
+              <option value="not_seen_today">Not seen today</option>
+              <option value="checked_out">Checked out</option>
+            </select>
+          </label>
+          <label>Trips<input name="trips_total" type="number" min="0" value="12" required /></label>
+          <label>Completed<input name="trips_completed" type="number" min="0" value="10" required /></label>
+          <label>Revenue (NGN)<input name="ride_revenue_ngn" type="number" min="0" value="22000" required /></label>
+          <label>Net earnings (NGN)<input name="net_earnings_ngn" type="number" min="0" value="18500" required /></label>
+          <label>Hours online<input name="hours_online" type="number" min="0" step="0.1" value="7.5" required /></label>
+          <label>Data quality
+            <select name="data_quality">
+              <option value="authoritative">Authoritative</option>
+              <option value="derived">Derived</option>
+              <option value="heuristic">Heuristic</option>
+              <option value="degraded">Degraded</option>
+            </select>
+          </label>
+            <button type="submit">Save performance record</button>
+          </form>
+        </details>
+        <details class="management-panel">
+          <summary>View performance records</summary>
+          <div class="history-filters">
+            <label>Team<select id="performanceTeamFilter"></select></label>
+            <label>Operator<select id="performanceOperatorFilter"></select></label>
+          </div>
+          <div class="table-shell">
+          <table class="performance-table">
+            <thead><tr><th>Operator</th><th>Platform</th><th>Trips</th><th>Revenue</th><th>Hours</th><th>Status</th><th>Quality</th></tr></thead>
+            <tbody id="performanceRows"></tbody>
+          </table>
+          </div>
+        </details>
+      </section>
+
+      <section id="reports" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Immutable snapshots</p><h2>Daily reports</h2></div>
+          <form id="reportForm" class="report-actions">
+            <label>Scope<select name="amoeba_id"></select></label>
+            <button type="submit">Generate report</button>
+          </form>
+        </div>
+        <p class="section-intro">Each generation creates a new revision. Open a snapshot to inspect its summary and operator rows, or download it for audit and sharing.</p>
+        <div id="reportList" class="data-list report-list"></div>
+      </section>
+
+      <section id="data-health" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Scheduled operations</p><h2>Data health</h2></div>
+          <span id="jobHealthSummary" class="subtle"></span>
+        </div>
+        <div id="jobHealthMetrics" class="metrics health-metrics"></div>
+        <details class="management-panel">
+          <summary>View scheduled jobs</summary>
+          <div id="scheduledJobList" class="data-list job-list"></div>
+        </details>
+        <details class="management-panel">
+          <summary>View recent job runs</summary>
+          <div id="scheduledJobRuns" class="data-list compact-list"></div>
+        </details>
+        <details class="management-panel">
+          <summary>View platform import runs</summary>
+          <p class="panel-intro">Technical audit of automated and manual imports. Accepted and rejected counts show whether each source file or connector run was processed cleanly.</p>
+          <div id="ingestionRuns" class="data-list compact-list"></div>
+        </details>
+      </section>
+
+      <section id="operators" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Fleet roster</p><h2>Operators</h2><p class="section-count"><strong id="operatorSummaryCount">0</strong> active operators</p></div>
+        </div>
+        <p class="section-intro">Use the team summary for daily oversight. Open roster management only to add, reassign, suspend, or inspect an operator.</p>
+        <details class="management-panel">
+          <summary>Manage operator roster</summary>
+          <form id="operatorForm" class="entry-form">
+          <label>Person<select name="person_id" required></select></label>
+          <label>Type
+            <select name="operator_type">
+              <option value="driver">Driver</option>
+              <option value="rider">Rider</option>
+              <option value="courier">Courier</option>
+            </select>
+          </label>
+          <label>Amoeba<select name="amoeba_id" required></select></label>
+          <label>Site<select name="site_id" required></select></label>
+          <label>Supervisor<select name="supervisor_person_id"></select></label>
+          <label>Daily target (NGN)<input name="daily_revenue_target_ngn" type="number" min="0" step="100" /></label>
+          <button type="submit">Add operator</button>
+          </form>
+          <div class="asset-filters">
+            <label>Team<select id="operatorTeamFilter"></select></label>
+            <label>Amoeba<select id="operatorAmoebaFilter"></select></label>
+            <label>Name or vehicle<input id="operatorSearch" type="search" placeholder="Search roster" /></label>
+          </div>
+          <p id="operatorFilterSummary" class="filter-summary"></p>
+          <div id="operatorList" class="data-list"></div>
+        </details>
+      </section>
+
+      <section id="vehicles" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Fleet assets</p><h2>Vehicles</h2><p class="section-count"><strong id="vehicleSummaryCount">0</strong> active vehicles</p></div>
+        </div>
+        <p class="section-intro">The default view shows fleet scale only. Open asset management when a vehicle must be added, inspected, or reassigned.</p>
+        <details class="management-panel">
+          <summary>Manage fleet assets</summary>
+          <form id="vehicleForm" class="entry-form">
+          <label>Plate<input name="plate" required /></label>
+          <label>Type
+            <select name="vehicle_type">
+              <option value="car">Car</option>
+              <option value="motorbike">Motorbike</option>
+              <option value="van">Van</option>
+            </select>
+          </label>
+          <label>Amoeba<select name="amoeba_id" required></select></label>
+          <label>Make / model<input name="make_model" /></label>
+          <label>Color<input name="color" /></label>
+          <button type="submit">Add vehicle</button>
+          </form>
+          <div class="asset-filters">
+            <label>Team<select id="vehicleTeamFilter"></select></label>
+            <label>Amoeba<select id="vehicleAmoebaFilter"></select></label>
+            <label>Plate or model<input id="vehicleSearch" type="search" placeholder="Search fleet" /></label>
+          </div>
+          <p id="vehicleFilterSummary" class="filter-summary"></p>
+          <div id="vehicleList" class="data-list"></div>
+        </details>
+      </section>
+
+      <section id="controls" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Operating policy</p><h2>Targets, fuel and mileage</h2></div>
+        </div>
+        <div class="control-grid">
+          <div class="control-panel">
+            <h3>Revenue pace profile</h3>
+            <div id="paceProfileList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Add or change a pace profile</summary>
+              <form id="paceProfileForm" class="entry-form compact-form">
+              <label>Vehicle type
+                <select name="vehicle_type"><option value="car">Car</option><option value="motorbike">Motorbike</option></select>
+              </label>
+              <label>Daily target (NGN)<input name="daily_target_ngn" type="number" min="0" value="60000" required /></label>
+              <label>12:00 expected %<input name="noon_pct" type="number" min="0" max="100" value="40" required /></label>
+              <label>16:00 expected %<input name="afternoon_pct" type="number" min="0" max="100" value="65" required /></label>
+              <label>19:00 expected %<input name="evening_pct" type="number" min="0" max="100" value="90" required /></label>
+              <label>Warning tolerance %<input name="warning_tolerance_pct" type="number" min="0" value="10" required /></label>
+              <label>Critical tolerance %<input name="critical_tolerance_pct" type="number" min="0" value="20" required /></label>
+              <label>Effective from<input name="effective_from" type="date" required /></label>
+              <button type="submit">Add pace profile</button>
+              </form>
+            </details>
+          </div>
+          <div class="control-panel">
+            <h3>Vehicle efficiency policy</h3>
+            <div id="efficiencyPolicyList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Add or change an efficiency policy</summary>
+              <form id="efficiencyPolicyForm" class="entry-form compact-form">
+              <label>Vehicle type
+                <select name="vehicle_type"><option value="car">Car</option><option value="motorbike">Motorbike</option></select>
+              </label>
+              <label>Make / model override<input name="make_model" placeholder="Optional" /></label>
+              <label>Daily fuel (litres)<input name="standard_daily_fuel_quantity" type="number" min="0" step="0.1" value="15" required /></label>
+              <label>Expected distance (km)<input name="expected_distance_km" type="number" min="0" step="0.1" value="150" required /></label>
+              <label>Allowed variance %<input name="allowed_variance_pct" type="number" min="0" value="10" required /></label>
+              <label>Effective from<input name="effective_from" type="date" required /></label>
+              <button type="submit">Add efficiency policy</button>
+              </form>
+            </details>
+          </div>
+          <div class="control-panel">
+            <h3>Finance economics policy</h3>
+            <div id="economicsPolicyList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Add or change economics assumptions</summary>
+              <form id="economicsPolicyForm" class="entry-form compact-form">
+              <label>Policy name<input name="policy_name" value="Daily economics policy" required /></label>
+              <label>Admin staff daily cost (NGN)<input name="admin_staff_daily_cost_ngn" type="number" min="0" step="100" value="50000" required /></label>
+              <label>Operator labour share %<input name="operator_labour_share_pct" type="number" min="0" max="100" step="0.1" value="25" required /></label>
+              <label>Daily overhead (NGN)<input name="daily_overhead_ngn" type="number" min="0" step="100" value="75000" required /></label>
+              <label>Expected hours / operator<input name="expected_hours_per_operator" type="number" min="0" step="0.1" value="10" required /></label>
+              <label>Effective from<input name="effective_from" type="date" required /></label>
+              <button type="submit">Add economics policy</button>
+              </form>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="settings" class="workspace-section api-settings">
+        <div class="section-heading">
+          <div><p class="eyebrow">Development environment</p><h2>Admin console connection</h2></div>
+        </div>
+        <p class="section-intro">These settings tell this admin console which Fleximotion backend services to use. They are not external-platform connector status or API-consumer documentation.</p>
+        <details class="management-panel">
+          <summary>Configure development connection</summary>
+          <div class="entry-form">
+            <label>Ops API<input id="opsApiBase" value="http://127.0.0.1:4030" /></label>
+            <label>Foundation API<input id="foundationApiBase" value="http://127.0.0.1:4010" /></label>
+            <label>Development bearer token<input id="apiToken" value="flexi-dev-service-token" /></label>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <dialog id="actionDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="dialogTitle">Alert action</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="dialogContext" class="subtle"></p>
+        <label>Notes<textarea id="dialogNotes" rows="4"></textarea></label>
+        <div class="dialog-actions">
+          <button value="cancel" class="secondary">Cancel</button>
+          <button id="confirmActionButton" value="default">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="teamDialog" class="team-dialog">
+      <div class="dialog-body">
+        <div class="dialog-heading"><div><p class="eyebrow">Team detail</p><h2 id="teamDialogTitle">Team</h2></div><button type="button" data-close-team aria-label="Close">×</button></div>
+        <p id="teamDialogSummary" class="subtle"></p>
+        <div id="teamOperatorList" class="team-operator-list"></div>
+      </div>
+    </dialog>
+
+    <dialog id="alertGroupDialog" class="team-dialog">
+      <div class="dialog-body">
+        <div class="dialog-heading"><div><p class="eyebrow">Affected operators</p><h2 id="alertGroupDialogTitle">Alert condition</h2></div><button type="button" data-close-alert-group aria-label="Close">×</button></div>
+        <p id="alertGroupDialogSummary" class="subtle"></p>
+        <div id="alertGroupList" class="data-list"></div>
+      </div>
+    </dialog>
+
+    <dialog id="reportDialog" class="team-dialog">
+      <div class="dialog-body">
+        <div class="dialog-heading"><div><p class="eyebrow">Daily report</p><h2 id="reportDialogTitle">Report</h2></div><button type="button" data-close-report aria-label="Close">×</button></div>
+        <div id="reportDialogSummary" class="report-summary"></div>
+        <div class="dialog-actions">
+          <button type="button" class="secondary" data-download-report="csv">Download CSV</button>
+          <button type="button" data-download-report="json">Download JSON</button>
+        </div>
+        <div class="table-shell">
+          <table class="performance-table">
+            <thead><tr><th>Operator</th><th>Platform</th><th>Trips</th><th>Revenue</th><th>Hours</th><th>Status</th></tr></thead>
+            <tbody id="reportDialogRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

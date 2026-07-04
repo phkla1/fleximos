@@ -9,7 +9,7 @@ const host = process.env.HOST || "127.0.0.1";
 const app = await NestFactory.create(AppModule, { cors: true });
 app.enableCors({
   origin: true,
-  allowedHeaders: ["Authorization", "Content-Type", "Idempotency-Key", "X-Actor-Person-Id"],
+  allowedHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
 });
 

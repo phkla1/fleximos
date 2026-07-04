@@ -28,6 +28,12 @@ export default defineConfig({
       url: "http://127.0.0.1:4530/health",
       reuseExistingServer: true,
       timeout: 20000
+    },
+    {
+      command: "PORT=4542 FLEXI_PAYMENTS_DB_DIR=.data/e2e-payments-pglite OPS_API_BASE=http://127.0.0.1:4530 node apps/payments-integration/server.mjs",
+      url: "http://127.0.0.1:4542/health",
+      reuseExistingServer: true,
+      timeout: 15000
     }
   ],
   projects: [
@@ -35,15 +41,13 @@ export default defineConfig({
       name: "chromium-desktop",
       use: {
         ...devices["Desktop Chrome"],
-        channel: "chrome",
         viewport: { width: 1440, height: 1000 }
       }
     },
     {
       name: "mobile-chrome",
       use: {
-        ...devices["Pixel 5"],
-        channel: "chrome"
+        ...devices["Pixel 5"]
       }
     }
   ]

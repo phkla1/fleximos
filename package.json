@@ -6,7 +6,15 @@
   "scripts": {
     "dev:api": "FLEXI_DB_DIR=.data/local-foundation-pglite node apps/api-foundation/server.mjs",
     "dev:ops-api": "PORT=4030 FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/main.ts",
+    "dev:payments-api": "PORT=4040 FLEXI_PAYMENTS_DB_DIR=.data/local-payments-pglite node apps/payments-integration/server.mjs",
+    "dev:payments-api:sandbox": "PORT=4040 MONNIFY_PROVIDER_MODE=sandbox FLEXI_PAYMENTS_DB_DIR=.data/local-payments-pglite node apps/payments-integration/server.mjs",
+    "dev:ops-worker": "FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/worker.ts",
+    "dev:ops-scheduler": "FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/scheduler.ts",
+    "ops:worker:once": "FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/worker.ts --once",
+    "ops:scheduler:once": "FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/scheduler.ts --once",
     "dev:portal": "node scripts/serve-developer-portal.mjs",
+    "seed:ops-demo": "node scripts/seed-ops-demo.mjs",
+    "migrate:ops-daily": "node scripts/migrate-ops-daily-csv.mjs",
     "test:api": "node --test tests/api/*.test.mjs",
     "validate:openapi": "node scripts/validate-openapi.mjs",
     "test:e2e": "playwright test"

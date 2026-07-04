@@ -10,39 +10,50 @@
   </head>
   <body>
     <header class="app-header">
-      <a class="brand" href="#overview" aria-label="Fleximotion Ops home">
+      <a class="brand" href="#team" aria-label="Fleximotion Ops home">
         <span>F</span>
         <div><strong>Fleximotion Ops</strong><small>Supervisor workspace</small></div>
       </a>
-      <div class="connection-status"><span id="connectionDot"></span><span id="connectionText">Connecting</span></div>
+      <div class="connection-status"><span></span><span id="connectionText">Connecting</span></div>
     </header>
 
-    <nav class="tabs" aria-label="Ops sections">
-      <a href="#overview">Overview</a>
+    <nav class="tabs" aria-label="Supervisor sections">
+      <a href="#team">Team</a>
       <a href="#alerts">Alerts</a>
-      <a href="#operators">Roster</a>
-      <a href="#vehicles">Vehicles</a>
-      <a href="#settings">API</a>
+      <a href="#performance">Performance</a>
+      <a href="#fuel">Fuel & mileage</a>
     </nav>
 
     <main>
-      <section id="overview" class="overview-band">
+      <section id="team" class="overview-band">
         <div>
-          <p class="eyebrow">Live operations</p>
+          <p class="eyebrow">My team</p>
           <h1>Today’s operating picture</h1>
-          <p id="todayLabel" class="subtle"></p>
+          <p id="scopeLabel" class="subtle">Operators assigned to this supervisor</p>
         </div>
-        <button id="refreshButton" type="button">Refresh data</button>
+        <div class="overview-actions">
+          <label>Operating date<input id="operatingDate" type="date" /></label>
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
       </section>
 
-      <section class="metrics" aria-label="Operational summary">
+      <section class="metrics" aria-label="Team summary">
         <article><span>Active operators</span><strong id="activeOperatorCount">0</strong></article>
+        <article><span>Live operators</span><strong id="liveOperatorCount">0</strong></article>
         <article><span>Open alerts</span><strong id="openAlertCount">0</strong></article>
-        <article><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></article>
-        <article><span>Platform feeds</span><strong id="activePlatformCount">0</strong></article>
+        <article class="revenue-metric car"><span>Car revenue</span><strong id="carRevenueTotal">₦0</strong></article>
+        <article class="revenue-metric bike"><span>Bike revenue</span><strong id="bikeRevenueTotal">₦0</strong></article>
       </section>
 
       <p id="notice" class="notice" role="status"></p>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Live operations</p><h2>Team board</h2></div>
+          <span id="boardUpdated" class="subtle"></span>
+        </div>
+        <div id="teamBoard" class="team-board"></div>
+      </section>
 
       <section id="alerts" class="workspace-section">
         <div class="section-heading">
@@ -59,58 +70,26 @@
         <div id="alertList" class="alert-list"></div>
       </section>
 
-      <section id="operators" class="workspace-section">
+      <section id="performance" class="workspace-section">
         <div class="section-heading">
-          <div><p class="eyebrow">Fleet roster</p><h2>Operators</h2></div>
+          <div><p class="eyebrow">Daily report</p><h2>Operator performance</h2></div>
+          <span class="subtle">One row per platform account</span>
         </div>
-        <form id="operatorForm" class="entry-form">
-          <label>Person<select name="person_id" required></select></label>
-          <label>Type
-            <select name="operator_type">
-              <option value="driver">Driver</option>
-              <option value="rider">Rider</option>
-              <option value="courier">Courier</option>
-            </select>
-          </label>
-          <label>Amoeba<select name="amoeba_id" required></select></label>
-          <label>Site<select name="site_id" required></select></label>
-          <label>Supervisor<select name="supervisor_person_id"></select></label>
-          <label>Daily target (NGN)<input name="daily_revenue_target_ngn" type="number" min="0" step="100" /></label>
-          <button type="submit">Add operator</button>
-        </form>
-        <div id="operatorList" class="data-list"></div>
+        <div id="performanceList" class="performance-list"></div>
       </section>
 
-      <section id="vehicles" class="workspace-section">
+      <section id="fuel" class="workspace-section">
         <div class="section-heading">
-          <div><p class="eyebrow">Fleet assets</p><h2>Vehicles</h2></div>
+          <div><p class="eyebrow">Daily control</p><h2>Fuel and mileage</h2></div>
+          <span class="subtle">Supervisor confirmation</span>
         </div>
-        <form id="vehicleForm" class="entry-form">
-          <label>Plate<input name="plate" required /></label>
-          <label>Type
-            <select name="vehicle_type">
-              <option value="car">Car</option>
-              <option value="motorbike">Motorbike</option>
-              <option value="van">Van</option>
-            </select>
-          </label>
-          <label>Amoeba<select name="amoeba_id" required></select></label>
-          <label>Make / model<input name="make_model" /></label>
-          <label>Color<input name="color" /></label>
-          <button type="submit">Add vehicle</button>
+        <form id="fuelIssueForm" class="fuel-form">
+          <label>Operator and vehicle<select name="operator_id" required></select></label>
+          <label>Fuel issued (litres)<input name="quantity" type="number" min="0" step="0.1" required /></label>
+          <label>Notes<input name="notes" placeholder="Optional" /></label>
+          <button type="submit">Confirm fuel</button>
         </form>
-        <div id="vehicleList" class="data-list"></div>
-      </section>
-
-      <section id="settings" class="workspace-section api-settings">
-        <div class="section-heading">
-          <div><p class="eyebrow">Development</p><h2>API connection</h2></div>
-        </div>
-        <div class="entry-form">
-          <label>Ops API<input id="opsApiBase" value="http://127.0.0.1:4030" /></label>
-          <label>Foundation API<input id="foundationApiBase" value="http://127.0.0.1:4010" /></label>
-          <label>Bearer token<input id="apiToken" value="flexi-dev-service-token" /></label>
-        </div>
+        <div id="mileageList" class="mileage-list"></div>
       </section>
     </main>
 

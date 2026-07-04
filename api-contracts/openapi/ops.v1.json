@@ -14,10 +14,12 @@
     { "name": "Operators" },
     { "name": "Vehicles" },
     { "name": "Platform Accounts" },
+    { "name": "Ingestion" },
     { "name": "Daily Activity" },
     { "name": "Alerts" },
     { "name": "Cash" },
     { "name": "Performance" },
+    { "name": "Fuel and Mileage" },
     { "name": "Transfer Pricing" },
     { "name": "Audit" }
   ],
@@ -118,6 +120,23 @@
         }
       }
     },
+    "/vehicles/{vehicle_id}": {
+      "patch": {
+        "tags": ["Vehicles"],
+        "summary": "Update vehicle assignment, status, or details",
+        "parameters": [
+          { "name": "vehicle_id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Vehicle" } } }
+        },
+        "responses": {
+          "200": { "description": "Updated vehicle", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Vehicle" } } } }
+        }
+      }
+    },
     "/platform-accounts": {
       "get": {
         "tags": ["Platform Accounts"],
@@ -150,6 +169,259 @@
         "responses": {
           "200": { "description": "Daily records", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyActivityPage" } } } }
         }
+      }
+    },
+    "/ingestion-runs": {
+      "get": {
+        "tags": ["Ingestion"],
+        "summary": "List platform ingestion runs",
+        "parameters": [
+          { "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Ingestion runs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IngestionRunPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Ingestion"],
+        "summary": "Ingest normalized daily platform records",
+        "description": "Connector boundary for Bolt, Uber, migration, and manual-correction workers. Each record is resolved through the selected platform account and platform_operator_id. Valid records are upserted independently; rejected records are returned in the run errors array.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateIngestionRunRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Completed ingestion run", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IngestionRun" } } } }
+        }
+      }
+    },
+    "/daily-performance": {
+      "get": {
+        "tags": ["Daily Activity"],
+        "summary": "List canonical daily platform performance",
+        "parameters": [
+          { "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "operator_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "amoeba_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Daily platform records", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyPerformancePage" } } } }
+        }
+      }
+    },
+    "/team-board": {
+      "get": {
+        "tags": ["Performance"],
+        "summary": "Get the risk-sorted live team board",
+        "parameters": [
+          { "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "amoeba_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Aggregated operator operating picture", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TeamBoardResponse" } } } }
+        }
+      }
+    },
+    "/daily-reports": {
+      "get": {
+        "tags": ["Daily Activity"],
+        "summary": "List generated daily report snapshots",
+        "parameters": [
+          { "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "amoeba_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Daily report snapshots" } }
+      },
+      "post": {
+        "tags": ["Daily Activity"],
+        "summary": "Generate an immutable daily report snapshot",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["record_date"],
+                "properties": {
+                  "record_date": { "type": "string", "format": "date" },
+                  "amoeba_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Generated report snapshot" } }
+      }
+    },
+    "/daily-reports/{report_id}": {
+      "get": {
+        "tags": ["Daily Activity"],
+        "summary": "Get a generated daily report snapshot",
+        "parameters": [
+          { "name": "report_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Daily report snapshot" } }
+      }
+    },
+    "/scheduled-jobs": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "List scheduled job registry health",
+        "responses": { "200": { "description": "Registered jobs with freshness and finality state" } }
+      }
+    },
+    "/scheduled-job-runs": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "List scheduled job runs",
+        "parameters": [
+          { "name": "job_name", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Scheduled job run history" } }
+      }
+    },
+    "/notification-deliveries": {
+      "get": {
+        "tags": ["Audit"],
+        "summary": "List notification outbox delivery attempts",
+        "responses": { "200": { "description": "Notification delivery history for management users" } }
+      }
+    },
+    "/scheduled-jobs/{job_name}/runs": {
+      "post": {
+        "tags": ["Audit"],
+        "summary": "Enqueue a registered scheduled job",
+        "parameters": [
+          { "name": "job_name", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requested_window_start": { "type": "string", "format": "date-time" },
+                  "requested_window_end": { "type": "string", "format": "date-time" },
+                  "scheduler_trigger_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Queued job run" } }
+      }
+    },
+    "/scheduled-job-runs/{run_id}/complete": {
+      "post": {
+        "tags": ["Audit"],
+        "summary": "Record completion or failure of a scheduled job run",
+        "parameters": [
+          { "name": "run_id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                  "status": { "type": "string", "enum": ["completed", "failed"] },
+                  "records_received": { "type": "integer" },
+                  "records_upserted": { "type": "integer" },
+                  "records_rejected": { "type": "integer" },
+                  "error_summary": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Completed job run" } }
+      }
+    },
+    "/revenue-pace-profiles": {
+      "get": {
+        "tags": ["Performance"],
+        "summary": "List effective-dated revenue pace profiles",
+        "responses": { "200": { "description": "Pace profiles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevenuePaceProfilePage" } } } } }
+      },
+      "post": {
+        "tags": ["Performance"],
+        "summary": "Create a vehicle-class revenue pace profile",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRevenuePaceProfileRequest" } } } },
+        "responses": { "201": { "description": "Pace profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevenuePaceProfile" } } } } }
+      }
+    },
+    "/revenue-pace-profiles/{profile_id}": {
+      "patch": {
+        "tags": ["Performance"],
+        "summary": "Update a revenue pace profile",
+        "parameters": [
+          { "name": "profile_id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRevenuePaceProfileRequest" } } } },
+        "responses": { "200": { "description": "Updated pace profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevenuePaceProfile" } } } } }
+      }
+    },
+    "/economics-policies": {
+      "get": {
+        "tags": ["Performance"],
+        "summary": "List finance economics policies used by analytics dashboards",
+        "responses": { "200": { "description": "Economics policies", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EconomicsPolicyPage" } } } } }
+      },
+      "post": {
+        "tags": ["Performance"],
+        "summary": "Create a finance economics policy for labour, overhead and expected-hour assumptions",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEconomicsPolicyRequest" } } } },
+        "responses": { "201": { "description": "Economics policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EconomicsPolicy" } } } } }
+      }
+    },
+    "/vehicle-efficiency-policies": {
+      "get": {
+        "tags": ["Fuel and Mileage"],
+        "summary": "List fuel and mileage expectation policies",
+        "responses": { "200": { "description": "Efficiency policies", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VehicleEfficiencyPolicyPage" } } } } }
+      },
+      "post": {
+        "tags": ["Fuel and Mileage"],
+        "summary": "Create a fuel and mileage expectation policy",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VehicleEfficiencyPolicy" } } } },
+        "responses": { "201": { "description": "Efficiency policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VehicleEfficiencyPolicy" } } } } }
+      }
+    },
+    "/fuel-issues": {
+      "get": {
+        "tags": ["Fuel and Mileage"],
+        "summary": "List supervisor-confirmed fuel issues",
+        "parameters": [
+          { "name": "operating_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "operator_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Fuel issues", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FuelIssuePage" } } } } }
+      },
+      "post": {
+        "tags": ["Fuel and Mileage"],
+        "summary": "Confirm fuel issued to an operator and vehicle",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateFuelIssueRequest" } } } },
+        "responses": { "201": { "description": "Fuel issue", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FuelIssue" } } } } }
+      }
+    },
+    "/mileage-reconciliations": {
+      "get": {
+        "tags": ["Fuel and Mileage"],
+        "summary": "Calculate daily fuel-efficiency and tracker mileage exceptions",
+        "parameters": [{ "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } }],
+        "responses": { "200": { "description": "Mileage reconciliations", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MileageReconciliationPage" } } } } }
       }
     },
     "/alerts": {
@@ -193,14 +465,125 @@
         }
       }
     },
-    "/cash-remittances": {
+    "/cash/status": {
+      "get": {
+        "tags": ["Cash"],
+        "summary": "Get expected versus remitted cash status",
+        "description": "Finance and manager-facing closeout view. Expected cash is currently derived from platform cash-trip share until exact cash receipts are available from connectors.",
+        "parameters": [
+          { "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "operator_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "amoeba_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Scoped cash status rows", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashStatusPage" } } } }
+        }
+      }
+    },
+    "/cash/adjustments": {
+      "get": {
+        "tags": ["Cash"],
+        "summary": "List finance cash adjustments and evidence references",
+        "parameters": [
+          { "name": "operator_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "adjustment_date", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Scoped cash adjustments", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashAdjustmentPage" } } } }
+        }
+      },
       "post": {
         "tags": ["Cash"],
-        "summary": "Record cash remittance",
+        "summary": "Record a finance cash adjustment or reversal",
+        "description": "Requires service, owner/admin, or an active scoped Finance assignment. Manager-scoped users can review cash status and adjustment history but cannot create adjustments. The API rejects adjustments for accounting periods already closed by Payments.",
         "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCashRemittanceRequest" } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCashAdjustmentRequest" } } } },
         "responses": {
-          "201": { "description": "Cash remittance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashRemittance" } } } }
+          "201": { "description": "Cash adjustment", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashAdjustment" } } } },
+          "403": { "description": "Missing Finance authority, or the selected accounting period is locked." }
+        }
+      }
+    },
+    "/daily-closeouts": {
+      "get": {
+        "tags": ["Closeouts"],
+        "summary": "List submitted daily closeouts",
+        "parameters": [
+          { "name": "record_date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "amoeba_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Scoped closeouts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyCloseoutPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Closeouts"],
+        "summary": "Submit or update a supervisor daily closeout",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateDailyCloseoutRequest" } } } },
+        "responses": {
+          "201": { "description": "Daily closeout", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DailyCloseout" } } } }
+        }
+      }
+    },
+    "/cash/transactions": {
+      "get": {
+        "tags": ["Cash"],
+        "summary": "List Monnify-derived cash transactions",
+        "parameters": [
+          { "name": "operator_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Scoped cash transactions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashTransactionPage" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Cash"],
+        "summary": "Accept a verified Monnify cash transaction",
+        "description": "Internal service endpoint called by the Payments Integration service after provider verification and account matching.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCashTransactionRequest" } } } },
+        "responses": {
+          "201": { "description": "Cash transaction", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CashTransaction" } } } }
+        }
+      }
+    },
+    "/operators/{operator_id}/monnify-account": {
+      "patch": {
+        "tags": ["Cash"],
+        "summary": "Attach a provisioned Monnify account to an operator",
+        "description": "Internal service endpoint called by the Payments Integration service after reserved-account provisioning.",
+        "parameters": [
+          { "$ref": "#/components/parameters/OperatorId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["monnify_account_number"],
+                "properties": {
+                  "monnify_account_number": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated operator", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Operator" } } } }
+        }
+      }
+    },
+    "/operators/{operator_id}/cash": {
+      "get": {
+        "tags": ["Cash"],
+        "summary": "Get an operator cash position",
+        "parameters": [{ "$ref": "#/components/parameters/OperatorId" }],
+        "responses": {
+          "200": { "description": "Operator cash position" }
         }
       }
     },
@@ -361,6 +744,73 @@
         }
       },
       "PlatformAccountPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlatformAccount" } } } },
+      "NormalizedDailyRecordInput": {
+        "type": "object",
+        "required": ["platform_operator_id", "trips_total", "trips_completed", "ride_revenue_ngn", "hours_online"],
+        "properties": {
+          "platform_operator_id": { "type": "string" },
+          "trips_total": { "type": "integer", "minimum": 0 },
+          "trips_completed": { "type": "integer", "minimum": 0 },
+          "trips_cancelled": { "type": "integer", "minimum": 0 },
+          "trips_no_response": { "type": "integer", "minimum": 0 },
+          "trips_rejected": { "type": "integer", "minimum": 0 },
+          "ride_revenue_ngn": { "type": "number", "minimum": 0 },
+          "net_earnings_ngn": { "type": "number", "minimum": 0 },
+          "booking_fees_ngn": { "type": "number", "minimum": 0 },
+          "cash_trips": { "type": "integer", "minimum": 0 },
+          "card_trips": { "type": "integer", "minimum": 0 },
+          "acceptance_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+          "cancellation_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+          "completion_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+          "hours_online": { "type": "number", "minimum": 0 },
+          "official_distance_km": { "type": ["number", "null"], "minimum": 0 },
+          "last_seen_at": { "type": ["string", "null"], "format": "date-time" },
+          "current_status": { "type": "string", "enum": ["online", "offline", "not_seen_today", "checked_out", "unknown"] },
+          "data_quality": { "type": "string", "enum": ["authoritative", "derived", "heuristic", "degraded"] },
+          "provenance": { "type": "object" },
+          "raw_payload": { "type": "object" }
+        }
+      },
+      "CreateIngestionRunRequest": {
+        "type": "object",
+        "required": ["platform_account_id", "record_date", "records"],
+        "properties": {
+          "platform_account_id": { "type": "string" },
+          "record_date": { "type": "string", "format": "date", "description": "Africa/Lagos business date." },
+          "source": { "type": "string", "enum": ["live", "migration", "manual_correction", "connector_test"], "default": "live" },
+          "records": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/NormalizedDailyRecordInput" } }
+        }
+      },
+      "IngestionRun": {
+        "type": "object",
+        "properties": {
+          "ingestion_run_id": { "type": "string" },
+          "platform_account_id": { "type": "string" },
+          "record_date": { "type": "string", "format": "date" },
+          "source": { "type": "string" },
+          "status": { "type": "string", "enum": ["running", "completed", "completed_with_errors", "failed"] },
+          "records_received": { "type": "integer" },
+          "records_upserted": { "type": "integer" },
+          "records_rejected": { "type": "integer" },
+          "errors": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "IngestionRunPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/IngestionRun" } } } },
+      "DailyPerformancePage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } },
+      "TeamBoardResponse": { "type": "object", "required": ["record_date", "data"], "properties": { "record_date": { "type": "string", "format": "date" }, "data": { "type": "array", "items": { "type": "object" } } } },
+      "RevenueCheckpoint": { "type": "object", "required": ["time", "expected_pct"], "properties": { "time": { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$" }, "expected_pct": { "type": "number", "minimum": 0, "maximum": 100 } } },
+      "RevenuePaceProfile": { "type": "object", "required": ["pace_profile_id", "vehicle_type", "daily_target_ngn", "checkpoints"], "properties": { "pace_profile_id": { "type": "string" }, "vehicle_type": { "type": "string", "enum": ["car", "motorbike", "other"] }, "day_type": { "type": "string" }, "daily_target_ngn": { "type": "number" }, "checkpoints": { "type": "array", "items": { "$ref": "#/components/schemas/RevenueCheckpoint" } }, "warning_tolerance_pct": { "type": "number" }, "critical_tolerance_pct": { "type": "number" }, "effective_from": { "type": "string", "format": "date" }, "effective_to": { "type": ["string", "null"], "format": "date" } } },
+      "CreateRevenuePaceProfileRequest": { "allOf": [{ "$ref": "#/components/schemas/RevenuePaceProfile" }], "description": "pace_profile_id is generated by the service." },
+      "RevenuePaceProfilePage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/RevenuePaceProfile" } } } },
+      "EconomicsPolicy": { "type": "object", "required": ["policy_name", "admin_staff_daily_cost_ngn", "operator_labour_share_pct", "daily_overhead_ngn", "expected_hours_per_operator", "effective_from"], "properties": { "economics_policy_id": { "type": "string" }, "policy_name": { "type": "string" }, "admin_staff_daily_cost_ngn": { "type": "number" }, "operator_labour_share_pct": { "type": "number", "minimum": 0, "maximum": 100 }, "daily_overhead_ngn": { "type": "number" }, "expected_hours_per_operator": { "type": "number" }, "effective_from": { "type": "string", "format": "date" }, "effective_to": { "type": ["string", "null"], "format": "date" } } },
+      "CreateEconomicsPolicyRequest": { "allOf": [{ "$ref": "#/components/schemas/EconomicsPolicy" }], "description": "economics_policy_id is generated by the service." },
+      "EconomicsPolicyPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/EconomicsPolicy" } } } },
+      "VehicleEfficiencyPolicy": { "type": "object", "required": ["vehicle_type", "standard_daily_fuel_quantity", "fuel_unit", "expected_distance_km"], "properties": { "efficiency_policy_id": { "type": "string" }, "vehicle_type": { "type": "string" }, "make_model": { "type": ["string", "null"] }, "fuel_type": { "type": "string" }, "standard_daily_fuel_quantity": { "type": "number" }, "fuel_unit": { "type": "string" }, "expected_distance_km": { "type": "number" }, "allowed_variance_pct": { "type": "number", "default": 10 }, "effective_from": { "type": "string", "format": "date" } } },
+      "VehicleEfficiencyPolicyPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/VehicleEfficiencyPolicy" } } } },
+      "FuelIssue": { "type": "object", "required": ["fuel_issue_id", "operator_id", "vehicle_id", "operating_date", "quantity", "unit"], "properties": { "fuel_issue_id": { "type": "string" }, "operator_id": { "type": "string" }, "vehicle_id": { "type": "string" }, "operating_date": { "type": "string", "format": "date" }, "quantity": { "type": "number" }, "unit": { "type": "string" }, "notes": { "type": ["string", "null"] } } },
+      "CreateFuelIssueRequest": { "type": "object", "required": ["operator_id", "vehicle_id", "operating_date", "quantity", "unit"], "properties": { "operator_id": { "type": "string" }, "vehicle_id": { "type": "string" }, "operating_date": { "type": "string", "format": "date" }, "quantity": { "type": "number", "minimum": 0 }, "unit": { "type": "string" }, "notes": { "type": ["string", "null"] } } },
+      "FuelIssuePage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/FuelIssue" } } } },
+      "MileageReconciliationPage": { "type": "object", "required": ["record_date", "data"], "properties": { "record_date": { "type": "string", "format": "date" }, "data": { "type": "array", "items": { "type": "object", "properties": { "official_distance_status": { "type": "string", "enum": ["acceptable", "exception", "not_available"] }, "tracker_variance_status": { "type": "string", "enum": ["acceptable", "exception", "tracker_unavailable", "no_tracker_data"] } } } } } },
       "DailyActivityPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "type": "object" } } } },
       "Alert": {
         "type": "object",
@@ -379,8 +829,17 @@
       "AlertPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Alert" } } } },
       "AcknowledgeAlertRequest": { "type": "object", "properties": { "note": { "type": "string" } } },
       "ResolveAlertRequest": { "type": "object", "required": ["resolution_notes"], "properties": { "resolution_notes": { "type": "string" } } },
-      "CreateCashRemittanceRequest": { "type": "object", "required": ["operator_id", "amount_ngn", "paid_at"], "properties": { "operator_id": { "type": "string" }, "amount_ngn": { "type": "number" }, "paid_at": { "type": "string", "format": "date-time" }, "receipt_media_id": { "type": ["string", "null"] } } },
-      "CashRemittance": { "type": "object", "properties": { "cash_remittance_id": { "type": "string" }, "operator_id": { "type": "string" }, "amount_ngn": { "type": "number" } } },
+      "CreateCashTransactionRequest": { "type": "object", "required": ["operator_id", "amount_ngn", "transaction_ref", "paid_at", "monnify_account_number"], "properties": { "operator_id": { "type": "string" }, "amount_ngn": { "type": "number", "exclusiveMinimum": 0 }, "transaction_ref": { "type": "string" }, "paid_at": { "type": "string", "format": "date-time" }, "monnify_account_number": { "type": "string" }, "reconciliation_status": { "type": "string" }, "provider_payload": { "type": ["object", "null"] } } },
+      "CashTransaction": { "type": "object", "properties": { "cash_transaction_id": { "type": "string" }, "operator_id": { "type": "string" }, "amount_ngn": { "type": "number" }, "transaction_ref": { "type": "string" }, "paid_at": { "type": "string", "format": "date-time" }, "monnify_account_number": { "type": "string" }, "reconciliation_status": { "type": "string" } } },
+      "CashTransactionPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/CashTransaction" } }, "next_cursor": { "type": ["string", "null"] } } },
+      "CashStatus": { "type": "object", "properties": { "operator_id": { "type": "string" }, "person_id": { "type": "string" }, "record_date": { "type": "string", "format": "date" }, "amoeba_id": { "type": "string" }, "expected_cash_ngn": { "type": "number" }, "remitted_cash_ngn": { "type": "number" }, "adjustment_ngn": { "type": "number" }, "net_position_ngn": { "type": "number" }, "cash_status": { "type": "string", "enum": ["balanced", "shortfall", "in_credit", "no_expected_cash"] }, "expected_cash_basis": { "type": "string" }, "transaction_count": { "type": "integer" }, "latest_paid_at": { "type": ["string", "null"], "format": "date-time" } } },
+      "CashStatusPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/CashStatus" } }, "next_cursor": { "type": ["string", "null"] } } },
+      "CreateCashAdjustmentRequest": { "type": "object", "required": ["operator_id", "adjustment_date", "amount_ngn", "adjustment_type", "reason"], "properties": { "operator_id": { "type": "string" }, "adjustment_date": { "type": "string", "format": "date" }, "amount_ngn": { "type": "number" }, "adjustment_type": { "type": "string", "enum": ["credit", "debit", "reversal"] }, "reason": { "type": "string" }, "related_transaction_ref": { "type": ["string", "null"] }, "evidence_reference": { "type": ["string", "null"] }, "notes": { "type": ["string", "null"] } } },
+      "CashAdjustment": { "type": "object", "properties": { "cash_adjustment_id": { "type": "string" }, "operator_id": { "type": "string" }, "adjustment_date": { "type": "string", "format": "date" }, "amount_ngn": { "type": "number" }, "adjustment_type": { "type": "string" }, "reason": { "type": "string" }, "related_transaction_ref": { "type": ["string", "null"] }, "evidence_reference": { "type": ["string", "null"] }, "notes": { "type": ["string", "null"] }, "created_by_person_id": { "type": "string" }, "created_at": { "type": "string", "format": "date-time" } } },
+      "CashAdjustmentPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/CashAdjustment" } }, "next_cursor": { "type": ["string", "null"] } } },
+      "CreateDailyCloseoutRequest": { "type": "object", "required": ["record_date", "amoeba_id"], "properties": { "record_date": { "type": "string", "format": "date" }, "amoeba_id": { "type": "string" }, "supervisor_person_id": { "type": "string" }, "status": { "type": "string" }, "unresolved_alert_count": { "type": "integer", "minimum": 0 }, "notes": { "type": ["string", "null"] } } },
+      "DailyCloseout": { "type": "object", "properties": { "closeout_id": { "type": "string" }, "record_date": { "type": "string", "format": "date" }, "amoeba_id": { "type": "string" }, "supervisor_person_id": { "type": "string" }, "status": { "type": "string" }, "unresolved_alert_count": { "type": "integer" }, "cash_summary": { "type": "object" }, "notes": { "type": ["string", "null"] }, "submitted_at": { "type": "string", "format": "date-time" } } },
+      "DailyCloseoutPage": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/DailyCloseout" } }, "next_cursor": { "type": ["string", "null"] } } },
       "AmoebaPerformance": { "type": "object", "properties": { "amoeba_id": { "type": "string" }, "window": { "type": "string" }, "period_start": { "type": "string", "format": "date" }, "revenue_ngn": { "type": "number" }, "utilisation_pct": { "type": "number" }, "he_ngn_per_hour": { "type": "number" }, "active_operator_count": { "type": "integer" } } },
       "CreateTransferPriceEventRequest": { "type": "object", "required": ["transfer_price_event_id", "date", "provider_amoeba_id", "consumer_amoeba_id", "amount_ngn"], "properties": { "transfer_price_event_id": { "type": "string" }, "date": { "type": "string", "format": "date" }, "provider_amoeba_id": { "type": "string" }, "consumer_amoeba_id": { "type": "string" }, "amount_ngn": { "type": "number" }, "source_tms_url": { "type": "string" } } },
       "TransferPriceEvent": { "type": "object", "properties": { "transfer_price_event_id": { "type": "string" }, "ops_record_id": { "type": "string" }, "status": { "type": "string", "enum": ["accepted", "posted_to_pnl"] } } },

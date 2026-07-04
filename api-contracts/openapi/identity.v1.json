@@ -13,6 +13,7 @@
   "tags": [
     { "name": "People" },
     { "name": "Users" },
+    { "name": "Role Assignments" },
     { "name": "Auth" },
     { "name": "Service Accounts" }
   ],
@@ -177,7 +178,7 @@
         "tags": ["Auth"],
         "summary": "Get current authenticated user",
         "responses": {
-          "200": { "description": "Current user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "200": { "description": "Current user and active scoped assignments", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdentityProfile" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
@@ -218,6 +219,56 @@
         "parameters": [{ "$ref": "#/components/parameters/UserId" }],
         "responses": {
           "200": { "description": "User history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HistoryPage" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/role-assignments": {
+      "get": {
+        "tags": ["Role Assignments"],
+        "summary": "List scoped business-role assignments",
+        "description": "System-admin endpoint. Effective access is the union of every active assignment returned for a person.",
+        "parameters": [
+          { "name": "person_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "role", "in": "query", "schema": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] } }
+        ],
+        "responses": {
+          "200": { "description": "Role assignments", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleAssignmentsPage" } } } },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "post": {
+        "tags": ["Role Assignments"],
+        "summary": "Create a scoped business-role assignment",
+        "description": "Assigns a role independently of scope. Use multiple assignments when one person needs visibility across several teams, sites, or amoebas.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRoleAssignmentRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Role assignment created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleAssignment" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/role-assignments/{role_assignment_id}": {
+      "patch": {
+        "tags": ["Role Assignments"],
+        "summary": "Update or deactivate a role assignment",
+        "parameters": [
+          { "$ref": "#/components/parameters/RoleAssignmentId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateRoleAssignmentRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Role assignment updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleAssignment" } } } },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -286,12 +337,14 @@
       "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 160 } },
       "PersonId": { "name": "person_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^person_" } },
       "UserId": { "name": "user_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^user_" } },
+      "RoleAssignmentId": { "name": "role_assignment_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^roleasg_" } },
       "ServiceAccountId": { "name": "service_account_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^svc_" } },
       "TokenId": { "name": "token_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^sat_" } }
     },
     "responses": {
       "BadRequest": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "Unauthorized": { "description": "Missing or invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+      "Forbidden": { "description": "Authenticated actor does not have permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "NotFound": { "description": "Resource not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
       "Conflict": { "description": "Duplicate or conflicting write", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
     },
@@ -369,6 +422,67 @@
         "properties": {
           "data": { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
           "next_cursor": { "type": ["string", "null"] }
+        }
+      },
+      "RoleAssignment": {
+        "type": "object",
+        "required": ["role_assignment_id", "person_id", "role", "scope_type", "status", "valid_from"],
+        "properties": {
+          "role_assignment_id": { "type": "string" },
+          "person_id": { "type": "string" },
+          "role": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] },
+          "scope_type": { "type": "string", "enum": ["company", "amoeba", "site", "team"] },
+          "scope_id": { "type": ["string", "null"], "description": "Null only for company scope. Team scope currently references the supervisor person_id." },
+          "status": { "type": "string", "enum": ["active", "inactive"] },
+          "valid_from": { "type": "string", "format": "date-time" },
+          "valid_to": { "type": ["string", "null"], "format": "date-time" },
+          "created_by_person_id": { "type": ["string", "null"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateRoleAssignmentRequest": {
+        "type": "object",
+        "required": ["person_id", "role", "scope_type"],
+        "properties": {
+          "person_id": { "type": "string" },
+          "role": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] },
+          "scope_type": { "type": "string", "enum": ["company", "amoeba", "site", "team"] },
+          "scope_id": { "type": ["string", "null"] },
+          "valid_from": { "type": "string", "format": "date-time" },
+          "valid_to": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "UpdateRoleAssignmentRequest": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] },
+          "scope_type": { "type": "string", "enum": ["company", "amoeba", "site", "team"] },
+          "scope_id": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["active", "inactive"] },
+          "valid_from": { "type": "string", "format": "date-time" },
+          "valid_to": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "RoleAssignmentsPage": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/RoleAssignment" } },
+          "next_cursor": { "type": ["string", "null"] }
+        }
+      },
+      "IdentityProfile": {
+        "type": "object",
+        "required": ["actor_type", "person_id", "user_id", "roles", "role_assignments", "status"],
+        "properties": {
+          "actor_type": { "type": "string", "enum": ["human"] },
+          "person_id": { "type": "string" },
+          "user_id": { "type": "string" },
+          "roles": { "type": "array", "items": { "type": "string" } },
+          "role_assignments": { "type": "array", "items": { "$ref": "#/components/schemas/RoleAssignment" } },
+          "status": { "type": "string" },
+          "person": { "$ref": "#/components/schemas/Person" }
         }
       },
       "LoginRequest": {

@@ -1,6 +1,7 @@
 const state = {
   people: [],
   users: [],
+  roleAssignments: [],
   amoebas: [],
   sites: [],
   serviceAccounts: []
@@ -12,16 +13,19 @@ const els = {
   notice: document.querySelector("#notice"),
   peopleCount: document.querySelector("#peopleCount"),
   usersCount: document.querySelector("#usersCount"),
+  roleAssignmentsCount: document.querySelector("#roleAssignmentsCount"),
   amoebasCount: document.querySelector("#amoebasCount"),
   sitesCount: document.querySelector("#sitesCount"),
   serviceAccountsCount: document.querySelector("#serviceAccountsCount"),
   peopleRows: document.querySelector("#peopleRows"),
   userRows: document.querySelector("#userRows"),
+  roleAssignmentRows: document.querySelector("#roleAssignmentRows"),
   amoebaRows: document.querySelector("#amoebaRows"),
   siteRows: document.querySelector("#siteRows"),
   serviceAccountRows: document.querySelector("#serviceAccountRows"),
   personForm: document.querySelector("#personForm"),
   userForm: document.querySelector("#userForm"),
+  roleAssignmentForm: document.querySelector("#roleAssignmentForm"),
   amoebaForm: document.querySelector("#amoebaForm"),
   siteForm: document.querySelector("#siteForm"),
   serviceAccountForm: document.querySelector("#serviceAccountForm")
@@ -82,6 +86,22 @@ function amoebaName(amoebaId) {
   return state.amoebas.find((amoeba) => amoeba.amoeba_id === amoebaId)?.name || amoebaId || "";
 }
 
+function siteName(siteId) {
+  return state.sites.find((site) => site.site_id === siteId)?.name || siteId || "";
+}
+
+function scopeName(assignment) {
+  if (assignment.scope_type === "company") return "Whole company";
+  if (assignment.scope_type === "amoeba") return amoebaName(assignment.scope_id);
+  if (assignment.scope_type === "site") return siteName(assignment.scope_id);
+  if (assignment.scope_type === "team") return `${personName(assignment.scope_id)}'s team`;
+  return assignment.scope_id || "";
+}
+
+function dateTimeInput(value) {
+  return value ? new Date(value).toISOString().slice(0, 16) : "";
+}
+
 function optionList(items, getValue, getLabel, selectedValue = "", emptyLabel = "") {
   const empty = emptyLabel ? `<option value="">${emptyLabel}</option>` : "";
   return `${empty}${items
@@ -98,8 +118,30 @@ function renderOptions() {
   const coordinatorOptions = optionList(state.people, (person) => person.person_id, (person) => person.display_name, "", "Unassigned");
   const amoebaOptions = optionList(state.amoebas, (amoeba) => amoeba.amoeba_id, (amoeba) => amoeba.name);
   els.userForm.elements.person_id.innerHTML = peopleOptions;
+  els.roleAssignmentForm.elements.person_id.innerHTML = peopleOptions;
   els.amoebaForm.elements.coordinator_person_id.innerHTML = coordinatorOptions;
   els.siteForm.elements.amoeba_id.innerHTML = amoebaOptions;
+  renderAssignmentScopeOptions();
+}
+
+function renderAssignmentScopeOptions() {
+  const scopeType = els.roleAssignmentForm.elements.scope_type.value;
+  const scopeControl = els.roleAssignmentForm.elements.scope_id;
+  if (scopeType === "company") {
+    scopeControl.innerHTML = '<option value="">Whole company</option>';
+    scopeControl.disabled = true;
+    scopeControl.required = false;
+    return;
+  }
+  scopeControl.disabled = false;
+  scopeControl.required = true;
+  if (scopeType === "amoeba") {
+    scopeControl.innerHTML = optionList(state.amoebas, (item) => item.amoeba_id, (item) => item.name);
+  } else if (scopeType === "site") {
+    scopeControl.innerHTML = optionList(state.sites, (item) => item.site_id, (item) => `${item.name} (${amoebaName(item.amoeba_id)})`);
+  } else {
+    scopeControl.innerHTML = optionList(state.people, (item) => item.person_id, (item) => `${item.display_name}'s team`);
+  }
 }
 
 function statusSelect(kind, current) {
@@ -117,6 +159,7 @@ function statusSelect(kind, current) {
 function render() {
   els.peopleCount.textContent = state.people.length;
   els.usersCount.textContent = state.users.length;
+  els.roleAssignmentsCount.textContent = state.roleAssignments.filter((assignment) => assignment.status === "active").length;
   els.amoebasCount.textContent = state.amoebas.length;
   els.sitesCount.textContent = state.sites.length;
   els.serviceAccountsCount.textContent = state.serviceAccounts.length;
@@ -147,6 +190,27 @@ function render() {
         <td><input class="row-edit" data-field="roles" value="${escapeHtml((user.roles || []).join(", "))}" /></td>
         <td>${statusSelect("user", user.status)}</td>
         <td><button type="button" data-save-user="${escapeHtml(user.user_id)}">Save</button></td>
+      </tr>
+    `
+    )
+    .join("");
+
+  els.roleAssignmentRows.innerHTML = state.roleAssignments
+    .map(
+      (assignment) => `
+      <tr data-role-assignment-row="${escapeHtml(assignment.role_assignment_id)}">
+        <td>${escapeHtml(assignment.display_name || personName(assignment.person_id))}</td>
+        <td>${escapeHtml(assignment.role)}</td>
+        <td>${escapeHtml(scopeName(assignment))}</td>
+        <td>${escapeHtml(new Date(assignment.valid_from).toLocaleString())}</td>
+        <td><input class="row-edit" data-field="valid_to" type="datetime-local" value="${escapeHtml(dateTimeInput(assignment.valid_to))}" /></td>
+        <td>
+          <select class="row-edit" data-field="status">
+            <option value="active" ${assignment.status === "active" ? "selected" : ""}>active</option>
+            <option value="inactive" ${assignment.status === "inactive" ? "selected" : ""}>inactive</option>
+          </select>
+        </td>
+        <td><button type="button" data-save-role-assignment="${escapeHtml(assignment.role_assignment_id)}">Save</button></td>
       </tr>
     `
     )
@@ -222,15 +286,17 @@ function render() {
 
 async function refresh() {
   setNotice("Loading...");
-  const [people, users, amoebas, sites, serviceAccounts] = await Promise.all([
+  const [people, users, roleAssignments, amoebas, sites, serviceAccounts] = await Promise.all([
     api("/identity/v1/people"),
     api("/identity/v1/users"),
+    api("/identity/v1/role-assignments"),
     api("/amoeba/v1/amoebas"),
     api("/amoeba/v1/sites"),
     api("/identity/v1/service-accounts")
   ]);
   state.people = people.data;
   state.users = users.data;
+  state.roleAssignments = roleAssignments.data;
   state.amoebas = amoebas.data;
   state.sites = sites.data;
   state.serviceAccounts = serviceAccounts.data;
@@ -272,6 +338,31 @@ els.userForm.addEventListener("submit", async (event) => {
     els.userForm.reset();
     await refresh();
     setNotice("User created.");
+  } catch (error) {
+    setNotice(error.message, true);
+  }
+});
+
+els.roleAssignmentForm.elements.scope_type.addEventListener("change", renderAssignmentScopeOptions);
+
+els.roleAssignmentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const body = formData(els.roleAssignmentForm);
+  if (body.scope_type === "company") body.scope_id = null;
+  if (body.valid_from) body.valid_from = new Date(body.valid_from).toISOString();
+  else delete body.valid_from;
+  if (body.valid_to) body.valid_to = new Date(body.valid_to).toISOString();
+  else delete body.valid_to;
+  try {
+    await api("/identity/v1/role-assignments", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey("role-assignment") },
+      body: JSON.stringify(body)
+    });
+    els.roleAssignmentForm.reset();
+    renderAssignmentScopeOptions();
+    await refresh();
+    setNotice("Access assignment created.");
   } catch (error) {
     setNotice(error.message, true);
   }
@@ -350,6 +441,7 @@ document.addEventListener("click", async (event) => {
   const issueButton = event.target.closest("[data-issue-token]");
   const personButton = event.target.closest("[data-save-person]");
   const userButton = event.target.closest("[data-save-user]");
+  const roleAssignmentButton = event.target.closest("[data-save-role-assignment]");
   const amoebaButton = event.target.closest("[data-save-amoeba]");
   const siteButton = event.target.closest("[data-save-site]");
 
@@ -396,6 +488,21 @@ document.addEventListener("click", async (event) => {
       });
       await refresh();
       setNotice("User updated.");
+      return;
+    }
+
+    if (roleAssignmentButton) {
+      const id = roleAssignmentButton.dataset.saveRoleAssignment;
+      const row = document.querySelector(`[data-role-assignment-row="${id}"]`);
+      const body = rowBody(row, ["valid_to", "status"]);
+      body.valid_to = body.valid_to ? new Date(body.valid_to).toISOString() : null;
+      await api(`/identity/v1/role-assignments/${id}`, {
+        method: "PATCH",
+        headers: { "Idempotency-Key": idempotencyKey("role-assignment-update") },
+        body: JSON.stringify(body)
+      });
+      await refresh();
+      setNotice("Access assignment updated.");
       return;
     }
 

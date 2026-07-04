@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#163b32" />
+    <title>Fleximotion Driver</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section id="loginView" class="login-view">
+        <div class="brand-mark">F</div>
+        <p class="eyebrow">Fleximotion Ops</p>
+        <h1>Driver workspace</h1>
+        <p class="intro">Sign in to see today’s activity, revenue pace, vehicle and alerts.</p>
+        <form id="loginForm">
+          <label>Phone or email<input name="phone_or_email" autocomplete="username" required /></label>
+          <label>PIN<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" required /></label>
+          <button type="submit">Sign in</button>
+        </form>
+        <p id="loginNotice" class="notice" role="status"></p>
+      </section>
+
+      <section id="appView" class="app-view" hidden>
+        <header>
+          <div><p class="eyebrow">My workday</p><h1 id="operatorName">Driver</h1></div>
+          <button id="logoutButton" class="icon-button" type="button" title="Sign out" aria-label="Sign out">↪</button>
+        </header>
+
+        <section class="date-row">
+          <label>Operating date<input id="operatingDate" type="date" /></label>
+          <span id="connectionStatus">Loading</span>
+        </section>
+
+        <section class="hero-status">
+          <div>
+            <span id="liveStatus" class="status-pill">Not seen today</span>
+            <h2 id="revenueTotal">₦0</h2>
+            <p>Revenue today</p>
+          </div>
+          <div class="pace">
+            <strong id="paceLabel">No pace data</strong>
+            <span id="paceContext">Waiting for platform activity</span>
+          </div>
+        </section>
+
+        <section class="metrics">
+          <article><span>Trips</span><strong id="tripCount">0</strong></article>
+          <article><span>Online</span><strong id="hoursOnline">0h</strong></article>
+          <article><span>Target</span><strong id="targetTotal">₦0</strong></article>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading"><div><p class="eyebrow">Assignment</p><h2>Vehicle and platform</h2></div></div>
+          <div id="assignment"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">Attention</p><h2>My alerts</h2></div>
+            <span id="alertCount" class="count">0</span>
+          </div>
+          <div id="alerts"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading"><div><p class="eyebrow">Fuel control</p><h2>Mileage check</h2></div></div>
+          <div id="mileage"></div>
+        </section>
+        <p id="appNotice" class="notice" role="status"></p>
+      </section>
+    </main>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

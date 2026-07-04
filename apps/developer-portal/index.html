@@ -30,6 +30,7 @@
             <a href="#api-identity" data-api="identity">Identity API</a>
             <a href="#api-amoeba" data-api="amoeba">Amoeba API</a>
             <a href="#api-ops" data-api="ops">Ops API</a>
+            <a href="#api-payments" data-api="payments">Payments Integration API</a>
             <a href="#api-hr" data-api="hr">HR / Recruitment API</a>
             <a href="#api-tms" data-api="tms">TMS API</a>
           </section>
@@ -37,6 +38,7 @@
             <h2>Guides</h2>
             <a href="#guide-auth" data-route="guide-auth">Auth & service tokens</a>
             <a href="#guide-errors" data-route="guide-errors">Errors & idempotency</a>
+            <a href="#guide-monnify" data-route="guide-monnify">Monnify sandbox</a>
             <a href="#guide-frontend-review" data-route="guide-frontend-review">Frontend review loop</a>
           </section>
         </nav>
@@ -66,7 +68,7 @@
             </p>
             <div class="metrics-grid" aria-label="Developer portal coverage">
               <article>
-                <strong>5</strong>
+                <strong>6</strong>
                 <span>domain APIs drafted</span>
               </article>
               <article>
@@ -130,6 +132,7 @@
                 <option value="identity">Identity</option>
                 <option value="amoeba">Amoeba</option>
                 <option value="ops" selected>Ops</option>
+                <option value="payments">Payments Integration</option>
                 <option value="hr">HR / Recruitment</option>
                 <option value="tms">TMS</option>
               </select>
@@ -231,6 +234,11 @@
             <pre><code>npm run dev
 npm run test:e2e
 # Share localhost URL and verified screenshots for review.</code></pre>
+          </article>
+          <article id="guide-monnify">
+            <h2>Monnify sandbox</h2>
+            <p>Provision one reserved account per operator, verify signed deposit events, and use scheduled reconciliation as the correctness backstop.</p>
+            <p><a href="../../docs/developer-portal/monnify-setup-and-test.md">Open the setup and test guide</a></p>
           </article>
         </section>
       </main>

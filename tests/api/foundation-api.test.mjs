@@ -51,6 +51,96 @@ test("health endpoint is public", async () => {
   assert.equal((await response.json()).status, "ok");
 });
 
+test("returns a normalized identity profile for human sessions", async () => {
+  const login = await fetch(`${baseUrl}/identity/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_or_email: "+2347033550173", pin: "000000" })
+  });
+  assert.equal(login.status, 200);
+  const tokens = await login.json();
+
+  const me = await fetch(`${baseUrl}/identity/v1/me`, {
+    headers: { Authorization: `Bearer ${tokens.access_token}` }
+  });
+  assert.equal(me.status, 200);
+  const profile = await me.json();
+  assert.equal(profile.actor_type, "human");
+  assert.equal(profile.person_id, "person_founder_wole");
+  assert.ok(profile.roles.includes("owner"));
+  assert.equal(profile.person.display_name, "Wole");
+  assert.deepEqual(profile.role_assignments, []);
+});
+
+test("creates, returns, and deactivates scoped role assignments", async () => {
+  const person = await request("/identity/v1/people", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-role-person-001" },
+    body: JSON.stringify({
+      display_name: "Scoped Manager",
+      phone: "+2347000000011"
+    })
+  });
+  const user = await request("/identity/v1/users", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-role-user-001" },
+    body: JSON.stringify({
+      person_id: person.body.person_id,
+      roles: ["manager"],
+      status: "active"
+    })
+  });
+  assert.equal(user.response.status, 201);
+
+  const assignment = await request("/identity/v1/role-assignments", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-role-assignment-001" },
+    body: JSON.stringify({
+      person_id: person.body.person_id,
+      role: "manager",
+      scope_type: "amoeba",
+      scope_id: "amoeba_mainland"
+    })
+  });
+  assert.equal(assignment.response.status, 201);
+
+  const duplicate = await request("/identity/v1/role-assignments", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-role-assignment-duplicate-001" },
+    body: JSON.stringify({
+      person_id: person.body.person_id,
+      role: "manager",
+      scope_type: "amoeba",
+      scope_id: "amoeba_mainland"
+    })
+  });
+  assert.equal(duplicate.response.status, 409);
+
+  const login = await fetch(`${baseUrl}/identity/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_or_email: "+2347000000011", pin: "000000" })
+  }).then((response) => response.json());
+  const activeProfile = await fetch(`${baseUrl}/identity/v1/me`, {
+    headers: { Authorization: `Bearer ${login.access_token}` }
+  }).then((response) => response.json());
+  assert.equal(activeProfile.role_assignments.length, 1);
+  assert.equal(activeProfile.role_assignments[0].scope_id, "amoeba_mainland");
+
+  const deactivate = await request(`/identity/v1/role-assignments/${assignment.body.role_assignment_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "test-role-assignment-deactivate-001" },
+    body: JSON.stringify({ status: "inactive" })
+  });
+  assert.equal(deactivate.response.status, 200);
+  assert.equal(deactivate.body.status, "inactive");
+
+  const inactiveProfile = await fetch(`${baseUrl}/identity/v1/me`, {
+    headers: { Authorization: `Bearer ${login.access_token}` }
+  }).then((response) => response.json());
+  assert.deepEqual(inactiveProfile.role_assignments, []);
+});
+
 test("lists seeded people and amoebas", async () => {
   const people = await request("/identity/v1/people");
   assert.equal(people.response.status, 200);

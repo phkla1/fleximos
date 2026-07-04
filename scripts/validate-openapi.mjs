@@ -7,6 +7,7 @@ const requiredFiles = [
   "identity.v1.json",
   "amoeba.v1.json",
   "ops.v1.json",
+  "payments-integration.v1.json",
   "hr.v1.json",
   "tms.v1.json"
 ];
@@ -30,7 +31,11 @@ function validateOperation(file, route, method, operation, failures) {
       return parameter.name === "Idempotency-Key" && parameter.in === "header";
     });
     const isLogin = route.includes("/auth/login");
-    if (!hasIdempotency && !isLogin) {
+    const isExplicitPublicWebhook =
+      route.includes("/webhooks/") &&
+      Array.isArray(operation.security) &&
+      operation.security.length === 0;
+    if (!hasIdempotency && !isLogin && !isExplicitPublicWebhook) {
       fail(`${file} ${method.toUpperCase()} ${route} mutation is missing Idempotency-Key`, failures);
     }
   }

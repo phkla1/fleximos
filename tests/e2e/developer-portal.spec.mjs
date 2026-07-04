@@ -7,8 +7,11 @@ test.describe("developer portal", () => {
     await expect(page).toHaveTitle("Fleximotion Developer Portal");
     await expect(page.getByRole("heading", { name: "Build against stable Fleximotion contracts." })).toBeVisible();
     await expect(page.getByText("One portal for every future API consumer.")).toBeVisible();
-    await expect(page.locator(".endpoint-button")).toHaveCount(19);
+    await expect.poll(async () => page.locator(".endpoint-button").count()).toBeGreaterThanOrEqual(50);
     await expect(page.locator("#apiTitle")).toHaveText("Ops API");
+    await expect(page.getByRole("button", { name: "POST /daily-closeouts" })).toBeVisible();
+    await page.locator("#apiSelect").selectOption("payments");
+    await expect(page.getByRole("button", { name: "POST /accounting-period-closes" })).toBeVisible();
   });
 
   test("switches between API contracts in the explorer", async ({ page }) => {
@@ -20,6 +23,12 @@ test.describe("developer portal", () => {
 
     await page.locator("#apiSelect").selectOption("identity");
     await expect(page.locator("#apiTitle")).toHaveText("Identity API");
+    await expect(page.locator("#endpointTitle")).toContainText("/");
+
+    await page.locator("#apiSelect").selectOption("payments");
+    await expect(page.locator("#apiTitle")).toHaveText("Payments Integration API");
+    await expect(page.locator(".endpoint-button")).toHaveCount(15);
+    await expect(page.getByRole("button", { name: "POST /accounting-period-closes" })).toBeVisible();
     await expect(page.locator("#endpointTitle")).toContainText("/");
   });
 

@@ -11,6 +11,9 @@ const db = new PGlite(`file://${dbDir}`);
 
 const allowedPersonStatuses = new Set(["active", "inactive", "suspended"]);
 const allowedUserStatuses = new Set(["active", "inactive", "suspended"]);
+const allowedAssignmentRoles = new Set(["manager", "finance", "supervisor", "operator"]);
+const allowedScopeTypes = new Set(["company", "amoeba", "site", "team"]);
+const allowedAssignmentStatuses = new Set(["active", "inactive"]);
 const allowedAmoebaClassifications = new Set(["operating", "shared_services", "investment"]);
 const allowedAmoebaStatuses = new Set(["active", "archived"]);
 const allowedSiteStatuses = new Set(["active", "inactive"]);
@@ -66,6 +69,29 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS role_assignments (
+      role_assignment_id TEXT PRIMARY KEY,
+      person_id TEXT NOT NULL REFERENCES people(person_id),
+      role TEXT NOT NULL,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      valid_from TIMESTAMPTZ NOT NULL,
+      valid_to TIMESTAMPTZ,
+      created_by_person_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      CHECK (
+        (scope_type = 'company' AND scope_id IS NULL)
+        OR (scope_type <> 'company' AND scope_id IS NOT NULL)
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_role_assignments_person
+      ON role_assignments(person_id, status, valid_from, valid_to);
+    CREATE INDEX IF NOT EXISTS idx_role_assignments_scope
+      ON role_assignments(role, scope_type, scope_id, status);
 
     CREATE TABLE IF NOT EXISTS service_accounts (
       service_account_id TEXT PRIMARY KEY,
@@ -371,6 +397,14 @@ async function assertAuth(req, res) {
   return null;
 }
 
+function assertSystemAdmin(auth, res) {
+  if (auth.kind === "service") return true;
+  if (auth.kind === "service_account" && (auth.scopes || []).some((scope) => scope === "identity:*")) return true;
+  if (auth.kind === "user" && (auth.user.roles || []).some((role) => role === "owner" || role === "admin")) return true;
+  error(res, 403, "forbidden", "This action requires a system administrator.");
+  return false;
+}
+
 async function assertIdempotency(req, res) {
   const key = req.headers["idempotency-key"];
   if (typeof key === "string" && key.length >= 8) return key;
@@ -465,6 +499,42 @@ async function historyPage(entityType, entityId) {
       [entityType, entityId]
     )
   );
+}
+
+async function activeRoleAssignments(personId) {
+  return many(
+    `SELECT * FROM role_assignments
+     WHERE person_id=$1 AND status='active'
+       AND valid_from <= NOW()
+       AND (valid_to IS NULL OR valid_to > NOW())
+     ORDER BY role, scope_type, scope_id`,
+    [personId]
+  );
+}
+
+async function validateRoleAssignment(body, partial = false) {
+  const details = [];
+  if (!partial && !body.person_id) details.push({ field: "person_id", reason: "required" });
+  if (!partial && !body.role) details.push({ field: "role", reason: "required" });
+  if (!partial && !body.scope_type) details.push({ field: "scope_type", reason: "required" });
+  if (body.person_id && !(await one("SELECT person_id FROM people WHERE person_id=$1", [body.person_id]))) {
+    details.push({ field: "person_id", reason: "not_found" });
+  }
+  if (body.role && !allowedAssignmentRoles.has(body.role)) details.push({ field: "role", reason: "invalid_role" });
+  if (body.scope_type && !allowedScopeTypes.has(body.scope_type)) details.push({ field: "scope_type", reason: "invalid_scope_type" });
+  if (body.status && !allowedAssignmentStatuses.has(body.status)) details.push({ field: "status", reason: "invalid_status" });
+  if (body.scope_type === "company" && body.scope_id) details.push({ field: "scope_id", reason: "must_be_empty_for_company" });
+  if (body.scope_type && body.scope_type !== "company" && !body.scope_id) details.push({ field: "scope_id", reason: "required" });
+  if (body.scope_type === "amoeba" && body.scope_id && !(await one("SELECT amoeba_id FROM amoebas WHERE amoeba_id=$1", [body.scope_id]))) {
+    details.push({ field: "scope_id", reason: "amoeba_not_found" });
+  }
+  if (body.scope_type === "site" && body.scope_id && !(await one("SELECT site_id FROM amoeba_sites WHERE site_id=$1", [body.scope_id]))) {
+    details.push({ field: "scope_id", reason: "site_not_found" });
+  }
+  if (body.valid_to && body.valid_from && new Date(body.valid_to) <= new Date(body.valid_from)) {
+    details.push({ field: "valid_to", reason: "must_follow_valid_from" });
+  }
+  return details;
 }
 
 async function handleIdentity(req, res, parts) {
@@ -652,9 +722,136 @@ async function handleIdentity(req, res, parts) {
     return json(res, response.status, response.body);
   }
 
+  if (resource === "role-assignments" && !id && req.method === "GET") {
+    if (!assertSystemAdmin(auth, res)) return;
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const personId = url.searchParams.get("person_id");
+    const role = url.searchParams.get("role");
+    const clauses = [];
+    const params = [];
+    if (personId) {
+      params.push(personId);
+      clauses.push(`ra.person_id=$${params.length}`);
+    }
+    if (role) {
+      params.push(role);
+      clauses.push(`ra.role=$${params.length}`);
+    }
+    const rows = await many(
+      `SELECT ra.*, p.display_name
+       FROM role_assignments ra
+       JOIN people p ON p.person_id=ra.person_id
+       ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+       ORDER BY ra.created_at ASC`,
+      params
+    );
+    return json(res, 200, page(rows));
+  }
+
+  if (resource === "role-assignments" && !id && req.method === "POST") {
+    if (!assertSystemAdmin(auth, res)) return;
+    const key = await assertIdempotency(req, res);
+    if (!key) return;
+    const cached = await idempotentResponse(key);
+    if (cached) return json(res, cached.status, cached.body);
+    const body = await readBody(req);
+    const details = await validateRoleAssignment(body);
+    if (details.length) return error(res, 400, "validation_failed", "Role assignment request is invalid.", details);
+    const existing = await one(
+      `SELECT role_assignment_id FROM role_assignments
+       WHERE person_id=$1 AND role=$2 AND scope_type=$3
+         AND COALESCE(scope_id,'')=COALESCE($4,'') AND status='active'`,
+      [body.person_id, body.role, body.scope_type, body.scope_id || null]
+    );
+    if (existing) return error(res, 409, "duplicate_assignment", "This active role assignment already exists.");
+    const response = await onceForIdempotency(key, async () => {
+      const timestamp = now();
+      const assignment = {
+        role_assignment_id: prefixed("roleasg"),
+        person_id: body.person_id,
+        role: body.role,
+        scope_type: body.scope_type,
+        scope_id: body.scope_type === "company" ? null : body.scope_id,
+        status: body.status || "active",
+        valid_from: body.valid_from || timestamp,
+        valid_to: body.valid_to || null,
+        created_by_person_id: auth.actor_person_id,
+        created_at: timestamp,
+        updated_at: timestamp
+      };
+      await exec(
+        `INSERT INTO role_assignments
+         (role_assignment_id, person_id, role, scope_type, scope_id, status,
+          valid_from, valid_to, created_by_person_id, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        Object.values(assignment)
+      );
+      await addHistory("role_assignment", assignment.role_assignment_id, auth.actor_person_id, "created", assignment);
+      return { status: 201, body: assignment };
+    });
+    return json(res, response.status, response.body);
+  }
+
+  if (resource === "role-assignments" && id && action === "history" && req.method === "GET") {
+    if (!assertSystemAdmin(auth, res)) return;
+    if (!(await one("SELECT role_assignment_id FROM role_assignments WHERE role_assignment_id=$1", [id]))) {
+      return error(res, 404, "not_found", "Role assignment not found.");
+    }
+    return json(res, 200, await historyPage("role_assignment", id));
+  }
+
+  if (resource === "role-assignments" && id && !action && req.method === "PATCH") {
+    if (!assertSystemAdmin(auth, res)) return;
+    const key = await assertIdempotency(req, res);
+    if (!key) return;
+    const cached = await idempotentResponse(key);
+    if (cached) return json(res, cached.status, cached.body);
+    const assignment = await one("SELECT * FROM role_assignments WHERE role_assignment_id=$1", [id]);
+    if (!assignment) return error(res, 404, "not_found", "Role assignment not found.");
+    const body = await readBody(req);
+    const candidate = { ...assignment, ...body };
+    const details = await validateRoleAssignment(candidate, true);
+    if (details.length) return error(res, 400, "validation_failed", "Role assignment update is invalid.", details);
+    const response = await onceForIdempotency(key, async () => {
+      const updated = {
+        ...candidate,
+        scope_id: candidate.scope_type === "company" ? null : candidate.scope_id,
+        updated_at: now()
+      };
+      await exec(
+        `UPDATE role_assignments SET role=$2, scope_type=$3, scope_id=$4,
+         status=$5, valid_from=$6, valid_to=$7, updated_at=$8
+         WHERE role_assignment_id=$1`,
+        [id, updated.role, updated.scope_type, updated.scope_id, updated.status,
+         updated.valid_from, updated.valid_to, updated.updated_at]
+      );
+      await addHistory("role_assignment", id, auth.actor_person_id, "updated", body);
+      return { status: 200, body: updated };
+    });
+    return json(res, response.status, response.body);
+  }
+
   if (resource === "me" && req.method === "GET") {
-    if (auth.user) return json(res, 200, auth.user);
-    return json(res, 200, { service_account: auth.account?.service_account_id || "foundation_service_token" });
+    if (auth.user) {
+      const person = await one("SELECT * FROM people WHERE person_id = $1", [auth.user.person_id]);
+      const roleAssignments = await activeRoleAssignments(auth.user.person_id);
+      return json(res, 200, {
+        actor_type: "human",
+        person_id: auth.user.person_id,
+        user_id: auth.user.user_id,
+        roles: auth.user.roles,
+        role_assignments: roleAssignments,
+        status: auth.user.status,
+        person
+      });
+    }
+    return json(res, 200, {
+      actor_type: "service",
+      person_id: auth.actor_person_id,
+      service_account_id: auth.account?.service_account_id || "foundation_service_token",
+      service_account: auth.account?.service_account_id || "foundation_service_token",
+      scopes: auth.scopes || []
+    });
   }
 
   if (resource === "service-accounts" && !id && req.method === "GET") {

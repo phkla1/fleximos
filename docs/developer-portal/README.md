@@ -23,6 +23,7 @@ The portal reads the versioned OpenAPI JSON files in `api-contracts/openapi/`:
 - `identity.v1.json`
 - `amoeba.v1.json`
 - `ops.v1.json`
+- `payments-integration.v1.json`
 - `hr.v1.json`
 - `tms.v1.json`
 
@@ -32,7 +33,22 @@ During local Ops development:
 
 - Static suite portal: `http://127.0.0.1:4173/apps/developer-portal/`
 - Live NestJS Ops Swagger: `http://127.0.0.1:4030/ops/developer`
+- Payments Integration API: `http://127.0.0.1:4040/`
 - Ops PWA preview: `http://127.0.0.1:4173/apps/ops-console/`
+- Ops admin preview: `http://127.0.0.1:4173/apps/ops-admin-console/`
+- Manager preview: `http://127.0.0.1:4173/apps/manager-console/`
+- Finance preview: `http://127.0.0.1:4173/apps/finance-console/`
+- Operator PWA preview: `http://127.0.0.1:4173/apps/operator-pwa/`
+
+## Ops integration guides
+
+- `scoped-access.md`: system roles, business-role assignments, scope unions, and domain authorization.
+- `ops-ingestion.md`: normalized Bolt/Uber connector boundary and provenance.
+- `ops-reports-and-migration.md`: immutable daily reports and historical CSV import.
+- `ops-scheduled-jobs.md`: scheduler, queue, freshness/finality, health, and replay contracts.
+- `monnify-setup-and-test.md`: sandbox reserved-account provisioning, webhook verification, deposit replay, and scheduled reconciliation.
+- `ops-cash-closeout.md`: expected cash, Monnify remittance matching, Finance adjustments, and supervisor closeout.
+- `ops-economics-policies.md`: labour, overhead, expected-hour, and breakeven assumptions consumed by Analytics.
 
 ## Acceptance Gate for API Changes
 
