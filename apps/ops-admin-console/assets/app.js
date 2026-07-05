@@ -32,6 +32,8 @@ const el = Object.fromEntries(
     "boardUpdated", "ingestionForm", "performanceRows", "ingestionRuns", "operatingDate",
     "paceProfileForm", "paceProfileList", "efficiencyPolicyForm", "efficiencyPolicyList",
     "economicsPolicyForm", "economicsPolicyList",
+    "leaderboardConfigForm", "leaderboardConfigSummary",
+    "inspectionComplianceSummary", "inspectionComplianceList",
     "jobHealthSummary", "jobHealthMetrics", "scheduledJobList", "scheduledJobRuns",
     "teamDialog", "teamDialogTitle", "teamDialogSummary", "teamOperatorList",
     "operatorSummaryCount", "vehicleSummaryCount", "performanceTeamFilter",
@@ -422,6 +424,28 @@ function render() {
     </article>
   `).join("") || `<div class="empty">No economics policies configured.</div>`;
 
+  const config = state.leaderboardConfig;
+  el.leaderboardConfigSummary.innerHTML = config ? `
+    <article class="policy-row">
+      <div><strong>Performance Score weights</strong><small>Default timeline: ${escapeHtml(String(config.default_timeline).replaceAll("_", " "))}</small></div>
+      <div><strong>Acceptance ${Math.round(config.acceptance_weight * 100)}% · Online ${Math.round(config.online_weight * 100)}% · Cash ${Math.round(config.cash_weight * 100)}% · Earnings ${Math.round(config.revenue_weight * 100)}%</strong><small>${config.company_wide_visible ? "Company-wide board visible to operators" : "Operators see within-amoeba board only"}</small></div>
+    </article>` : `<div class="empty">Leaderboard configuration unavailable.</div>`;
+
+  const compliance = state.inspectionCompliance;
+  if (compliance) {
+    el.inspectionComplianceSummary.textContent = compliance.compliance_pct === null
+      ? "No active vehicles registered."
+      : `${compliance.compliance_pct}% compliant · ${compliance.current} current · ${compliance.overdue} overdue of ${compliance.total_active_vehicles} active vehicles.`;
+    el.inspectionComplianceList.innerHTML = compliance.vehicles.length ? compliance.vehicles.map((vehicle) => `
+      <article class="data-row run-row">
+        <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))} · ${escapeHtml(vehicle.vehicle_type)}</small></div>
+        <div><span class="row-label">Last inspected</span><strong>${vehicle.last_inspected_at ? new Date(vehicle.last_inspected_at).toLocaleString("en-NG") : "Never"}</strong></div>
+        <div><span class="pill ${vehicle.inspection_status === "current" ? "" : "open"}">${escapeHtml(vehicle.inspection_status.replaceAll("_", " "))}</span></div>
+        <div></div>
+      </article>
+    `).join("") : `<div class="empty">No active vehicles registered.</div>`;
+  }
+
   const attention = state.scheduledJobs.filter((job) => ["failed", "stale"].includes(job.freshness_status)).length;
   const pending = state.scheduledJobs.filter((job) => job.freshness_status === "pending_source").length;
   const queued = state.scheduledJobRuns.filter((run) => ["queued", "running", "retrying"].includes(run.status)).length;
@@ -482,6 +506,10 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/notification-deliveries"),
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
   ]);
+  const [leaderboardConfig, inspectionCompliance] = await Promise.all([
+    ops("/ops/v1/leaderboard-config").catch(() => null),
+    ops("/ops/v1/inspections/compliance").catch(() => null)
+  ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   const requestedDate = el.operatingDate.value;
   const operatingDate = requestedDate && availableDates.includes(requestedDate)
@@ -514,8 +542,17 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     notificationDeliveries: notificationDeliveries.data,
     dailyReports: dailyReports.data,
     serviceHealth,
+    leaderboardConfig,
+    inspectionCompliance,
     operatingDate
   });
+  if (leaderboardConfig) {
+    for (const field of ["acceptance_weight", "online_weight", "cash_weight", "revenue_weight"]) {
+      el.leaderboardConfigForm.elements[field].value = Number(leaderboardConfig[field]);
+    }
+    el.leaderboardConfigForm.elements.default_timeline.value = leaderboardConfig.default_timeline;
+    el.leaderboardConfigForm.elements.company_wide_visible.value = String(Boolean(leaderboardConfig.company_wide_visible));
+  }
   syncPaceProfileForm();
   render();
   setConnection("connected", "Live APIs connected");
@@ -647,6 +684,26 @@ el.economicsPolicyForm.addEventListener("submit", async (event) => {
       })
     });
     await refresh("Finance economics policy added.");
+  } catch (error) { showError(error); }
+});
+
+el.leaderboardConfigForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.leaderboardConfigForm));
+  try {
+    await ops("/ops/v1/leaderboard-config", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("leaderboard-config") },
+      body: JSON.stringify({
+        acceptance_weight: Number(values.acceptance_weight),
+        online_weight: Number(values.online_weight),
+        cash_weight: Number(values.cash_weight),
+        revenue_weight: Number(values.revenue_weight),
+        default_timeline: values.default_timeline,
+        company_wide_visible: values.company_wide_visible === "true"
+      })
+    });
+    await refresh("Leaderboard weights saved.");
   } catch (error) { showError(error); }
 });
 

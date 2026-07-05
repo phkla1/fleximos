@@ -69,9 +69,65 @@
           <div class="section-heading"><div><p class="eyebrow">Fuel control</p><h2>Mileage check</h2></div></div>
           <div id="mileage"></div>
         </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">This week</p><h2>Leaderboard</h2></div>
+            <span id="myRank" class="count">—</span>
+          </div>
+          <div id="leaderboard"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading"><div><p class="eyebrow">Vehicle issue?</p><h2>Report maintenance</h2></div></div>
+          <form id="maintenanceForm" class="inline-form">
+            <label>Category<select name="category">
+              <option value="tyres">Tyres</option><option value="brakes">Brakes</option><option value="engine">Engine</option>
+              <option value="electrical">Electrical</option><option value="body_damage">Body damage</option><option value="other">Other</option>
+            </select></label>
+            <label>What is wrong?<input name="description" maxlength="200" placeholder="Short description" /></label>
+            <button type="submit" class="secondary-button">Send to supervisor</button>
+          </form>
+        </section>
         <p id="appNotice" class="notice" role="status"></p>
+
+        <button id="supportButton" class="support-button" type="button">🆘 Get support</button>
       </section>
     </main>
+
+    <dialog id="supportDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2>What happened?</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
+        <p class="intro">Your supervisor is notified immediately. For accidents and police issues the manager is alerted too.</p>
+        <div class="incident-grid">
+          <button value="accident" type="submit">⚠️ Accident</button>
+          <button value="breakdown" type="submit">🔧 Breakdown</button>
+          <button value="police" type="submit">🚨 Police issue</button>
+          <button value="fuel_funds" type="submit">⛽ Waiting for petrol funds</button>
+          <button value="low_battery" type="submit">🔋 Low battery</button>
+          <button value="other" type="submit">💬 Something else</button>
+        </div>
+        <label>Add a short note (optional)<input id="incidentNote" maxlength="200" /></label>
+      </form>
+    </dialog>
+
+    <dialog id="explainDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2>Explain this alert</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
+        <p id="explainContext" class="intro"></p>
+        <label>Reason<select id="explainReason">
+          <option value="network_app_issue">Network / app issue</option>
+          <option value="vehicle_fault">Vehicle fault</option>
+          <option value="fuel_charging_problem">Fuel / charging problem</option>
+          <option value="platform_account_blocked">Platform account blocked</option>
+          <option value="personal_emergency">Personal emergency</option>
+          <option value="other">Other</option>
+        </select></label>
+        <label>Short note<input id="explainNote" maxlength="140" placeholder="Required for “Other”" /></label>
+        <div class="dialog-actions"><button value="cancel" class="secondary-button" type="submit">Cancel</button><button value="send" type="submit">Send to supervisor</button></div>
+      </form>
+    </dialog>
+
     <script src="./assets/app.js"></script>
   </body>
 </html>

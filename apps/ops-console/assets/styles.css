@@ -155,6 +155,24 @@ textarea { resize: vertical; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .row-actions button { min-height: 38px; }
 .empty { padding: 26px; border: 1px dashed #b9c5bd; border-radius: 7px; color: var(--muted); text-align: center; }
+.sub-section-heading { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+.deviation-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f4f7f4;
+  color: var(--muted);
+  font-size: 13px;
+}
+.deviation-line.pending { background: #f8f2e5; }
+.deviation-line.accepted { background: #e8f1ed; }
+.deviation-line.rejected { background: #f6e2df; }
+.deviation-line .row-actions { display: inline-flex; }
 .api-settings { padding-bottom: 20px; }
 
 dialog { width: min(480px, calc(100% - 28px)); padding: 0; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
@@ -191,7 +209,7 @@ dialog::backdrop { background: rgba(9, 20, 16, 0.52); }
   .compact-field { width: 150px; }
   .entry-form button { width: 100%; }
   .row-label { display: block; }
-}
   .fuel-form, .mileage-row { grid-template-columns: 1fr; }
   .mileage-row dl { grid-template-columns: repeat(2, 1fr); }
   .mileage-status { justify-items: start; }
+}

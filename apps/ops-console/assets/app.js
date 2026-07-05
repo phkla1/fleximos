@@ -6,6 +6,11 @@ const state = {
   dailyPerformance: [],
   fuelIssues: [],
   mileageReconciliations: [],
+  incidents: [],
+  inspections: [],
+  compliance: null,
+  maintenance: [],
+  vehicles: [],
   operatingDate: null
 };
 
@@ -14,7 +19,9 @@ const el = Object.fromEntries([
   "openAlertCount", "carRevenueTotal", "bikeRevenueTotal", "alertList", "alertFilter", "teamBoard",
   "boardUpdated", "performanceList", "operatingDate", "actionDialog",
   "dialogTitle", "dialogContext", "dialogNotes", "confirmActionButton",
-  "fuelIssueForm", "mileageList"
+  "fuelIssueForm", "mileageList",
+  "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
+  "maintenanceForm", "maintenanceList"
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
@@ -114,18 +121,87 @@ function render() {
 
   const filter = el.alertFilter.value;
   const alerts = filter ? state.alerts.filter((alert) => alert.resolution_status === filter) : state.alerts;
-  el.alertList.innerHTML = alerts.length ? alerts.map((alert) => `
+  el.alertList.innerHTML = alerts.length ? alerts.map((alert) => {
+    const deviation = alert.deviation_reason_code
+      ? `<div class="deviation-line ${escapeHtml(alert.deviation_review_status || "pending")}">
+          <span>Operator reason: <strong>${escapeHtml(String(alert.deviation_reason_code).replaceAll("_", " "))}</strong>${alert.deviation_reason_note ? ` — “${escapeHtml(alert.deviation_reason_note)}”` : ""}</span>
+          ${alert.deviation_review_status === "pending"
+            ? `<span class="row-actions">
+                <button type="button" data-deviation-decision="accepted" data-alert-id="${escapeHtml(alert.alert_id)}">Accept</button>
+                <button type="button" class="secondary" data-deviation-decision="rejected" data-alert-id="${escapeHtml(alert.alert_id)}">Reject</button>
+              </span>`
+            : `<span class="pill ${escapeHtml(alert.deviation_review_status)}">${escapeHtml(alert.deviation_review_status)}</span>`}
+        </div>`
+      : "";
+    return `
     <article class="alert-row tier-${escapeHtml(alert.tier)}">
       <div><strong>${escapeHtml(alert.alert_type.replaceAll("_", " "))}</strong><small>${escapeHtml(personName(alert.person_id))}</small></div>
       <div><span class="row-label">Platform</span><strong>${escapeHtml(alert.platform_display_name || "General")}</strong><small>Tier ${escapeHtml(alert.tier)}</small></div>
       <div><span class="row-label">Fired</span><strong>${new Date(alert.fired_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</strong></div>
-      <div><span class="pill ${escapeHtml(alert.resolution_status)}">${escapeHtml(alert.resolution_status)}</span></div>
+      <div><span class="pill ${escapeHtml(alert.resolution_status)}">${escapeHtml(alert.resolution_status.replaceAll("_", " "))}</span></div>
       <div class="row-actions">
         ${alert.resolution_status === "open" ? `<button type="button" data-alert-action="acknowledge" data-alert-id="${escapeHtml(alert.alert_id)}">Acknowledge</button>` : ""}
         ${alert.resolution_status !== "resolved" ? `<button type="button" class="secondary" data-alert-action="resolve" data-alert-id="${escapeHtml(alert.alert_id)}">Resolve</button>` : ""}
+        ${!["resolved", "escalated"].includes(alert.resolution_status) ? `<button type="button" class="secondary" data-alert-action="escalate" data-alert-id="${escapeHtml(alert.alert_id)}">Escalate</button>` : ""}
+      </div>
+      ${deviation}
+    </article>`;
+  }).join("") : `<div class="empty">No alerts match this view.</div>`;
+
+  el.incidentList.innerHTML = state.incidents.length ? state.incidents.map((incident) => `
+    <article class="alert-row ${incident.severity === "high" ? "tier-3" : "tier-1"}">
+      <div><strong>${escapeHtml(String(incident.incident_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(incident.person_id))}${incident.vehicle_plate ? ` · ${escapeHtml(incident.vehicle_plate)}` : ""}</small></div>
+      <div><span class="row-label">Details</span><strong>${escapeHtml(incident.description || "No notes")}</strong><small>${incident.gps_lat ? `GPS ${Number(incident.gps_lat).toFixed(3)}, ${Number(incident.gps_lng).toFixed(3)}` : "No GPS"}</small></div>
+      <div><span class="row-label">Reported</span><strong>${new Date(incident.occurred_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</strong></div>
+      <div><span class="pill ${escapeHtml(incident.status)}">${escapeHtml(incident.status)}</span></div>
+      <div class="row-actions">
+        ${incident.status === "open" ? `<button type="button" data-incident-action="acknowledge" data-incident-id="${escapeHtml(incident.incident_id)}">Acknowledge</button>` : ""}
+        ${incident.status !== "resolved" ? `<button type="button" class="secondary" data-incident-action="resolve" data-incident-id="${escapeHtml(incident.incident_id)}">Resolve</button>` : ""}
       </div>
     </article>
-  `).join("") : `<div class="empty">No alerts match this view.</div>`;
+  `).join("") : `<div class="empty">No incidents reported by your team.</div>`;
+
+  if (state.compliance) {
+    const scoped = state.compliance.vehicles;
+    const current = scoped.filter((vehicle) => vehicle.inspection_status === "current").length;
+    el.inspectionComplianceLabel.textContent = !scoped.length
+      ? "No active vehicles in scope"
+      : `${Math.round(current / scoped.length * 100)}% of vehicles inspected in the last 48h · ${scoped.length - current} overdue`;
+  }
+  const complianceByVehicle = new Map((state.compliance?.vehicles || []).map((item) => [item.vehicle_id, item]));
+  el.inspectionForm.elements.vehicle_id.innerHTML = state.vehicles.map((vehicle) => {
+    const status = complianceByVehicle.get(vehicle.vehicle_id)?.inspection_status;
+    const suffix = status === "current" ? "" : status === "overdue" ? " — OVERDUE" : " — never inspected";
+    return `<option value="${escapeHtml(vehicle.vehicle_id)}">${escapeHtml(vehicle.plate)}${suffix}</option>`;
+  }).join("");
+  el.maintenanceForm.elements.vehicle_id.innerHTML = state.vehicles.map((vehicle) =>
+    `<option value="${escapeHtml(vehicle.vehicle_id)}">${escapeHtml(vehicle.plate)}</option>`).join("");
+
+  el.inspectionList.innerHTML = state.inspections.length ? state.inspections.slice(0, 8).map((inspection) => `
+    <article class="mileage-row">
+      <div><strong>${escapeHtml(inspection.vehicle_plate)}</strong><small>${new Date(inspection.inspected_at).toLocaleString("en-NG")}</small></div>
+      <dl>
+        <div><dt>Condition</dt><dd>${escapeHtml(String(inspection.condition).replaceAll("_", " "))}</dd></div>
+        <div><dt>Odometer</dt><dd>${inspection.odometer_km === null ? "—" : `${Number(inspection.odometer_km)} km`}</dd></div>
+        <div><dt>Fuel</dt><dd>${inspection.fuel_level_pct === null ? "—" : `${Number(inspection.fuel_level_pct)}%`}</dd></div>
+        <div><dt>Review</dt><dd>${escapeHtml(String(inspection.review_status).replaceAll("_", " "))}</dd></div>
+      </dl>
+      <span class="pill ${inspection.condition === "ok" ? "" : "open"}">${escapeHtml(String(inspection.condition).replaceAll("_", " "))}</span>
+    </article>
+  `).join("") : `<div class="empty">No inspections submitted yet.</div>`;
+
+  el.maintenanceList.innerHTML = state.maintenance.length ? state.maintenance.map((report) => `
+    <article class="alert-row ${report.status === "open" ? "tier-2" : "tier-0"}">
+      <div><strong>${escapeHtml(report.vehicle_plate)} · ${escapeHtml(String(report.category).replaceAll("_", " "))}</strong><small>${escapeHtml(report.description || "No description")}</small></div>
+      <div><span class="row-label">Reported</span><strong>${new Date(report.created_at).toLocaleDateString("en-NG")}</strong></div>
+      <div><span class="row-label">Cost</span><strong>${report.cost_ngn === null ? "—" : `₦${Number(report.cost_ngn).toLocaleString()}`}</strong></div>
+      <div><span class="pill ${escapeHtml(report.status)}">${escapeHtml(String(report.status).replaceAll("_", " "))}</span></div>
+      <div class="row-actions">
+        ${report.status === "open" ? `<button type="button" data-maintenance-status="in_repair" data-maintenance-id="${escapeHtml(report.maintenance_id)}">Start repair</button>` : ""}
+        ${report.status !== "resolved" ? `<button type="button" class="secondary" data-maintenance-status="resolved" data-maintenance-id="${escapeHtml(report.maintenance_id)}">Resolve</button>` : ""}
+      </div>
+    </article>
+  `).join("") : `<div class="empty">No maintenance reports for your fleet.</div>`;
 
   el.performanceList.innerHTML = state.dailyPerformance.length ? state.dailyPerformance.map((record) => `
     <article class="performance-row">
@@ -183,11 +259,19 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const requestedDate = el.operatingDate.value;
   const operatingDate = availableDates.includes(requestedDate) ? requestedDate : (availableDates[0] || requestedDate || todayLagos);
   el.operatingDate.value = operatingDate;
-  const [teamBoard, fuelIssues, mileageReconciliations] = await Promise.all([
+  const [teamBoard, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles] = await Promise.all([
     ops(`/ops/v1/team-board?record_date=${operatingDate}`),
     ops(`/ops/v1/fuel-issues?operating_date=${operatingDate}`),
-    ops(`/ops/v1/mileage-reconciliations?record_date=${operatingDate}`)
+    ops(`/ops/v1/mileage-reconciliations?record_date=${operatingDate}`),
+    ops("/ops/v1/incidents"),
+    ops("/ops/v1/inspections"),
+    ops("/ops/v1/inspections/compliance"),
+    ops("/ops/v1/maintenance-reports"),
+    ops("/ops/v1/vehicles")
   ]);
+  const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
+  const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
+  const scopedVehicleIds = new Set(scopedVehicles.map((vehicle) => vehicle.vehicle_id));
   Object.assign(state, {
     people: people.data,
     operators: assigned,
@@ -196,6 +280,14 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     dailyPerformance: allPerformance.data.filter((record) => assignedIds.has(record.operator_id) && String(record.record_date).slice(0, 10) === operatingDate),
     fuelIssues: fuelIssues.data.filter((record) => assignedIds.has(record.operator_id)),
     mileageReconciliations: mileageReconciliations.data.filter((record) => assignedIds.has(record.operator_id)),
+    incidents: incidents.data.filter((incident) => assignedIds.has(incident.operator_id)),
+    inspections: inspections.data.filter((inspection) => scopedVehicleIds.has(inspection.vehicle_id)),
+    compliance: {
+      ...compliance,
+      vehicles: compliance.vehicles.filter((vehicle) => scopedVehicleIds.has(vehicle.vehicle_id))
+    },
+    maintenance: maintenance.data.filter((report) => scopedVehicleIds.has(report.vehicle_id)),
+    vehicles: scopedVehicles,
     operatingDate
   });
   render();
@@ -231,30 +323,124 @@ el.fuelIssueForm.addEventListener("submit", async (event) => {
 });
 
 let pendingAction = null;
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-alert-action]");
-  if (!button) return;
-  const alert = state.alerts.find((item) => item.alert_id === button.dataset.alertId);
-  pendingAction = { type: button.dataset.alertAction, alert };
-  el.dialogTitle.textContent = pendingAction.type === "acknowledge" ? "Acknowledge alert" : "Resolve alert";
-  el.dialogContext.textContent = `${alert.alert_type.replaceAll("_", " ")} · ${personName(alert.person_id)}`;
-  el.dialogNotes.value = "";
-  el.actionDialog.showModal();
+const dialogTitles = {
+  acknowledge: "Acknowledge alert",
+  resolve: "Resolve alert",
+  escalate: "Escalate to manager"
+};
+document.addEventListener("click", async (event) => {
+  const alertButton = event.target.closest("[data-alert-action]");
+  if (alertButton) {
+    const alert = state.alerts.find((item) => item.alert_id === alertButton.dataset.alertId);
+    pendingAction = { kind: "alert", type: alertButton.dataset.alertAction, alert };
+    el.dialogTitle.textContent = dialogTitles[pendingAction.type];
+    el.dialogContext.textContent = `${alert.alert_type.replaceAll("_", " ")} · ${personName(alert.person_id)}`;
+    el.dialogNotes.value = "";
+    el.actionDialog.showModal();
+    return;
+  }
+  const incidentButton = event.target.closest("[data-incident-action]");
+  if (incidentButton) {
+    const incident = state.incidents.find((item) => item.incident_id === incidentButton.dataset.incidentId);
+    pendingAction = { kind: "incident", type: incidentButton.dataset.incidentAction, incident };
+    el.dialogTitle.textContent = pendingAction.type === "acknowledge" ? "Acknowledge incident" : "Resolve incident";
+    el.dialogContext.textContent = `${incident.incident_type.replaceAll("_", " ")} · ${personName(incident.person_id)}`;
+    el.dialogNotes.value = "";
+    el.actionDialog.showModal();
+    return;
+  }
+  const deviationButton = event.target.closest("[data-deviation-decision]");
+  if (deviationButton) {
+    try {
+      await ops(`/ops/v1/alerts/${deviationButton.dataset.alertId}/deviation-reason/review`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("deviation-review") },
+        body: JSON.stringify({ decision: deviationButton.dataset.deviationDecision })
+      });
+      await refresh(`Operator reason ${deviationButton.dataset.deviationDecision}.`);
+    } catch (error) { showError(error); }
+    return;
+  }
+  const maintenanceButton = event.target.closest("[data-maintenance-status]");
+  if (maintenanceButton) {
+    const status = maintenanceButton.dataset.maintenanceStatus;
+    const costInput = status === "resolved" ? prompt("Repair cost in ₦ (leave blank if none):", "") : null;
+    try {
+      await ops(`/ops/v1/maintenance-reports/${maintenanceButton.dataset.maintenanceId}/status`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("maintenance-status") },
+        body: JSON.stringify({
+          status,
+          cost_ngn: costInput ? Number(costInput) : null,
+          resolution_notes: status === "resolved" ? "Resolved from supervisor console." : null
+        })
+      });
+      await refresh(status === "resolved" ? "Maintenance resolved." : "Repair started.");
+    } catch (error) { showError(error); }
+  }
 });
 
 el.actionDialog.addEventListener("close", async () => {
   if (el.actionDialog.returnValue !== "default" || !pendingAction) return;
-  const { type, alert } = pendingAction;
   const notes = el.dialogNotes.value.trim();
   try {
-    await ops(`/ops/v1/alerts/${alert.alert_id}/${type}`, {
-      method: "POST",
-      headers: { "Idempotency-Key": key(`alert-${type}`) },
-      body: JSON.stringify(type === "resolve" ? { resolution_notes: notes || "Action completed." } : { note: notes })
-    });
-    await refresh(type === "resolve" ? "Alert resolved." : "Alert acknowledged.");
+    if (pendingAction.kind === "alert") {
+      const { type, alert } = pendingAction;
+      await ops(`/ops/v1/alerts/${alert.alert_id}/${type}`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key(`alert-${type}`) },
+        body: JSON.stringify(type === "resolve" ? { resolution_notes: notes || "Action completed." } : { note: notes })
+      });
+      await refresh(type === "resolve" ? "Alert resolved." : type === "escalate" ? "Alert escalated to manager." : "Alert acknowledged.");
+    } else {
+      const { type, incident } = pendingAction;
+      await ops(`/ops/v1/incidents/${incident.incident_id}/${type}`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key(`incident-${type}`) },
+        body: JSON.stringify(type === "resolve" ? { resolution_notes: notes || "Handled in the field." } : {})
+      });
+      await refresh(type === "resolve" ? "Incident resolved." : "Incident acknowledged.");
+    }
   } catch (error) { showError(error); }
   pendingAction = null;
+});
+
+el.inspectionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.inspectionForm));
+  try {
+    await ops("/ops/v1/inspections", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("inspection") },
+      body: JSON.stringify({
+        vehicle_id: values.vehicle_id,
+        odometer_km: values.odometer_km || null,
+        fuel_level_pct: values.fuel_level_pct || null,
+        condition: values.condition,
+        notes: values.notes || null
+      })
+    });
+    el.inspectionForm.reset();
+    await refresh("Inspection submitted.");
+  } catch (error) { showError(error); }
+});
+
+el.maintenanceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.maintenanceForm));
+  try {
+    await ops("/ops/v1/maintenance-reports", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("maintenance") },
+      body: JSON.stringify({
+        vehicle_id: values.vehicle_id,
+        category: values.category,
+        description: values.description || null
+      })
+    });
+    el.maintenanceForm.reset();
+    await refresh("Maintenance issue reported.");
+  } catch (error) { showError(error); }
 });
 
 function showError(error) {

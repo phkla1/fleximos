@@ -37,6 +37,31 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#notice")).toContainText("acknowledged");
   });
 
+  test("runs field operations: incidents, inspections and maintenance", async ({ page }) => {
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+
+    await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Vehicle inspections" })).toBeVisible();
+    await expect(page.locator("#inspectionComplianceLabel")).toContainText(/vehicles inspected|No active vehicles/);
+
+    const inspectionForm = page.locator("#inspectionForm");
+    await inspectionForm.locator('select[name="vehicle_id"]').selectOption({ index: 0 });
+    await inspectionForm.locator('input[name="odometer_km"]').fill("12345");
+    await inspectionForm.locator('select[name="condition"]').selectOption("ok");
+    await inspectionForm.getByRole("button", { name: "Submit inspection" }).click();
+    await expect(page.locator("#notice")).toContainText("Inspection submitted");
+    await expect(page.locator("#inspectionList .mileage-row").first()).toBeVisible();
+
+    const maintenanceForm = page.locator("#maintenanceForm");
+    await maintenanceForm.locator('select[name="vehicle_id"]').selectOption({ index: 0 });
+    await maintenanceForm.locator('select[name="category"]').selectOption("tyres");
+    await maintenanceForm.locator('input[name="description"]').fill("Front tyre worn");
+    await maintenanceForm.getByRole("button", { name: "Report issue" }).click();
+    await expect(page.locator("#notice")).toContainText("Maintenance issue reported");
+    await expect(page.locator("#maintenanceList .alert-row").first()).toBeVisible();
+  });
+
   test("has no page-level horizontal overflow on mobile", async ({ page }) => {
     await page.goto(url);
     await expect(page.locator("#notice")).toContainText("Connected");

@@ -15,6 +15,8 @@
     <nav class="tabs" aria-label="Manager sections">
       <a href="#portfolio">Portfolio</a>
       <a href="#escalations">Escalations</a>
+      <a href="#pnl">P&amp;L</a>
+      <a href="#leaderboard">Leaderboard</a>
       <a href="#reports">Daily reports</a>
     </nav>
     <main>
@@ -23,11 +25,11 @@
         <div class="overview-actions"><label>Operating date<input id="operatingDate" type="date" /></label><button id="refreshButton" type="button">Refresh</button></div>
       </section>
       <section class="metrics" aria-label="Manager summary">
-        <article><span>Active operators</span><strong id="activeCount">0</strong></article>
+        <article><span>Active operators</span><strong id="activeCount">0</strong><small id="liveContext"></small></article>
         <article><span>Live operators</span><strong id="liveCount">0</strong></article>
-        <article><span>Net Earnings</span><strong id="revenueTotal">₦0</strong></article>
-        <article><span>Net Earnings target</span><strong id="expectedTotal">₦0</strong></article>
-        <article><span>Manager escalations</span><strong id="escalationCount">0</strong></article>
+        <article><span>Net Earnings</span><strong id="revenueTotal">₦0</strong><small id="expectedContext"></small></article>
+        <article><span>Gross P&amp;L (period)</span><strong id="grossPnl">₦0</strong><small id="pnlContext"></small></article>
+        <article><span>Escalation queue</span><strong id="escalationCount">0</strong><small id="escalationContext"></small></article>
       </section>
       <p id="notice" class="notice" role="status"></p>
 
@@ -39,8 +41,65 @@
 
       <section id="escalations" class="workspace-section">
         <div class="section-heading"><div><p class="eyebrow">Manager action queue</p><h2>Escalations</h2></div></div>
-        <p class="section-intro">Tier 2+ alerts and unresolved conditions are separated from the supervisor inbox.</p>
+        <p class="section-intro">Escalated and tier 2+ alerts, unacknowledged high-severity incidents, overdue inspections, missing closeouts and open maintenance — everything that has outgrown the supervisor inbox.</p>
+        <div id="escalationSummary" class="metrics" aria-label="Escalation counts"></div>
+        <h3 class="sub-section-heading">Alerts needing manager action</h3>
         <div id="escalationList" class="data-list"></div>
+        <h3 class="sub-section-heading">Open incidents</h3>
+        <div id="incidentList" class="data-list"></div>
+        <h3 class="sub-section-heading">Fleet follow-ups</h3>
+        <div id="fleetFollowups" class="data-list compact-list"></div>
+      </section>
+
+      <section id="pnl" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Amoeba economics</p><h2>Profit &amp; loss</h2></div>
+          <div class="overview-actions">
+            <label>From<input id="pnlStart" type="date" /></label>
+            <label>To<input id="pnlEnd" type="date" /></label>
+            <button id="loadPnl" type="button" class="secondary">Recalculate</button>
+            <button id="exportPnlCsv" type="button">Download CSV</button>
+          </div>
+        </div>
+        <p class="section-intro">Net Earnings less direct expenses, resolved maintenance costs and headcount-allocated central overheads, adjusted by transfer pricing. Ops is the canonical P&amp;L calculator.</p>
+        <div id="pnlTotals" class="metrics" aria-label="P&amp;L totals"></div>
+        <div id="pnlList" class="summary-grid"></div>
+        <h3 class="sub-section-heading">Record an expense</h3>
+        <p class="section-intro">Direct expenses hit one amoeba. Central costs are allocated across amoebas by active-operator headcount.</p>
+        <form id="expenseForm" class="form-grid">
+          <label>Date<input name="expense_date" type="date" required /></label>
+          <label>Allocation<select name="allocation"><option value="direct">Direct to amoeba</option><option value="central">Central (allocated)</option></select></label>
+          <label>Amoeba<select name="amoeba_id"></select></label>
+          <label>Category<select name="category">
+            <option value="fuel">Fuel</option><option value="maintenance">Maintenance</option><option value="rent">Rent</option>
+            <option value="salaries">Salaries</option><option value="utilities">Utilities</option><option value="overhead">Overhead</option><option value="other">Other</option>
+          </select></label>
+          <label>Amount (₦)<input name="amount_ngn" type="number" min="0" step="0.01" required /></label>
+          <label>Evidence reference<input name="evidence_reference" type="text" placeholder="Receipt or statement ref" /></label>
+          <label class="wide-field">Description<input name="description" type="text" maxlength="300" /></label>
+          <div class="wide-field"><button type="submit">Save expense</button></div>
+        </form>
+        <h3 class="sub-section-heading">Recent expenses</h3>
+        <div id="expenseList" class="data-list compact-list"></div>
+      </section>
+
+      <section id="leaderboard" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Operator motivation</p><h2>Leaderboard</h2></div>
+          <div class="overview-actions">
+            <div class="segmented-actions" id="leaderboardSort" role="group" aria-label="Sort leaderboard">
+              <button type="button" data-sort="score" class="active">Score</button>
+              <button type="button" data-sort="net_earnings">Net Earnings</button>
+              <button type="button" data-sort="acceptance">Acceptance</button>
+              <button type="button" data-sort="trips">Trips</button>
+              <button type="button" data-sort="online">Online</button>
+              <button type="button" data-sort="cash">Cash</button>
+            </div>
+            <button id="exportLeaderboardCsv" type="button">Download CSV</button>
+          </div>
+        </div>
+        <p class="section-intro" id="leaderboardIntro">Performance Score blends acceptance, time online, cash receipt and Net Earnings with admin-configured weights.</p>
+        <div id="leaderboardList" class="data-list"></div>
       </section>
 
       <section id="reports" class="workspace-section">
