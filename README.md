@@ -4,7 +4,7 @@ Fleximotion app-suite planning and implementation workspace.
 
 ## Developer Portal
 
-The first implemented slice is a static developer documentation portal plus versioned OpenAPI contract skeletons for the five planned API domains.
+The first implemented slice is a static developer documentation portal plus versioned OpenAPI contracts for the planned API domains.
 
 Run the portal locally:
 
@@ -50,6 +50,12 @@ Run the Ops API:
 npm run dev:ops-api
 ```
 
+Run the Payments Integration API in local simulated mode:
+
+```bash
+npm run dev:payments-api
+```
+
 The Ops console is available at:
 
 ```text
@@ -61,6 +67,20 @@ The Ops admin console and operator PWA are available at:
 ```text
 http://localhost:4173/apps/ops-admin-console/
 http://localhost:4173/apps/operator-pwa/
+```
+
+The Phase 4 role consoles are available at:
+
+```text
+http://localhost:4173/apps/manager-console/
+http://localhost:4173/apps/finance-console/
+http://localhost:4173/apps/analytics-console/
+```
+
+For a fully wired local analytics/finance preview, pass explicit API bases:
+
+```text
+http://localhost:4173/apps/analytics-console/?opsApiBase=http://127.0.0.1:4030&foundationApiBase=http://127.0.0.1:4010&paymentsApiBase=http://127.0.0.1:4040
 ```
 
 The admin Data Health view exposes the Scheduled Job Registry, freshness/finality state, queue depth, run ledger, and scoped replay controls.
@@ -91,5 +111,6 @@ npm run migrate:ops-daily -- --input ./daily.csv
 - `api-contracts/openapi/identity.v1.json`
 - `api-contracts/openapi/amoeba.v1.json`
 - `api-contracts/openapi/ops.v1.json`
+- `api-contracts/openapi/payments-integration.v1.json`
 - `api-contracts/openapi/hr.v1.json`
 - `api-contracts/openapi/tms.v1.json`

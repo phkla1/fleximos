@@ -34,7 +34,7 @@ const ids = [
   "breakevenContext", "expectedLabourCost", "netContribution", "dailyOverheads",
   "breakevenVariance", "cashOnHandNote", "cashOnHand", "upcomingPayments", "platformMixChart",
   "amoebaComparisonChart", "updatedLabel", "amoebaPortfolio", "operatorSignals",
-  "operatorLeaderboard", "leakageSummaryChart", "leakageList", "detailDialog", "detailTitle", "detailSummary", "detailBody"
+  "operatorLeaderboard", "leakageSummaryChart", "leakageList", "exportAnalyticsCsv", "detailDialog", "detailTitle", "detailSummary", "detailBody"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
@@ -65,6 +65,24 @@ const amoebaName = (id) => state.amoebas.find((item) => item.amoeba_id === id)?.
 const liveStatus = (status) => !["offline", "not_seen_today"].includes(status);
 const netEarningsOf = (row) => Number(row.net_earnings_ngn ?? row.ride_revenue_ngn ?? 0);
 const dateKey = (value) => String(value || "").slice(0, 10);
+
+function csvValue(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const csv = [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 async function request(base, path, options = {}) {
   const response = await fetch(`${base}${path}`, {
@@ -146,6 +164,72 @@ function setPeriodMode(mode) {
   refresh().catch(showError);
 }
 
+function exportAnalyticsCsv() {
+  const headers = [
+    "section", "period_mode", "operating_date", "period_dates", "amoeba", "operator",
+    "vehicle_type", "vehicle_plate", "platform", "net_earnings_ngn", "expected_ngn",
+    "hourly_efficiency_ngn", "trips_completed", "hours_online", "acceptance_rate_pct",
+    "cash_variance_ngn", "cash_status", "current_status", "data_quality"
+  ];
+  const periodDates = state.selectedDates.join(";");
+  const performanceRows = state.performance.map((row) => [
+    "performance", state.periodMode, state.operatingDate, periodDates,
+    amoebaName(operatorMeta(row.operator_id).amoeba_id || row.amoeba_id),
+    personName(operatorMeta(row.operator_id).person_id || row.operator_id),
+    row.platform_vehicle_type || operatorMeta(row.operator_id).vehicle_type || "",
+    operatorMeta(row.operator_id).vehicle_plate || "",
+    row.platform_display_name || row.platform || "",
+    netEarningsOf(row),
+    Number(row.expected_revenue_ngn || 0),
+    "",
+    Number(row.trips_completed || 0),
+    Number(row.hours_online || 0),
+    Number(row.acceptance_rate_pct || 0),
+    "",
+    "",
+    "",
+    row.data_quality || ""
+  ]);
+  const amoebaRows = state.amoebaSummaries.map((team) => [
+    "amoeba", state.periodMode, state.operatingDate, periodDates,
+    amoebaName(team.amoeba),
+    personName(team.supervisor),
+    "",
+    "",
+    "",
+    team.netEarnings,
+    team.expected,
+    team.efficiency,
+    team.trips,
+    team.hours,
+    "",
+    team.variance,
+    team.variance < 0 ? "shortfall" : team.variance > 0 ? "credit" : "clear",
+    `${team.active}/${team.rows.length} active`,
+    ""
+  ]);
+  const operatorRows = state.operatorRows.map((row) => [
+    "operator", state.periodMode, state.operatingDate, periodDates,
+    amoebaName(row.amoeba_id),
+    personName(row.person_id),
+    row.vehicle_type || "",
+    row.vehicle_plate || "",
+    "",
+    row.netEarnings,
+    Number(row.expected_revenue_ngn || 0),
+    row.efficiency,
+    row.tripsCompleted,
+    row.hoursOnline,
+    row.acceptanceRate,
+    row.cashVariance,
+    row.cashStatus,
+    row.current_status,
+    ""
+  ]);
+  const safeDate = state.operatingDate || today;
+  downloadCsv(`fleximotion-analytics-${state.periodMode}-${safeDate}.csv`, headers, [...amoebaRows, ...operatorRows, ...performanceRows]);
+}
+
 function comparisonText(current, baseline, label) {
   if (!baseline) return `No ${label} data`;
   const change = (current - baseline) / baseline * 100;
@@ -195,8 +279,9 @@ function renderTrendChart(series) {
   const max = Math.max(1, ...paired.flatMap((point) => [point.netEarnings, point.priorWeek]));
   const priorCount = paired.filter((point) => point.priorWeek > 0).length;
   el.trendLegend.textContent = windowed.length ? `${windowed[0].date} to ${windowed[windowed.length - 1].date}` : "No trend data";
+  const currentLabel = state.periodMode === "month" ? "Current 30 days" : state.periodMode === "week" ? "Current week" : "Selected week context";
   el.trendChart.innerHTML = windowed.length ? `
-    <div class="chart-legend"><span><i class="current"></i>Current week</span><span><i class="prior"></i>Same weekday last week</span>${priorCount ? "" : "<span>Last-week overlay unavailable for this seed period</span>"}</div>
+    <div class="chart-legend"><span><i class="current"></i>${currentLabel}</span><span><i class="prior"></i>Same weekday last week</span>${priorCount ? "" : "<span>Last-week overlay unavailable for this seed period</span>"}</div>
     <div class="bar-chart">
       ${paired.map((point) => {
         const height = Math.max(6, Math.round(point.netEarnings / max * 100));
@@ -1087,6 +1172,7 @@ async function refresh() {
 }
 
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
+el.exportAnalyticsCsv.addEventListener("click", exportAnalyticsCsv);
 el.operatingDate.addEventListener("change", () => refresh().catch(showError));
 document.addEventListener("click", (event) => {
   const periodButton = event.target.closest("[data-period-mode]");

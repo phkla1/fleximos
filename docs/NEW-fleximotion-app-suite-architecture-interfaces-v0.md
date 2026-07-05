@@ -816,7 +816,7 @@ The current Google Sheets-oriented systems should be treated as legacy operation
 
 ## 14. Revised Build Sequence
 
-**Roadmap status: 12 June 2026.** The sequencing minimizes dependency loops while replacing the highest-pain operational systems early. API contracts, developer documentation, and reviewable frontend previews are continuous deliverables in every phase.
+**Roadmap status: 4 July 2026.** The sequencing minimizes dependency loops while replacing the highest-pain operational systems early. API contracts, developer documentation, and reviewable frontend previews are continuous deliverables in every phase.
 
 ### Phase 1: Contract Foundation and Developer Portal — Complete
 
@@ -853,11 +853,13 @@ Delivered:
 
 Production activation remains gated on production PostgreSQL, Redis/BullMQ, live provider credentials, migration execution and a live end-to-end trial.
 
-### Phase 4: Ops Operational Depth — Revised / In Design
+### Phase 4: Ops Operational Depth — In Progress
 
-Phase 4 begins by correcting the access and product-surface model before adding Monnify or detailed financial analytics.
+Phase 4 began by correcting the access and product-surface model before adding Monnify and detailed financial analytics. Slices 4A through 4E are complete for local review; 4F remains the active operational-depth backlog.
 
 #### 4A. Scoped Business Access Foundation
+
+Status: complete for local review.
 
 - Replace the assumption that business roles form one simple hierarchy with **role assignments plus scopes**.
 - Model each assignment as `person + role + scope + validity`.
@@ -878,12 +880,16 @@ Example assignments:
 
 #### 4B. Manager and Finance Experiences
 
+Status: complete for local review.
+
 - Build a Manager Console for multi-supervisor operational oversight, escalations, closeouts, fleet health, cash exposure and scoped P&L.
 - Build a Finance Console for reserved-account provisioning, deposits, matching, reconciliation, settlement, adjustments, exceptions, period close and audit evidence.
 - Keep System Admin focused on users, permissions, integrations, configuration, data health and recovery.
 - Allow Manager and Finance users to share read-only analytical components while retaining different action permissions.
 
 #### 4C. Monnify Service and Cash Ledger
+
+Status: complete for local review with simulated provider mode. Sandbox/live validation remains external to MOS engineering until credentials and Monnify approval are available.
 
 - Publish a step-by-step Monnify sandbox, testing and production-onboarding guide.
 - Agree exact Monnify Service to Ops API contracts before implementation.
@@ -897,18 +903,26 @@ Example assignments:
 
 #### 4D. Cash Operations and Closeout
 
+Status: complete for local review.
+
 - Real-time expected cash, remitted cash, credits, shortfalls and unmatched receipts.
 - Operator, supervisor, manager and finance views appropriate to each role and scope.
 - Supervisor explanations without authority to approve financial adjustments.
 - Finance-controlled reversals, adjustments, reconciliation approval and accounting-period close.
 - Daily closeout and escalation workflows.
 
-#### 4E. Finance and Analytics Dashboard Design
+#### 4E. Finance and Analytics Dashboard
 
-- Design the shared finance and analytics workspace with stakeholder input before implementation.
-- Define the precise KPIs, comparisons, drill-down paths, period controls and visual hierarchy at that point.
-- Do not treat the current Admin dashboard as the Manager or Finance landing experience.
-- Detailed dashboard inputs are captured in `docs/Finance-Analytics-Dashboard-Design-Brief.md`; use that brief as the source for wireframes, read models and implementation slices.
+Status: complete for local review.
+
+- Stakeholder inputs are captured in `docs/Finance-Analytics-Dashboard-Design-Brief.md`.
+- The Analytics Console implements the first shared founder/GM/finance control room.
+- The console composes Foundation, Ops and Payments data without becoming a source of truth.
+- Implemented signals include Net Earnings, growth, hourly efficiency versus labour cost, utilisation, breakeven, cash variance, grouped alerts, platform/vehicle mix and data-quality impact.
+- Implemented comparisons include day/week/month period controls, prior-period movement and prior-week trend overlays where data exists.
+- Implemented drilldowns follow `Company -> Amoeba owner/Amoeba -> Operator -> Platform/Vehicle detail`.
+- Implemented role posture is read-mostly analytics: Manager and Finance users share analytical components while action authority stays in Manager, Finance, Admin and owning service surfaces.
+- Detailed implementation guidance is in `docs/developer-portal/analytics-console.md`.
 
 #### 4F. Remaining Operational Depth
 

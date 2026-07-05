@@ -72,6 +72,9 @@ test.describe("role consoles", () => {
     await expect(page.getByRole("heading", { name: "Breakeven and platform mix" })).toBeVisible();
     await expect(page.locator("#breakevenStatus")).not.toHaveText("Checking");
     await expect(page.locator("#platformMixChart .split-row")).not.toHaveCount(0);
+    const analyticsDownload = page.waitForEvent("download");
+    await page.locator("#exportAnalyticsCsv").click();
+    expect((await analyticsDownload).suggestedFilename()).toContain("fleximotion-analytics");
     await expect(page.getByRole("heading", { name: "Performance bars" })).toBeVisible();
     await expect(page.locator("#amoebaComparisonChart .comparison-row")).not.toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Amoeba portfolio" })).toBeVisible();

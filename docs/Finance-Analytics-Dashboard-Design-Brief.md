@@ -1,7 +1,7 @@
 # Finance and Analytics Dashboard Design Brief
 
 **Phase:** 4E
-**Status:** Stakeholder inputs captured; ready for dashboard wireframe and API design.
+**Status:** Implemented for local review in the Analytics Console. Remaining items are production hardening, deeper exports, tracker integration and board-ready reporting.
 
 ## Canonical Definitions
 
@@ -39,7 +39,7 @@ In the Ops operating model, **Supervisor = Amoeba owner**. Amoeba owners remain 
 - Refresh cadence: **hourly**.
 - Managers need both intraday live performance and closed-day results.
 - Reports should become locked after period close.
-- All views should support period selection: day, week, month and custom range.
+- Analytics Console currently supports day, week and month period selection. Custom range remains a later reporting/export enhancement.
 
 ## 4. Scope and Drilldown
 
@@ -230,7 +230,54 @@ Missing/stale data:
 - Any view should support period selection, so weekly/monthly reporting can be generated from the same dashboard.
 - Audit-ready and board-ready views remain open design questions.
 
-## 14. Open Questions
+## 14. As-Built Phase 4E Local Review
+
+The Analytics Console is available locally at:
+
+```text
+http://127.0.0.1:4173/apps/analytics-console/
+```
+
+It consumes:
+
+- Foundation Identity people and Amoeba definitions.
+- Ops operators, team board, daily performance, alerts, cash status and economics policies.
+- Payments reserved accounts and transactions when the Payments Integration service is available.
+
+Implemented control-room surfaces:
+
+- First-screen KPIs for Net Earnings, Net Earnings growth, hourly efficiency, utilisation, cash variance and grouped alerts.
+- Day, week and month period controls. Longer periods aggregate Net Earnings, targets, expected labour hours and operator/amoeba performance over the selected period.
+- Net Earnings trend with prior-week overlay where historical data exists.
+- Hourly efficiency compared against configured labour cost. The dashboard labels whether HE is above or below the labour floor.
+- Breakeven and platform mix, including admin fixed labour cost, operator labour share and daily overhead assumptions.
+- Car/bike split and platform mix so vehicle economics do not get blended.
+- Amoeba comparison bars for score, target pace, HE, utilisation and cash.
+- Amoeba portfolio cards that drill into decision cue, prior-period movement, platform mix, vehicle mix and operator rows.
+- Grouped operator signals for missing, offline, cash shortfall and active performers.
+- Sortable operator leaderboard by Net Earnings, acceptance, trips, online time and cash performance.
+- Leakage watch grouped by cash shortfalls, missing/offline operators, stale data and open alerts.
+- Data-quality impact drilldown showing authoritative, derived and stale/missing Net Earnings impact.
+- CSV export for amoeba, operator and performance rows in the selected day/week/month period.
+
+Implementation notes:
+
+- Supervisor and amoeba owner are treated as the same operational level.
+- Net Earnings is the canonical dashboard term. Accounting revenue is intentionally absent until accounting treatment is defined.
+- Utilisation uses `active assets / total available assets`.
+- Hourly efficiency uses `Net Earnings / Expected Labour Hours`, not actual hours worked.
+- The selected operating date still supplies live status, cash status and alert context. Week/month views aggregate performance rows over the period while preserving current operational status context.
+- Payments and Monnify cash-on-hand displays degrade gracefully when the Payments Integration service is unavailable.
+
+## 15. Remaining 4E Hardening
+
+- Add custom date ranges after day/week/month review is accepted.
+- Add board-ready printable views once the board-meeting format is agreed.
+- Add production data freshness badges per source after connector SLAs are finalized.
+- Add real tracker-backed mileage into analytics once the tracker connector is implemented.
+- Add richer correlation views for early resumption, utilisation, demand trend and Net Earnings growth.
+
+## 16. Open Questions
 
 - Which KPIs are vanity metrics and should be de-emphasized?
 - How much raw detail should be visible before drilldown?
@@ -238,5 +285,5 @@ Missing/stale data:
 - Which reports must be audit-ready?
 - Which views must be printable or board-meeting ready?
 - What exact cash-held trigger should force an operator remittance?
-- What labour-hour expectation should be configured per operator/amoeba?
-- What average labour hourly cost should be the default breakeven comparator?
+- What should the default production labour-hour expectation be per operator/amoeba after more real operating data is available?
+- What average labour hourly cost should be the default breakeven comparator if no saved economics policy exists?

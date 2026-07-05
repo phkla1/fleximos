@@ -49,6 +49,7 @@ During local Ops development:
 - `monnify-setup-and-test.md`: sandbox reserved-account provisioning, webhook verification, deposit replay, and scheduled reconciliation.
 - `ops-cash-closeout.md`: expected cash, Monnify remittance matching, Finance adjustments, and supervisor closeout.
 - `ops-economics-policies.md`: labour, overhead, expected-hour, and breakeven assumptions consumed by Analytics.
+- `analytics-console.md`: Phase 4E Analytics Console source APIs, calculations, period handling, drilldowns, data-quality rules, and known limitations.
 
 ## Acceptance Gate for API Changes
 

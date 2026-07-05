@@ -5,6 +5,8 @@
 
 > **Naming note:** "MOS" (Management & Operations Suite) is the umbrella name for the full Fleximotion software platform, which includes the Ops App, the HR App, the Monnify Service, a Task Management app, and others. This document covers the **Ops App** only — the daily fleet operations application. Do not use "MOS" to refer to this app specifically.
 
+> **Implementation checkpoint, 2026-07-04:** Contract foundation, Identity/Amoeba foundation, Ops MVP, scoped access, Manager/Finance consoles, simulated Payments/Monnify integration, cash closeout, economics policies and the Phase 4E Analytics Console are complete for local review. Remaining production work includes live Monnify sandbox/live validation, production data stores, tracker-backed mileage, inspections/incidents/media, broader exports, P&L hardening and deployment observability.
+
 **Author:** Generated from stakeholder sessions  
 
 ---
