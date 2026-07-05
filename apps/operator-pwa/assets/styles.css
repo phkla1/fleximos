@@ -12,7 +12,7 @@ button, input { font: inherit; }
 main { width: min(100%, 560px); min-height: 100vh; margin: 0 auto; background: #fff; }
 
 .login-view { min-height: 100vh; padding: 12vh 28px 40px; }
-.brand-mark { display: grid; place-items: center; width: 48px; height: 48px; background: #163b32; color: white; font-size: 24px; font-weight: 800; }
+.brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 13px; background: linear-gradient(140deg, #2ea380, #157a5c 62%, #0b4a38); box-shadow: inset 0 1px 0 rgba(255,255,255,.34), 0 8px 18px -8px rgba(0,0,0,.5); color: white; font-size: 24px; font-weight: 800; }
 .eyebrow { margin: 18px 0 5px; color: #397867; font-size: 12px; font-weight: 800; text-transform: uppercase; }
 h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 10px; font-size: 32px; letter-spacing: 0; }
@@ -20,8 +20,11 @@ h2 { margin-bottom: 5px; font-size: 19px; letter-spacing: 0; }
 .intro { max-width: 390px; color: #61706a; line-height: 1.55; }
 form { display: grid; gap: 16px; margin-top: 32px; }
 label { display: grid; gap: 7px; color: #4b5b55; font-size: 13px; font-weight: 700; }
-input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #c9d2ce; border-radius: 6px; background: white; }
-button { min-height: 48px; border: 0; border-radius: 6px; background: #163b32; color: white; font-weight: 800; cursor: pointer; }
+input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #c9d2ce; border-radius: 10px; background: white; transition: border-color .15s ease, box-shadow .15s ease; }
+input:focus-visible { outline: none; border-color: #157a5c; box-shadow: 0 0 0 3px rgba(21,122,92,.16); }
+button { min-height: 48px; border: 0; border-radius: 10px; background: linear-gradient(140deg, #1c8b69, #157a5c 55%, #0b4a38); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 18px -10px rgba(11,74,56,.55); color: white; font-weight: 800; cursor: pointer; transition: transform .14s ease, filter .14s ease; }
+button:hover { filter: brightness(1.06); }
+button:active { transform: translateY(1px); }
 .notice { min-height: 22px; margin-top: 16px; color: #52615c; font-size: 13px; }
 .notice.error { color: #a72d24; }
 
@@ -35,10 +38,10 @@ header h1 { margin: 0; font-size: 24px; }
 .date-row input { min-height: 40px; }
 #connectionStatus { padding-bottom: 10px; color: #397867; font-size: 12px; font-weight: 800; }
 
-.hero-status { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; padding: 24px 20px; color: white; background: #163b32; }
-.hero-status h2 { margin: 16px 0 0; font-size: 38px; }
+.hero-status { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; padding: 26px 20px; color: white; background: linear-gradient(130deg, #072e23 0%, #0d3f30 55%, #14523f 100%); box-shadow: inset 0 -1px 0 rgba(255,255,255,.06); }
+.hero-status h2 { margin: 16px 0 0; font-size: 40px; letter-spacing: -.02em; font-feature-settings: "tnum" 1; }
 .hero-status p { color: #c9ddd6; font-size: 13px; }
-.status-pill { display: inline-flex; padding: 6px 9px; border: 1px solid #5e8a7d; border-radius: 999px; color: #e5f2ed; font-size: 12px; font-weight: 800; text-transform: capitalize; }
+.status-pill { display: inline-flex; padding: 6px 11px; border: 1px solid rgba(94,138,125,.9); border-radius: 999px; background: rgba(255,255,255,.07); color: #e5f2ed; font-size: 12px; font-weight: 800; text-transform: capitalize; }
 .pace { align-self: end; padding-left: 16px; border-left: 1px solid #507268; }
 .pace strong, .pace span { display: block; }
 .pace strong { margin-bottom: 6px; font-size: 17px; text-transform: capitalize; }
@@ -62,8 +65,9 @@ header h1 { margin: 0; font-size: 24px; }
 .alert-row strong { text-transform: capitalize; }
 .empty { padding: 10px 0; color: #71807a; font-size: 14px; }
 
+.icon-button, .secondary-button, .explain-button, .incident-grid button, .dialog-heading button { box-shadow: none; }
 .inline-form { display: grid; gap: 12px; margin-top: 0; }
-.inline-form select { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #c9d2ce; border-radius: 6px; background: white; font: inherit; }
+.inline-form select { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #c9d2ce; border-radius: 10px; background: white; font: inherit; }
 .secondary-button { background: #e7efec; color: #163b32; }
 
 .support-button {
