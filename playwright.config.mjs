@@ -38,7 +38,13 @@ export default defineConfig({
   ],
   projects: [
     {
+      name: "seed",
+      testMatch: /seed\.setup\.mjs/
+    },
+    {
       name: "chromium-desktop",
+      dependencies: ["seed"],
+      testIgnore: /seed\.setup\.mjs/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 1000 }
@@ -46,6 +52,8 @@ export default defineConfig({
     },
     {
       name: "mobile-chrome",
+      dependencies: ["seed"],
+      testIgnore: /seed\.setup\.mjs/,
       use: {
         ...devices["Pixel 5"]
       }

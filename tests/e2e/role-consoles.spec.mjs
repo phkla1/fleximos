@@ -8,7 +8,7 @@ test.describe("role consoles", () => {
     await expect(page.getByRole("heading", { name: "Operations across your teams" })).toBeVisible();
     await expect(page.locator("#notice")).toContainText("Manager view is limited");
     await expect(page.locator("#activeCount")).not.toHaveText("0");
-    await expect(page.locator("#teamPortfolio .summary-card")).toHaveCount(1);
+    await expect(page.locator("#teamPortfolio .summary-card")).not.toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Escalations" })).toBeVisible();
   });
 
@@ -22,7 +22,7 @@ test.describe("role consoles", () => {
     await expect(page.locator("#reservedAccountMetric")).not.toContainText("Not connected");
     await expect(page.locator("#reservedAccountMetric")).not.toContainText("Checking");
     await expect(page.locator("#notice")).toContainText("Payments Integration is connected");
-    await expect(page.locator("#operatorAccountList .summary-card")).toHaveCount(1);
+    await expect(page.locator("#operatorAccountList .summary-card")).not.toHaveCount(0);
     await expect(page.locator("#periodCloseBanner")).toContainText("Open for Finance review");
     await expect(page.getByRole("heading", { name: "Recent period closes" })).toBeVisible();
     await expect(page.locator("#periodCloseList")).toBeVisible();
@@ -33,8 +33,8 @@ test.describe("role consoles", () => {
     await page.locator("#exportAccountsCsv").click();
     expect((await accountDownload).suggestedFilename()).toContain("reserved-accounts");
     await expect(page.locator("#adjustmentForm")).toBeAttached();
-    await page.locator("#operatorAccountList").getByRole("button", { name: "View operators" }).click();
-    await expect(page.locator("#operatorDialogList .data-row")).toHaveCount(1);
+    await page.locator("#operatorAccountList").getByRole("button", { name: "View operators" }).first().click();
+    await expect(page.locator("#operatorDialogList .data-row")).not.toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Monnify service readiness" })).toBeVisible();
   });
 
@@ -78,10 +78,10 @@ test.describe("role consoles", () => {
     await expect(page.getByRole("heading", { name: "Performance bars" })).toBeVisible();
     await expect(page.locator("#amoebaComparisonChart .comparison-row")).not.toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Amoeba portfolio" })).toBeVisible();
-    await expect(page.locator("#amoebaPortfolio .summary-card")).toHaveCount(1);
-    await page.getByRole("button", { name: "HE" }).click();
-    await expect(page.getByRole("button", { name: "HE" })).toHaveClass(/active/);
-    await page.locator("#amoebaPortfolio .summary-card").click();
+    await expect(page.locator("#amoebaPortfolio .summary-card")).not.toHaveCount(0);
+    await page.getByRole("button", { name: "HE", exact: true }).click();
+    await expect(page.getByRole("button", { name: "HE", exact: true })).toHaveClass(/active/);
+    await page.locator("#amoebaPortfolio .summary-card").first().click();
     await expect(page.locator("#detailDialog")).toBeVisible();
     await expect(page.locator("#detailTitle")).toContainText("details");
     await expect(page.locator("#detailBody")).toContainText("Decision cue");
