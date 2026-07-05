@@ -106,6 +106,19 @@ Validate a historical daily CSV before importing:
 npm run migrate:ops-daily -- --input ./daily.csv
 ```
 
+## Testing
+
+```bash
+npm run test:api        # backend contract/integration tests
+npm run test:e2e        # Playwright browser suite (seeds its own demo data)
+npm run validate:openapi
+```
+
+## Deployment and acceptance testing
+
+- `deploy/linode/README.md` — full Linode runbook with installer, systemd units and nginx site.
+- `docs/acceptance-tests/` — per-role acceptance test scripts that double as training guides (operator, supervisor, manager, finance, admin, executive analytics).
+
 ## Current Contract Files
 
 - `api-contracts/openapi/identity.v1.json`
