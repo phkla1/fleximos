@@ -50,6 +50,7 @@ During local Ops development:
 - `ops-cash-closeout.md`: expected cash, Monnify remittance matching, Finance adjustments, and supervisor closeout.
 - `ops-economics-policies.md`: labour, overhead, expected-hour, and breakeven assumptions consumed by Analytics.
 - `analytics-console.md`: Phase 4E Analytics Console source APIs, calculations, period handling, drilldowns, data-quality rules, and known limitations.
+- `ops-operational-depth.md`: Phase 4F deviation workflows, incidents, inspections, maintenance, camera media, expenses, amoeba P&L, transfer pricing, leaderboards, and the escalation queue.
 
 ## Acceptance Gate for API Changes
 

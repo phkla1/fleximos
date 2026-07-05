@@ -371,10 +371,150 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       CREATE INDEX IF NOT EXISTS idx_ops_job_runs_name_created
         ON ops_scheduled_job_runs(job_name, created_at DESC);
+
+      ALTER TABLE ops_alerts
+        ADD COLUMN IF NOT EXISTS deviation_reason_code TEXT,
+        ADD COLUMN IF NOT EXISTS deviation_reason_note TEXT,
+        ADD COLUMN IF NOT EXISTS deviation_submitted_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS deviation_submitted_by_person_id TEXT,
+        ADD COLUMN IF NOT EXISTS deviation_review_status TEXT,
+        ADD COLUMN IF NOT EXISTS deviation_reviewed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS deviation_reviewed_by_person_id TEXT,
+        ADD COLUMN IF NOT EXISTS deviation_review_note TEXT,
+        ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS escalated_by_person_id TEXT,
+        ADD COLUMN IF NOT EXISTS escalation_note TEXT;
+
+      CREATE TABLE IF NOT EXISTS ops_media_files (
+        media_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        captured_at TIMESTAMPTZ NOT NULL,
+        gps_lat NUMERIC(10, 6),
+        gps_lng NUMERIC(10, 6),
+        storage_path TEXT NOT NULL,
+        uploaded_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS ops_incidents (
+        incident_id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        vehicle_id TEXT REFERENCES ops_vehicles(vehicle_id),
+        incident_type TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'normal',
+        description TEXT,
+        gps_lat NUMERIC(10, 6),
+        gps_lng NUMERIC(10, 6),
+        media_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status TEXT NOT NULL DEFAULT 'open',
+        reported_by_person_id TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL,
+        acknowledged_at TIMESTAMPTZ,
+        acknowledged_by_person_id TEXT,
+        resolved_at TIMESTAMPTZ,
+        resolved_by_person_id TEXT,
+        resolution_notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ops_incidents_status
+        ON ops_incidents(status, occurred_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ops_vehicle_inspections (
+        inspection_id TEXT PRIMARY KEY,
+        vehicle_id TEXT NOT NULL REFERENCES ops_vehicles(vehicle_id),
+        amoeba_id TEXT NOT NULL,
+        inspected_by_person_id TEXT NOT NULL,
+        odometer_km NUMERIC(10, 1),
+        fuel_level_pct NUMERIC(5, 2),
+        condition TEXT NOT NULL,
+        issue_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+        notes TEXT,
+        media_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        review_status TEXT NOT NULL DEFAULT 'pending',
+        reviewed_at TIMESTAMPTZ,
+        reviewed_by_person_id TEXT,
+        review_note TEXT,
+        inspected_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ops_inspections_vehicle
+        ON ops_vehicle_inspections(vehicle_id, inspected_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ops_maintenance_reports (
+        maintenance_id TEXT PRIMARY KEY,
+        operator_id TEXT REFERENCES ops_operators(operator_id),
+        vehicle_id TEXT NOT NULL REFERENCES ops_vehicles(vehicle_id),
+        category TEXT NOT NULL,
+        description TEXT,
+        media_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status TEXT NOT NULL DEFAULT 'open',
+        cost_ngn NUMERIC(12, 2),
+        resolution_notes TEXT,
+        reported_by_person_id TEXT NOT NULL,
+        resolved_at TIMESTAMPTZ,
+        resolved_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ops_maintenance_status
+        ON ops_maintenance_reports(status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ops_expenses (
+        expense_id TEXT PRIMARY KEY,
+        expense_date DATE NOT NULL,
+        amoeba_id TEXT,
+        category TEXT NOT NULL,
+        description TEXT,
+        amount_ngn NUMERIC(12, 2) NOT NULL,
+        allocation TEXT NOT NULL DEFAULT 'direct',
+        evidence_reference TEXT,
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ops_expenses_date
+        ON ops_expenses(expense_date DESC, amoeba_id);
+
+      CREATE TABLE IF NOT EXISTS ops_transfer_price_events (
+        transfer_price_event_id TEXT PRIMARY KEY,
+        external_event_id TEXT UNIQUE,
+        event_date DATE NOT NULL,
+        from_amoeba_id TEXT NOT NULL,
+        to_amoeba_id TEXT NOT NULL,
+        amount_ngn NUMERIC(12, 2) NOT NULL,
+        description TEXT,
+        source_system TEXT NOT NULL DEFAULT 'tms',
+        recorded_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ops_transfer_price_date
+        ON ops_transfer_price_events(event_date DESC);
+
+      CREATE TABLE IF NOT EXISTS ops_leaderboard_config (
+        config_id TEXT PRIMARY KEY,
+        acceptance_weight NUMERIC(4, 2) NOT NULL DEFAULT 0.30,
+        online_weight NUMERIC(4, 2) NOT NULL DEFAULT 0.30,
+        cash_weight NUMERIC(4, 2) NOT NULL DEFAULT 0.30,
+        revenue_weight NUMERIC(4, 2) NOT NULL DEFAULT 0.10,
+        default_timeline TEXT NOT NULL DEFAULT 'this_week',
+        company_wide_visible BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_by_person_id TEXT,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
     `);
 
     await this.seed();
     await this.seedScheduledJobs();
+    await this.seedLeaderboardConfig();
   }
 
   async onModuleDestroy() {
@@ -497,6 +637,19 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
            'high_wait_ratio', CURRENT_DATE, 2, NULL, $1, 'open',
            '{"wait_ratio_pct": 34, "development_seed": true}'::jsonb)`,
         [timestamp]
+      );
+    }
+  }
+
+  private async seedLeaderboardConfig() {
+    const existing = await this.one("SELECT config_id FROM ops_leaderboard_config LIMIT 1");
+    if (!existing) {
+      await this.exec(
+        `INSERT INTO ops_leaderboard_config
+         (config_id, acceptance_weight, online_weight, cash_weight, revenue_weight,
+          default_timeline, company_wide_visible, updated_by_person_id, updated_at)
+         VALUES ('leaderboard_default', 0.30, 0.30, 0.30, 0.10, 'this_week', TRUE, 'person_system', $1)`,
+        [new Date().toISOString()]
       );
     }
   }
