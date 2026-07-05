@@ -32,7 +32,7 @@ const els = {
 };
 
 const params = new URLSearchParams(window.location.search);
-if (params.get("apiBase")) els.apiBase.value = params.get("apiBase");
+els.apiBase.value = params.get("apiBase") || window.flexiServiceBase("foundation", 4010);
 if (params.get("token")) els.apiToken.value = params.get("token");
 
 function apiBase() {

@@ -1,0 +1,22 @@
+[Unit]
+Description=Fleximotion Ops API
+After=network.target fleximos-foundation.service
+Wants=fleximos-foundation.service
+
+[Service]
+Type=simple
+User=fleximos
+WorkingDirectory=/srv/fleximos
+EnvironmentFile=/etc/fleximos/fleximos.env
+Environment=PORT=4030
+Environment=HOST=127.0.0.1
+Environment=FLEXI_OPS_DB_DIR=/var/lib/fleximos/ops-pglite
+Environment=FLEXI_OPS_MEDIA_DIR=/var/lib/fleximos/ops-media
+Environment=FOUNDATION_API_BASE=http://127.0.0.1:4010
+Environment=PAYMENTS_API_BASE=http://127.0.0.1:4040
+ExecStart=/srv/fleximos/node_modules/.bin/tsx apps/ops-api/src/main.ts
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

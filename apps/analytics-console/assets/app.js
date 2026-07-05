@@ -38,9 +38,9 @@ const ids = [
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
-const opsBase = query.get("opsApiBase") || "http://127.0.0.1:4030";
-const foundationBase = query.get("foundationApiBase") || "http://127.0.0.1:4010";
-const paymentsBase = query.get("paymentsApiBase") || "http://127.0.0.1:4040";
+const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
+const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
+const paymentsBase = query.get("paymentsApiBase") || window.flexiServiceBase("payments", 4040);
 const token = query.get("token") || "flexi-dev-service-token";
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const overrides = {

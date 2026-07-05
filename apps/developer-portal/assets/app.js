@@ -159,3 +159,19 @@ window.addEventListener("hashchange", activateNav);
 renderApi("ops").then(activateNav).catch((error) => {
   endpointList.innerHTML = `<p class="load-error">${error.message}</p>`;
 });
+
+// When the portal is served from a deployed host, rewrite well-known
+// localhost service links to the same-origin reverse-proxy routes.
+if (!["127.0.0.1", "localhost", ""].includes(location.hostname)) {
+  const serviceRoutes = [
+    ["http://127.0.0.1:4030", `${location.origin}/services/ops`],
+    ["http://127.0.0.1:4010", `${location.origin}/services/foundation`],
+    ["http://127.0.0.1:4040", `${location.origin}/services/payments`],
+    ["http://127.0.0.1:4173", location.origin]
+  ];
+  for (const anchor of document.querySelectorAll("a[href^='http://127.0.0.1']")) {
+    for (const [from, to] of serviceRoutes) {
+      if (anchor.href.startsWith(from)) anchor.href = anchor.href.replace(from, to);
+    }
+  }
+}

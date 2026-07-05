@@ -1,6 +1,6 @@
 const query = new URLSearchParams(location.search);
-const foundationBase = query.get("foundationApiBase") || "http://127.0.0.1:4010";
-const opsBase = query.get("opsApiBase") || "http://127.0.0.1:4030";
+const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
+const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const storageKey = "fleximotion_operator_access_token";
 const ids = [
   "loginView", "appView", "loginForm", "loginNotice", "appNotice", "operatorName",

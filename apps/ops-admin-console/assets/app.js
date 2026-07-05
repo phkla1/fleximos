@@ -47,8 +47,8 @@ const el = Object.fromEntries(
 );
 
 const query = new URLSearchParams(location.search);
-if (query.get("opsApiBase")) el.opsApiBase.value = query.get("opsApiBase");
-if (query.get("foundationApiBase")) el.foundationApiBase.value = query.get("foundationApiBase");
+el.opsApiBase.value = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
+el.foundationApiBase.value = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
 
 document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("en-NG", {
   dateStyle: "full",

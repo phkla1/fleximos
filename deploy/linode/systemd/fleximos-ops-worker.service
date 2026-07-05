@@ -1,0 +1,20 @@
+[Unit]
+Description=Fleximotion Ops background worker
+After=network.target fleximos-ops-api.service
+Wants=fleximos-ops-api.service
+
+[Service]
+Type=simple
+User=fleximos
+WorkingDirectory=/srv/fleximos
+EnvironmentFile=/etc/fleximos/fleximos.env
+Environment=FLEXI_OPS_DB_DIR=/var/lib/fleximos/ops-pglite
+Environment=FLEXI_OPS_MEDIA_DIR=/var/lib/fleximos/ops-media
+Environment=FOUNDATION_API_BASE=http://127.0.0.1:4010
+Environment=PAYMENTS_API_BASE=http://127.0.0.1:4040
+ExecStart=/srv/fleximos/node_modules/.bin/tsx apps/ops-api/src/worker.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

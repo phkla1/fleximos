@@ -1,0 +1,20 @@
+[Unit]
+Description=Fleximotion Payments Integration (Monnify service)
+After=network.target fleximos-ops-api.service
+Wants=fleximos-ops-api.service
+
+[Service]
+Type=simple
+User=fleximos
+WorkingDirectory=/srv/fleximos
+EnvironmentFile=/etc/fleximos/fleximos.env
+Environment=PORT=4040
+Environment=HOST=127.0.0.1
+Environment=FLEXI_PAYMENTS_DB_DIR=/var/lib/fleximos/payments-pglite
+Environment=OPS_API_BASE=http://127.0.0.1:4030
+ExecStart=/usr/bin/node apps/payments-integration/server.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

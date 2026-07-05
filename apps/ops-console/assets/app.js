@@ -25,8 +25,8 @@ const el = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
-const opsApiBase = query.get("opsApiBase") || "http://127.0.0.1:4030";
-const foundationApiBase = query.get("foundationApiBase") || "http://127.0.0.1:4010";
+const opsApiBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
+const foundationApiBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
 const token = query.get("token") || "flexi-dev-service-token";
 let actorPersonId = query.get("actorPersonId") || "person_founder_wole";
 const todayLagos = new Intl.DateTimeFormat("en-CA", {

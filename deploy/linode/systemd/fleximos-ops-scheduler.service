@@ -1,0 +1,11 @@
+[Unit]
+Description=Fleximotion Ops scheduler tick (one shot)
+After=fleximos-ops-api.service
+
+[Service]
+Type=oneshot
+User=fleximos
+WorkingDirectory=/srv/fleximos
+EnvironmentFile=/etc/fleximos/fleximos.env
+Environment=FLEXI_OPS_DB_DIR=/var/lib/fleximos/ops-pglite
+ExecStart=/srv/fleximos/node_modules/.bin/tsx apps/ops-api/src/scheduler.ts --once
