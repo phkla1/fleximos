@@ -1,74 +1,89 @@
 #!/usr/bin/env bash
-# Fleximotion Linode installer. Run as root on a fresh Ubuntu 22.04/24.04 Linode
-# after cloning the repository to /srv/fleximos:
+# Fleximotion Linode installer — runs entirely as a regular user, with
+# everything under your home directory. No root access is required for the
+# core install; sudo is only suggested for two optional conveniences
+# (login lingering and nginx/TLS), and the script tells you when.
 #
-#   git clone <your-repo-url> /srv/fleximos
-#   bash /srv/fleximos/deploy/linode/install.sh
+#   git clone <your-repo-url> ~/fleximos
+#   bash ~/fleximos/deploy/linode/install.sh
 #
 set -euo pipefail
 
-REPO_DIR=/srv/fleximos
+REPO_DIR="$HOME/fleximos"
+DATA_DIR="$HOME/fleximos-data"
+BACKUP_DIR="$HOME/fleximos-backups"
 DEPLOY_DIR="$REPO_DIR/deploy/linode"
+UNIT_DIR="$HOME/.config/systemd/user"
 
 if [ ! -d "$REPO_DIR" ]; then
-  echo "Clone the repository to $REPO_DIR first." >&2
+  echo "Clone the repository to $REPO_DIR first (git clone <url> ~/fleximos)." >&2
   exit 1
 fi
 
-echo "==> Installing Node.js 20 and nginx"
-if ! command -v node >/dev/null || [ "$(node -v | cut -c2-3)" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+echo "==> Checking for Node.js 20+"
+need_node=1
+if command -v node >/dev/null 2>&1; then
+  major="$(node -v | sed 's/^v//' | cut -d. -f1)"
+  [ "$major" -ge 20 ] && need_node=0
 fi
-apt-get install -y nginx
+if [ "$need_node" = 1 ]; then
+  echo "==> Installing Node.js 22 with nvm (user-level, no root needed)"
+  export NVM_DIR="$HOME/.nvm"
+  if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  fi
+  # shellcheck disable=SC1091
+  . "$NVM_DIR/nvm.sh"
+  nvm install 22
+  nvm alias default 22
+fi
+NODE_BIN="$(command -v node)"
+echo "    using node at $NODE_BIN ($(node -v))"
 
-echo "==> Creating the fleximos service user and data directories"
-id fleximos >/dev/null 2>&1 || useradd --system --home /srv/fleximos --shell /usr/sbin/nologin fleximos
-mkdir -p /var/lib/fleximos/{foundation-pglite,ops-pglite,payments-pglite,ops-media}
-mkdir -p /etc/fleximos /var/backups/fleximos
-chown -R fleximos:fleximos /var/lib/fleximos "$REPO_DIR"
+echo "==> Creating data and backup directories under \$HOME"
+mkdir -p "$DATA_DIR"/{foundation-pglite,ops-pglite,payments-pglite,ops-media} "$BACKUP_DIR"
 
 echo "==> Installing npm dependencies (includes tsx runtime)"
 cd "$REPO_DIR"
-sudo -u fleximos npm ci
+npm ci
 
-if [ ! -f /etc/fleximos/fleximos.env ]; then
-  echo "==> Seeding /etc/fleximos/fleximos.env with a random service token"
-  cp "$DEPLOY_DIR/fleximos.env.example" /etc/fleximos/fleximos.env
-  sed -i "s/change-me-to-a-long-random-string/$(openssl rand -hex 32)/" /etc/fleximos/fleximos.env
-  chmod 640 /etc/fleximos/fleximos.env
-  chown root:fleximos /etc/fleximos/fleximos.env
+if [ ! -f "$DATA_DIR/fleximos.env" ]; then
+  echo "==> Seeding $DATA_DIR/fleximos.env with a random service token"
+  cp "$DEPLOY_DIR/fleximos.env.example" "$DATA_DIR/fleximos.env"
+  token="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+  sed -i "s/change-me-to-a-long-random-string/$token/" "$DATA_DIR/fleximos.env"
+  chmod 600 "$DATA_DIR/fleximos.env"
 fi
 
-echo "==> Installing systemd units"
-cp "$DEPLOY_DIR"/systemd/*.service "$DEPLOY_DIR"/systemd/*.timer /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
-systemctl enable --now fleximos-ops-scheduler.timer
+echo "==> Installing systemd user units to $UNIT_DIR"
+mkdir -p "$UNIT_DIR"
+for unit in "$DEPLOY_DIR"/systemd/*.service "$DEPLOY_DIR"/systemd/*.timer; do
+  sed "s|__NODE_BIN__|$NODE_BIN|g" "$unit" > "$UNIT_DIR/$(basename "$unit")"
+done
+systemctl --user daemon-reload
+systemctl --user enable --now fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker fleximos-frontend
+systemctl --user enable --now fleximos-ops-scheduler.timer
 
-echo "==> Installing the nginx site (edit server_name before going live)"
-cp "$DEPLOY_DIR/nginx/fleximos.conf" /etc/nginx/sites-available/fleximos.conf
-ln -sf /etc/nginx/sites-available/fleximos.conf /etc/nginx/sites-enabled/fleximos.conf
-rm -f /etc/nginx/sites-enabled/default
-nginx -t && systemctl reload nginx
-
-echo "==> Installing the nightly database backup timer"
-cat > /etc/cron.daily/fleximos-backup <<'CRON'
-#!/bin/sh
-tar -czf "/var/backups/fleximos/fleximos-data-$(date +%F).tar.gz" -C /var/lib fleximos
-find /var/backups/fleximos -name 'fleximos-data-*.tar.gz' -mtime +14 -delete
-CRON
-chmod +x /etc/cron.daily/fleximos-backup
+echo "==> Installing the nightly backup entry in your user crontab"
+cron_line="@daily tar -czf $BACKUP_DIR/fleximos-data-\$(date +\\%F).tar.gz -C $HOME fleximos-data && find $BACKUP_DIR -name 'fleximos-data-*.tar.gz' -mtime +14 -delete"
+( crontab -l 2>/dev/null | grep -v "fleximos-data-" ; echo "$cron_line" ) | crontab -
 
 echo "==> Waiting for services"
 sleep 5
-for port in 4010 4030 4040; do
-  curl -fsS "http://127.0.0.1:$port/health" >/dev/null && echo "  service on :$port healthy" || echo "  WARNING: service on :$port not responding yet"
+for port in 4010 4030 4040 8080; do
+  curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1 && echo "  service on :$port healthy" \
+    || { [ "$port" = 8080 ] && curl -fsS "http://127.0.0.1:8080/apps/developer-portal/" >/dev/null 2>&1 && echo "  frontend on :8080 healthy"; } \
+    || echo "  WARNING: service on :$port not responding yet"
 done
 
 echo
-echo "Done. Next steps:"
-echo "  1. Edit server_name in /etc/nginx/sites-available/fleximos.conf and reload nginx."
-echo "  2. (Optional) point a domain at this Linode and run: apt install certbot python3-certbot-nginx && certbot --nginx"
-echo "  3. Seed demo data for training: see deploy/linode/README.md, 'Seeding'."
-echo "  4. Open http://<server>/apps/developer-portal/ to verify."
+echo "Done. The suite is served on port 8080 (frontends + /services proxy)."
+echo
+echo "Follow-ups:"
+echo "  1. Keep services running after you log out (one-time, needs sudo):"
+echo "       sudo loginctl enable-linger $USER"
+echo "     Without lingering, services stop when your last SSH session ends."
+echo "  2. Open port 8080 in the Linode Cloud Firewall (dashboard, no server access needed),"
+echo "     then browse to http://<linode-ip>:8080/apps/developer-portal/"
+echo "  3. Optional domain + TLS on port 443: see 'Optional: nginx and TLS' in deploy/linode/README.md."
+echo "  4. Seed demo data for training: see deploy/linode/README.md, 'Seeding'."

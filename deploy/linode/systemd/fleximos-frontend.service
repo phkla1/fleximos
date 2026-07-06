@@ -1,0 +1,22 @@
+# systemd USER unit — installed to ~/.config/systemd/user by install.sh,
+# which replaces __NODE_BIN__ with the absolute path of your node binary.
+#
+# Public entry point for the suite: serves every frontend from the repository
+# and proxies /services/{foundation,ops,payments} to the local APIs, so no
+# root-owned web server is required.
+[Unit]
+Description=Fleximotion frontend host and service proxy
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fleximos
+EnvironmentFile=%h/fleximos-data/fleximos.env
+Environment=PORT=8080
+Environment=HOST=0.0.0.0
+ExecStart=__NODE_BIN__ scripts/serve-developer-portal.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

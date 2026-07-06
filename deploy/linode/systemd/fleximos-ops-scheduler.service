@@ -1,11 +1,12 @@
+# systemd USER unit — installed to ~/.config/systemd/user by install.sh,
+# which replaces __NODE_BIN__ with the absolute path of your node binary.
 [Unit]
 Description=Fleximotion Ops scheduler tick (one shot)
 After=fleximos-ops-api.service
 
 [Service]
 Type=oneshot
-User=fleximos
-WorkingDirectory=/srv/fleximos
-EnvironmentFile=/etc/fleximos/fleximos.env
-Environment=FLEXI_OPS_DB_DIR=/var/lib/fleximos/ops-pglite
-ExecStart=/srv/fleximos/node_modules/.bin/tsx apps/ops-api/src/scheduler.ts --once
+WorkingDirectory=%h/fleximos
+EnvironmentFile=%h/fleximos-data/fleximos.env
+Environment=FLEXI_OPS_DB_DIR=%h/fleximos-data/ops-pglite
+ExecStart=__NODE_BIN__ node_modules/.bin/tsx apps/ops-api/src/scheduler.ts --once

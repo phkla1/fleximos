@@ -29,7 +29,44 @@ function resolveRequestPath(urlPath) {
   return absolutePath;
 }
 
+// Same-origin service proxy. The deployed frontends resolve their API bases to
+// /services/<name> on the current origin (see apps/role-console-assets/flexi-env.js),
+// so this server can front the whole suite without nginx or root access.
+const serviceProxies = new Map([
+  ["foundation", Number(process.env.FOUNDATION_PORT || 4010)],
+  ["ops", Number(process.env.OPS_PORT || 4030)],
+  ["payments", Number(process.env.PAYMENTS_PORT || 4040)]
+]);
+
+function proxyService(req, res, service, targetPath) {
+  const upstream = http.request(
+    {
+      host: "127.0.0.1",
+      port: serviceProxies.get(service),
+      path: targetPath || "/",
+      method: req.method,
+      headers: { ...req.headers, host: `127.0.0.1:${serviceProxies.get(service)}` }
+    },
+    (upstreamRes) => {
+      res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+      upstreamRes.pipe(res);
+    }
+  );
+  upstream.on("error", () => {
+    send(res, 502, JSON.stringify({ error: { message: `${service} service is not reachable` } }), {
+      "Content-Type": "application/json; charset=utf-8"
+    });
+  });
+  req.pipe(upstream);
+}
+
 const server = http.createServer((req, res) => {
+  const serviceMatch = (req.url || "").match(/^\/services\/(foundation|ops|payments)(\/.*)?$/);
+  if (serviceMatch) {
+    proxyService(req, res, serviceMatch[1], serviceMatch[2]);
+    return;
+  }
+
   const requestPath = resolveRequestPath(req.url || "/");
   if (!requestPath) {
     send(res, 403, "Forbidden");

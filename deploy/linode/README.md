@@ -1,145 +1,181 @@
 # Deploying FlexiMOS to a Linode server
 
-This runbook takes the suite from a fresh Ubuntu 22.04/24.04 Linode to a working
-acceptance-testing environment. It deploys the current "local review" stack —
-PGlite file databases, simulated Monnify mode and the development service-token
-model — which is exactly what user acceptance testing and training need. The
-production-hardening gates (PostgreSQL, Redis/BullMQ, live platform and Monnify
-credentials, per-user authentication hardening) are listed at the end and in
+This runbook takes the suite from a fresh Ubuntu 22.04/24.04 Linode to a
+working acceptance-testing environment **without requiring root access**.
+Everything lives under your home directory: the repository in `~/fleximos`,
+databases and media in `~/fleximos-data`, backups in `~/fleximos-backups`,
+and services as systemd *user* units in `~/.config/systemd/user`.
+
+It deploys the current "local review" stack — PGlite file databases, simulated
+Monnify mode and the development service-token model — which is exactly what
+user acceptance testing and training need. The production-hardening gates
+(PostgreSQL, Redis/BullMQ, live platform and Monnify credentials, per-user
+authentication hardening) are listed at the end and in
 `deploy/phase3-runtime.md`.
 
 ## What runs where
 
-| Process | Port | systemd unit |
+| Process | Port | systemd user unit |
 |---|---|---|
+| Frontend host + `/services/*` proxy (public entry) | 8080 | `fleximos-frontend` |
 | Foundation API (Identity + Amoeba) | 4010 | `fleximos-foundation` |
 | Ops API | 4030 | `fleximos-ops-api` |
 | Payments Integration (Monnify) | 4040 | `fleximos-payments` |
 | Ops worker (queues, alerts, reports) | — | `fleximos-ops-worker` |
 | Ops scheduler tick (every minute) | — | `fleximos-ops-scheduler.timer` |
-| nginx (static frontends + `/services/*` proxies) | 80/443 | `nginx` |
 
-All backend ports bind to `127.0.0.1` only; nginx is the single public entry
-point. The frontends automatically talk to `/services/foundation`,
-`/services/ops` and `/services/payments` on the same origin whenever they are
-not served from localhost (see `apps/role-console-assets/flexi-env.js`), so no
-frontend configuration is needed.
+The three API ports bind to `127.0.0.1` only. The frontend host on port 8080
+is the single public surface: it serves every console from the repository and
+proxies `/services/foundation`, `/services/ops` and `/services/payments` to
+the local APIs. The frontends resolve those same-origin routes automatically
+whenever they are not on localhost (see
+`apps/role-console-assets/flexi-env.js`), so no frontend configuration is
+needed and no root-owned web server is required.
 
-Data lives outside the repository:
+Layout on the server:
 
-- `/var/lib/fleximos/{foundation,ops,payments}-pglite` — databases
-- `/var/lib/fleximos/ops-media` — camera-capture media files
-- `/etc/fleximos/fleximos.env` — secrets and feature flags
-- `/var/backups/fleximos` — nightly data snapshots (14-day retention)
+- `~/fleximos` — repository checkout (code and static frontends)
+- `~/fleximos-data/{foundation,ops,payments}-pglite` — databases
+- `~/fleximos-data/ops-media` — camera-capture media files
+- `~/fleximos-data/fleximos.env` — secrets and feature flags (chmod 600)
+- `~/fleximos-backups` — nightly data snapshots (14-day retention)
 
 ## 1. Provision
 
 A shared-CPU Linode with 2 GB RAM is enough for UAT. Attach your SSH key,
-pick a region close to Lagos users (e.g. Frankfurt or London), and note the IP.
+pick a region close to Lagos users (e.g. Frankfurt or London), and note the
+IP. Create a regular (non-root) user if you were only given root, or use the
+account your host provided — the installer never needs to leave `$HOME`.
 
 ## 2. Install
 
 ```bash
-ssh root@<linode-ip>
-apt-get update && apt-get install -y git
-git clone <your-repo-url> /srv/fleximos
-bash /srv/fleximos/deploy/linode/install.sh
+ssh <user>@<linode-ip>
+git clone <your-repo-url> ~/fleximos
+bash ~/fleximos/deploy/linode/install.sh
 ```
 
 The installer:
 
-1. Installs Node.js 20 and nginx.
-2. Creates the `fleximos` system user and the data directories.
+1. Installs Node.js 22 via nvm into your home directory if the system has no
+   Node 20+ (no root needed; an existing system Node 20+ is used as-is).
+2. Creates `~/fleximos-data` and `~/fleximos-backups`.
 3. Runs `npm ci`.
-4. Writes `/etc/fleximos/fleximos.env` with a random service token.
-5. Installs and starts the five systemd units plus the scheduler timer.
-6. Installs the nginx site and a nightly backup cron job.
+4. Writes `~/fleximos-data/fleximos.env` with a random service token.
+5. Installs the six systemd **user** units plus the scheduler timer and starts
+   them with `systemctl --user`.
+6. Adds a nightly backup entry to your user crontab.
 
-## 3. Domain and TLS (recommended)
+Two follow-ups it will remind you about:
 
-```bash
-# after pointing an A record at the Linode:
-sed -i 's/fleximos.example.com/uat.yourdomain.com/' /etc/nginx/sites-available/fleximos.conf
-nginx -t && systemctl reload nginx
-apt-get install -y certbot python3-certbot-nginx
-certbot --nginx -d uat.yourdomain.com
-```
+- **Lingering** (one-time, the only step that wants sudo):
+  `sudo loginctl enable-linger $USER` keeps your user services running after
+  you log out. If you have no sudo at all, ask your host to enable lingering
+  for your account — without it, user services stop when your last SSH
+  session ends.
+- **Firewall**: open inbound TCP 8080 (plus 22) in the Linode Cloud Firewall
+  from the Linode dashboard — no server-side root needed.
 
-IP-only access also works (leave `server_name` as-is; nginx serves the default
-site); use `http://<linode-ip>/apps/...` URLs.
-
-## 4. Seed demo/training data
-
-The APIs self-seed reference data (platform accounts, pace profiles, policies).
-For realistic training rosters and history, run the demo seed once:
-
-```bash
-cd /srv/fleximos
-sudo -u fleximos FOUNDATION_API_BASE=http://127.0.0.1:4010 \
-  OPS_API_BASE=http://127.0.0.1:4030 \
-  FLEXI_SERVICE_TOKEN=$(grep FLEXI_SERVICE_TOKEN /etc/fleximos/fleximos.env | cut -d= -f2) \
-  node scripts/seed-ops-demo.mjs
-```
-
-The seed is idempotent — running it again does not duplicate data.
-
-## 5. Verify
+## 3. Verify
 
 ```bash
 curl -s http://127.0.0.1:4010/health
 curl -s http://127.0.0.1:4030/health
 curl -s http://127.0.0.1:4040/health
-systemctl status fleximos-ops-worker fleximos-ops-scheduler.timer --no-pager
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/apps/developer-portal/
+systemctl --user status fleximos-ops-worker fleximos-ops-scheduler.timer --no-pager
 ```
 
-Then in a browser:
+Then in a browser (`http://<linode-ip>:8080` or your domain):
 
-- `https://<host>/apps/developer-portal/` — portal and suite directory
-- `https://<host>/apps/ops-admin-console/` — Ops admin
-- `https://<host>/apps/ops-console/` — supervisor workspace
-- `https://<host>/apps/manager-console/` — manager console
-- `https://<host>/apps/finance-console/` — finance console
-- `https://<host>/apps/analytics-console/` — analytics control room
-- `https://<host>/apps/operator-pwa/` — operator app (login: phone + PIN `000000` for seeded users)
-- `https://<host>/apps/admin-console/` — Identity/Amoeba admin
+- `…/apps/developer-portal/` — portal and suite directory
+- `…/apps/ops-admin-console/` — Ops admin
+- `…/apps/ops-console/` — supervisor workspace
+- `…/apps/manager-console/` — manager console
+- `…/apps/finance-console/` — finance console
+- `…/apps/analytics-console/` — analytics control room
+- `…/apps/operator-pwa/` — operator app (login: phone + PIN `000000` for seeded users)
+- `…/apps/admin-console/` — Identity/Amoeba admin
 
 The acceptance-test scripts in `docs/acceptance-tests/` use these URLs.
+
+## 4. Seed demo/training data
+
+The APIs self-seed reference data (platform accounts, pace profiles,
+policies). For realistic training rosters and history, run the demo seed once:
+
+```bash
+cd ~/fleximos
+FOUNDATION_API_BASE=http://127.0.0.1:4010 \
+OPS_API_BASE=http://127.0.0.1:4030 \
+FLEXI_SERVICE_TOKEN=$(grep FLEXI_SERVICE_TOKEN ~/fleximos-data/fleximos.env | cut -d= -f2) \
+node scripts/seed-ops-demo.mjs
+```
+
+The seed is idempotent — running it again does not duplicate data.
+
+## 5. Optional: nginx and TLS
+
+Port 8080 over plain HTTP is fine for a private UAT round. When you want a
+domain on standard ports with HTTPS (recommended before real phone numbers
+and cash figures go in), add the nginx layer — this is the one part that
+needs sudo, and it is a thin proxy to port 8080:
+
+```bash
+sudo apt-get install -y nginx
+sudo cp ~/fleximos/deploy/linode/nginx/fleximos.conf /etc/nginx/sites-available/fleximos.conf
+sudo sed -i 's/fleximos.example.com/uat.yourdomain.com/' /etc/nginx/sites-available/fleximos.conf
+sudo ln -sf /etc/nginx/sites-available/fleximos.conf /etc/nginx/sites-enabled/fleximos.conf
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d uat.yourdomain.com
+```
+
+Then also open ports 80/443 in the Cloud Firewall (8080 can be closed again).
 
 ## 6. Updating the deployment
 
 ```bash
-cd /srv/fleximos
-sudo -u fleximos git pull
-sudo -u fleximos npm ci
-systemctl restart fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
+cd ~/fleximos
+git pull
+npm ci
+systemctl --user restart fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker fleximos-frontend
 ```
 
-Databases live in `/var/lib/fleximos`, so restarts and code updates never lose
-data. To reset the environment for a fresh training round, stop the services,
-delete the three `*-pglite` directories, start the services and re-run the seed.
+Databases live in `~/fleximos-data`, so restarts and code updates never lose
+data. To reset the environment for a fresh training round:
+
+```bash
+systemctl --user stop fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
+rm -rf ~/fleximos-data/{foundation,ops,payments}-pglite
+systemctl --user start fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
+# then re-run the seed (section 4)
+```
 
 ## 7. Backups and restore
 
-`/etc/cron.daily/fleximos-backup` snapshots `/var/lib/fleximos` nightly to
-`/var/backups/fleximos` and keeps 14 days. To restore:
+The user crontab entry snapshots `~/fleximos-data` nightly into
+`~/fleximos-backups` and keeps 14 days (`crontab -l` to inspect). To restore:
 
 ```bash
-systemctl stop fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
-tar -xzf /var/backups/fleximos/fleximos-data-<date>.tar.gz -C /var/lib
-chown -R fleximos:fleximos /var/lib/fleximos
-systemctl start fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
+systemctl --user stop fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
+tar -xzf ~/fleximos-backups/fleximos-data-<date>.tar.gz -C ~
+systemctl --user start fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
 ```
 
 ## 8. Security posture for UAT
 
-- Backend ports are loopback-only; nginx is the sole public surface.
-- The service token in `/etc/fleximos/fleximos.env` is random per install.
-  Anyone holding it has full service access — share it only with testers who
-  need console access, and rotate it (edit the file, restart services) after
-  the testing round.
+- API ports are loopback-only; the frontend host on 8080 is the sole public
+  surface.
+- The service token in `~/fleximos-data/fleximos.env` is random per install
+  and the file is `chmod 600`. Anyone holding the token has full service
+  access — share it only with testers who need console access, and rotate it
+  (edit the file, restart services) after the testing round.
 - Human logins (operator PWA and Identity sessions) use phone + PIN via the
   Foundation API; seeded development users have PIN `000000`.
-- Enable the Linode Cloud Firewall: allow 22, 80, 443 inbound; deny the rest.
+- Use the Linode Cloud Firewall: allow 22 and 8080 (or 80/443 with nginx)
+  inbound; deny the rest.
 
 ## 9. Production-hardening gates (later, not needed for UAT)
 

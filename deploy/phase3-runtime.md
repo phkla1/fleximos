@@ -28,10 +28,10 @@ Until these are configured and a live connector trial succeeds, the Ops MVP is d
 
 ## Cron entry
 
-Example:
+The Linode deployment package (`deploy/linode/`) runs the scheduler as a systemd user timer instead. If you prefer plain cron, a user-crontab example:
 
 ```cron
-* * * * * cd /srv/fleximos && /usr/bin/npm run ops:scheduler:once >> /var/log/fleximos-ops-scheduler.log 2>&1
+* * * * * cd $HOME/fleximos && npm run ops:scheduler:once >> $HOME/fleximos-data/ops-scheduler.log 2>&1
 ```
 
 Scheduler trigger IDs are deterministic per job and Lagos-time slot, so duplicate cron invocations return the existing run.

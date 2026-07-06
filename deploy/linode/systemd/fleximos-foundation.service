@@ -1,18 +1,19 @@
+# systemd USER unit — installed to ~/.config/systemd/user by install.sh,
+# which replaces __NODE_BIN__ with the absolute path of your node binary.
 [Unit]
 Description=Fleximotion Foundation API (Identity + Amoeba)
 After=network.target
 
 [Service]
 Type=simple
-User=fleximos
-WorkingDirectory=/srv/fleximos
-EnvironmentFile=/etc/fleximos/fleximos.env
+WorkingDirectory=%h/fleximos
+EnvironmentFile=%h/fleximos-data/fleximos.env
 Environment=PORT=4010
 Environment=HOST=127.0.0.1
-Environment=FLEXI_DB_DIR=/var/lib/fleximos/foundation-pglite
-ExecStart=/usr/bin/node apps/api-foundation/server.mjs
+Environment=FLEXI_DB_DIR=%h/fleximos-data/foundation-pglite
+ExecStart=__NODE_BIN__ apps/api-foundation/server.mjs
 Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
