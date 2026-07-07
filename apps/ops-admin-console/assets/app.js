@@ -49,6 +49,7 @@ const el = Object.fromEntries(
 const query = new URLSearchParams(location.search);
 el.opsApiBase.value = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 el.foundationApiBase.value = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
+el.apiToken.value = window.flexiServiceToken();
 
 document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("en-NG", {
   dateStyle: "full",

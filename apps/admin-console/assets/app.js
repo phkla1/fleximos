@@ -33,7 +33,7 @@ const els = {
 
 const params = new URLSearchParams(window.location.search);
 els.apiBase.value = params.get("apiBase") || window.flexiServiceBase("foundation", 4010);
-if (params.get("token")) els.apiToken.value = params.get("token");
+els.apiToken.value = window.flexiServiceToken();
 
 function apiBase() {
   return els.apiBase.value.replace(/\/$/, "");

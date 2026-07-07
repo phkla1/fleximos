@@ -24,7 +24,10 @@ These scripts serve two purposes at once:
 2. Seed demo data once: `node scripts/seed-ops-demo.mjs` (idempotent).
 3. Confirm all three health endpoints respond and the developer portal loads.
 4. Give each tester:
-   - the URL of their console (listed at the top of each script),
+   - the URL of their console (listed at the top of each script) — on a
+     deployed server, include the access token the first time:
+     `…/apps/<console>/?token=<server token>` (it is remembered by the
+     browser afterwards; not needed for the Operator PWA),
    - a printed or shared copy of their script,
    - somewhere to record results (the scripts have a results table at the end).
 

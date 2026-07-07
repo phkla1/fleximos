@@ -27,7 +27,7 @@ const el = Object.fromEntries([
 const query = new URLSearchParams(location.search);
 const opsApiBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const foundationApiBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
-const token = query.get("token") || "flexi-dev-service-token";
+const token = window.flexiServiceToken();
 let actorPersonId = query.get("actorPersonId") || "person_founder_wole";
 const todayLagos = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"

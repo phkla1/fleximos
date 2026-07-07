@@ -14,7 +14,7 @@ const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)])
 const query = new URLSearchParams(location.search);
 const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
-const token = query.get("token") || "flexi-dev-service-token";
+const token = window.flexiServiceToken();
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 el.operatingDate.value = today;
 

@@ -97,6 +97,18 @@ Then in a browser (`http://<linode-ip>:8080` or your domain):
 - `…/apps/operator-pwa/` — operator app (login: phone + PIN `000000` for seeded users)
 - `…/apps/admin-console/` — Identity/Amoeba admin
 
+**Console access tokens:** the deployed server uses the random service token
+in `~/fleximos-data/fleximos.env`, so consoles opened bare will show
+"Missing or invalid bearer token". Give each tester a tokenised link once:
+
+```text
+https://<host>/apps/manager-console/?token=<FLEXI_SERVICE_TOKEN value>
+```
+
+The console stores the token in that browser and every later visit (any
+console, no query string) works normally. The operator PWA is unaffected —
+operators sign in with phone + PIN.
+
 The acceptance-test scripts in `docs/acceptance-tests/` use these URLs.
 
 ## 4. Seed demo/training data
