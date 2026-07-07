@@ -124,7 +124,10 @@ FLEXI_SERVICE_TOKEN=$(grep FLEXI_SERVICE_TOKEN ~/fleximos-data/fleximos.env | cu
 node scripts/seed-ops-demo.mjs
 ```
 
-The seed is idempotent — running it again does not duplicate data.
+The seed writes a three-day performance window ending **today** (Lagos time),
+so dashboards look live immediately. It is idempotent within a day; re-running
+on a later date refreshes the window (earlier windows remain as history). Set
+`SEED_ANCHOR_DATE=YYYY-MM-DD` to pin the window for reproducible sessions.
 
 ## 5. Optional: nginx and TLS
 

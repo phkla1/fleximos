@@ -28,8 +28,20 @@ const operators = [
   ...item
 }));
 
+// The three-day demo window ends on the anchor date (default: today in
+// Lagos), so freshly seeded dashboards look live without picking a date.
+// Set SEED_ANCHOR_DATE=YYYY-MM-DD for a reproducible window. Re-running on a
+// later day seeds the new window and leaves earlier windows as history.
+const anchorDate = process.env.SEED_ANCHOR_DATE ||
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+function dayAt(offset) {
+  const date = new Date(`${anchorDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 const recentRows = {
-  "2026-06-03": [
+  [dayAt(-2)]: [
     ["Danjimoh Osheimoh",36,9,2,24,36224.22,31516.25,2075.78,11.51],
     ["Odulaja Abiodun Odufuwa",16,0,0,9,38229,46411,0,13.57],
     ["Odeh Johnson Sunday",19,0,0,3,47789,55768,0,13.15],
@@ -47,7 +59,7 @@ const recentRows = {
     ["Gakurnan Tapauro Moses",0,0,0,37,0,0,0,6.83],
     ["Godfrey Nashel",9,0,0,81,14278,14046,0,9.44]
   ],
-  "2026-06-04": [
+  [dayAt(-1)]: [
     ["Danjimoh Osheimoh",63,9,3,51,28144.3,24551.44,1655.7,10.9],
     ["Nathaniel Richard Enang",19,0,0,7,43670,52006,0,10.75],
     ["Julius Tolulope Olatunji",10,0,0,6,25450,30159,0,11.55],
@@ -65,7 +77,7 @@ const recentRows = {
     ["Godfrey Nashel",4,4,0,21,0,0,0,7.18],
     ["Gakurnan Tapauro Moses",3,0,0,38,9023,8877,0,9.81]
   ],
-  "2026-06-05": [
+  [dayAt(0)]: [
     ["Danjimoh Osheimoh",47,10,1,36,36482.6,31741.05,2117.4,11.3],
     ["Odeh Johnson Sunday",18,0,0,2,48001,145476,0,13.34],
     ["Bawa Oseni Umoru",0,0,0,0,0,70500,0,0],

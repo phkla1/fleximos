@@ -71,7 +71,7 @@ Accident and police reports also escalate to the manager if not acknowledged
 within 30 minutes.
 
 ### OP-9 · Look at an earlier day
-1. Change the **Operating date** at the top to an earlier date with activity.
+1. Change the **Operating date** at the top to yesterday (the demo seed covers the last three days).
 
 **Expected:** revenue, trips and hours update to that day.
 

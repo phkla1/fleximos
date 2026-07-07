@@ -89,7 +89,7 @@ available (bikes typically show "Tracker unavailable" — that is expected) and
 exception pills.
 
 ### SU-11 · Look at an earlier operating day
-1. Change **Operating date** to a date with seeded history.
+1. Change **Operating date** to yesterday (the demo seed covers the last three days).
 
 **Expected:** the board, alerts and performance update to that day.
 
