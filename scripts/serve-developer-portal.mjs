@@ -75,6 +75,14 @@ const server = http.createServer((req, res) => {
 
   let filePath = requestPath;
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+    // Redirect directory requests to the trailing-slash form so the page's
+    // relative asset URLs (./assets/…, ../role-console-assets/…) resolve
+    // against the right base path.
+    const [pathname, queryString] = (req.url || "/").split("?");
+    if (!pathname.endsWith("/")) {
+      send(res, 301, "Moved", { Location: `${pathname}/${queryString ? `?${queryString}` : ""}` });
+      return;
+    }
     filePath = path.join(filePath, "index.html");
   }
 
