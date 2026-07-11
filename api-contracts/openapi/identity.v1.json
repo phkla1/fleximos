@@ -6,33 +6,61 @@
     "description": "Canonical people, user accounts, roles, service accounts, and authentication for the Fleximotion app suite."
   },
   "servers": [
-    { "url": "https://api.fleximotion.example/identity/v1", "description": "Production placeholder" },
-    { "url": "http://localhost:4010/v1", "description": "Local development" }
+    {
+      "url": "https://api.fleximotion.example/identity/v1",
+      "description": "Production placeholder"
+    },
+    {
+      "url": "http://localhost:4010/v1",
+      "description": "Local development"
+    }
   ],
-  "security": [{ "BearerAuth": [] }],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
   "tags": [
-    { "name": "People" },
-    { "name": "Users" },
-    { "name": "Role Assignments" },
-    { "name": "Auth" },
-    { "name": "Service Accounts" }
+    {
+      "name": "People"
+    },
+    {
+      "name": "Users"
+    },
+    {
+      "name": "Role Assignments"
+    },
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Service Accounts"
+    }
   ],
   "paths": {
     "/people": {
       "get": {
-        "tags": ["People"],
+        "tags": [
+          "People"
+        ],
         "summary": "List people",
         "description": "Returns canonical human identity records. Domain systems should reference people by person_id rather than duplicating identity fields.",
         "parameters": [
-          { "$ref": "#/components/parameters/Limit" },
-          { "$ref": "#/components/parameters/Cursor" }
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
         ],
         "responses": {
           "200": {
             "description": "People page",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PeoplePage" },
+                "schema": {
+                  "$ref": "#/components/schemas/PeoplePage"
+                },
                 "examples": {
                   "default": {
                     "value": {
@@ -55,19 +83,29 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "post": {
-        "tags": ["People"],
+        "tags": [
+          "People"
+        ],
         "summary": "Create a person",
         "description": "Creates the canonical human identity record. Clients must send an Idempotency-Key header.",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreatePersonRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/CreatePersonRequest"
+              }
             }
           }
         },
@@ -76,507 +114,1396 @@
             "description": "Person created",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Person" }
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "409": { "$ref": "#/components/responses/Conflict" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       }
     },
     "/people/{person_id}": {
       "get": {
-        "tags": ["People"],
+        "tags": [
+          "People"
+        ],
         "summary": "Get a person",
-        "parameters": [{ "$ref": "#/components/parameters/PersonId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PersonId"
+          }
+        ],
         "responses": {
-          "200": { "description": "Person", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Person" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Person",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       },
       "patch": {
-        "tags": ["People"],
+        "tags": [
+          "People"
+        ],
         "summary": "Update a person",
         "description": "Updates basic canonical identity fields. Domain-specific lifecycle state belongs in HR, Ops, or TMS.",
         "parameters": [
-          { "$ref": "#/components/parameters/PersonId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/PersonId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/UpdatePersonRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePersonRequest"
+              }
             }
           }
         },
         "responses": {
-          "200": { "description": "Updated person", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Person" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Updated person",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/people/{person_id}/history": {
       "get": {
-        "tags": ["People"],
+        "tags": [
+          "People"
+        ],
         "summary": "Get person history",
-        "parameters": [{ "$ref": "#/components/parameters/PersonId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PersonId"
+          }
+        ],
         "responses": {
-          "200": { "description": "Person history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HistoryPage" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Person history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryPage"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/users": {
       "get": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "List user accounts",
         "parameters": [
-          { "$ref": "#/components/parameters/Limit" },
-          { "$ref": "#/components/parameters/Cursor" }
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
         ],
         "responses": {
-          "200": { "description": "Users page", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UsersPage" } } } }
+          "200": {
+            "description": "Users page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsersPage"
+                }
+              }
+            }
+          }
         }
       },
       "post": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Create user account",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CreateUserRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
           }
         },
         "responses": {
-          "201": { "description": "User created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }
+          "201": {
+            "description": "User created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/auth/login": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Login",
         "security": [],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
           }
         },
         "responses": {
-          "200": { "description": "Session tokens", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSession" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Session tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/me": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Get current authenticated user",
         "responses": {
-          "200": { "description": "Current user and active scoped assignments", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdentityProfile" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Current user and active scoped assignments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/users/{user_id}": {
       "get": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Get user account",
-        "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
         "responses": {
-          "200": { "description": "User", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "User",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       },
       "patch": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Update user account",
         "parameters": [
-          { "$ref": "#/components/parameters/UserId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/UserId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateUserRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
           }
         },
         "responses": {
-          "200": { "description": "Updated user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/users/{user_id}/history": {
       "get": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Get user history",
-        "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
         "responses": {
-          "200": { "description": "User history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HistoryPage" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "User history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryPage"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/role-assignments": {
       "get": {
-        "tags": ["Role Assignments"],
+        "tags": [
+          "Role Assignments"
+        ],
         "summary": "List scoped business-role assignments",
         "description": "System-admin endpoint. Effective access is the union of every active assignment returned for a person.",
         "parameters": [
-          { "name": "person_id", "in": "query", "schema": { "type": "string" } },
-          { "name": "role", "in": "query", "schema": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] } }
+          {
+            "name": "person_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "manager",
+                "finance",
+                "supervisor",
+                "operator"
+              ]
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Role assignments", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleAssignmentsPage" } } } },
-          "403": { "$ref": "#/components/responses/Forbidden" }
+          "200": {
+            "description": "Role assignments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAssignmentsPage"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
         }
       },
       "post": {
-        "tags": ["Role Assignments"],
+        "tags": [
+          "Role Assignments"
+        ],
         "summary": "Create a scoped business-role assignment",
         "description": "Assigns a role independently of scope. Use multiple assignments when one person needs visibility across several teams, sites, or amoebas.",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRoleAssignmentRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleAssignmentRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "201": { "description": "Role assignment created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleAssignment" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "409": { "$ref": "#/components/responses/Conflict" }
+          "201": {
+            "description": "Role assignment created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAssignment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       }
     },
     "/role-assignments/{role_assignment_id}": {
       "patch": {
-        "tags": ["Role Assignments"],
+        "tags": [
+          "Role Assignments"
+        ],
         "summary": "Update or deactivate a role assignment",
         "parameters": [
-          { "$ref": "#/components/parameters/RoleAssignmentId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/RoleAssignmentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateRoleAssignmentRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleAssignmentRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Role assignment updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleAssignment" } } } },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Role assignment updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAssignment"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/service-accounts": {
       "get": {
-        "tags": ["Service Accounts"],
+        "tags": [
+          "Service Accounts"
+        ],
         "summary": "List service accounts",
         "responses": {
-          "200": { "description": "Service accounts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceAccountsPage" } } } }
+          "200": {
+            "description": "Service accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountsPage"
+                }
+              }
+            }
+          }
         }
       },
       "post": {
-        "tags": ["Service Accounts"],
+        "tags": [
+          "Service Accounts"
+        ],
         "summary": "Create service account",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CreateServiceAccountRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceAccountRequest"
+              }
+            }
           }
         },
         "responses": {
-          "201": { "description": "Service account", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceAccount" } } } }
+          "201": {
+            "description": "Service account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccount"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/service-accounts/{service_account_id}/tokens": {
       "post": {
-        "tags": ["Service Accounts"],
+        "tags": [
+          "Service Accounts"
+        ],
         "summary": "Issue service account token",
         "description": "Returns the raw token once. The API stores only a hash.",
         "parameters": [
-          { "$ref": "#/components/parameters/ServiceAccountId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/ServiceAccountId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "responses": {
-          "201": { "description": "Issued token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssuedServiceAccountToken" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "201": {
+            "description": "Issued token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedServiceAccountToken"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/service-accounts/{service_account_id}/tokens/{token_id}": {
       "delete": {
-        "tags": ["Service Accounts"],
+        "tags": [
+          "Service Accounts"
+        ],
         "summary": "Revoke service account token",
         "parameters": [
-          { "$ref": "#/components/parameters/ServiceAccountId" },
-          { "$ref": "#/components/parameters/TokenId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/ServiceAccountId"
+          },
+          {
+            "$ref": "#/components/parameters/TokenId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "responses": {
-          "200": { "description": "Revoked token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevokedServiceAccountToken" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Revoked token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokedServiceAccountToken"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     }
   },
   "components": {
     "securitySchemes": {
-      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT or service token" }
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT or service token"
+      }
     },
     "parameters": {
-      "Limit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 } },
-      "Cursor": { "name": "cursor", "in": "query", "schema": { "type": "string" } },
-      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 160 } },
-      "PersonId": { "name": "person_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^person_" } },
-      "UserId": { "name": "user_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^user_" } },
-      "RoleAssignmentId": { "name": "role_assignment_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^roleasg_" } },
-      "ServiceAccountId": { "name": "service_account_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^svc_" } },
-      "TokenId": { "name": "token_id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^sat_" } }
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 160
+        }
+      },
+      "PersonId": {
+        "name": "person_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^person_"
+        }
+      },
+      "UserId": {
+        "name": "user_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^user_"
+        }
+      },
+      "RoleAssignmentId": {
+        "name": "role_assignment_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^roleasg_"
+        }
+      },
+      "ServiceAccountId": {
+        "name": "service_account_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^svc_"
+        }
+      },
+      "TokenId": {
+        "name": "token_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^sat_"
+        }
+      }
     },
     "responses": {
-      "BadRequest": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "Unauthorized": { "description": "Missing or invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "Forbidden": { "description": "Authenticated actor does not have permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "NotFound": { "description": "Resource not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-      "Conflict": { "description": "Duplicate or conflicting write", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid credentials",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated actor does not have permission",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Duplicate or conflicting write",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
     },
     "schemas": {
       "Person": {
         "type": "object",
-        "required": ["person_id", "display_name", "global_status", "created_at", "updated_at"],
+        "required": [
+          "person_id",
+          "display_name",
+          "global_status",
+          "created_at",
+          "updated_at"
+        ],
         "properties": {
-          "person_id": { "type": "string", "examples": ["person_01JZ7M2Z1T2Q8S4PZ9T6Y0A1BC"] },
-          "legal_name": { "type": "string" },
-          "display_name": { "type": "string" },
-          "phone": { "type": ["string", "null"] },
-          "email": { "type": ["string", "null"], "format": "email" },
-          "global_status": { "type": "string", "enum": ["active", "inactive", "suspended"] },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "person_id": {
+            "type": "string",
+            "examples": [
+              "person_01JZ7M2Z1T2Q8S4PZ9T6Y0A1BC"
+            ]
+          },
+          "legal_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email"
+          },
+          "global_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "suspended"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{11}$",
+            "description": "Nigerian National Identification Number (11 digits). Collected for Uber/Bolt onboarding; unique per person."
+          }
         }
       },
       "CreatePersonRequest": {
         "type": "object",
-        "required": ["display_name"],
+        "required": [
+          "display_name"
+        ],
         "properties": {
-          "legal_name": { "type": "string" },
-          "display_name": { "type": "string" },
-          "phone": { "type": "string" },
-          "email": { "type": "string", "format": "email" }
+          "legal_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
         }
       },
       "UpdatePersonRequest": {
         "type": "object",
         "properties": {
-          "legal_name": { "type": "string" },
-          "display_name": { "type": "string" },
-          "phone": { "type": ["string", "null"] },
-          "email": { "type": ["string", "null"], "format": "email" },
-          "global_status": { "type": "string", "enum": ["active", "inactive", "suspended"] }
+          "legal_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email"
+          },
+          "global_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "suspended"
+            ]
+          }
         }
       },
       "PeoplePage": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
-          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Person" } },
-          "next_cursor": { "type": ["string", "null"] }
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Person"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "User": {
         "type": "object",
-        "required": ["user_id", "person_id", "roles", "status"],
+        "required": [
+          "user_id",
+          "person_id",
+          "roles",
+          "status"
+        ],
         "properties": {
-          "user_id": { "type": "string", "examples": ["user_01JZ7M34A6JPEP4PV1WQ22RME7"] },
-          "person_id": { "type": "string" },
-          "roles": { "type": "array", "items": { "type": "string" } },
-          "status": { "type": "string", "enum": ["active", "inactive", "suspended"] }
+          "user_id": {
+            "type": "string",
+            "examples": [
+              "user_01JZ7M34A6JPEP4PV1WQ22RME7"
+            ]
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "suspended"
+            ]
+          }
         }
       },
       "CreateUserRequest": {
         "type": "object",
-        "required": ["person_id", "roles"],
+        "required": [
+          "person_id",
+          "roles"
+        ],
         "properties": {
-          "person_id": { "type": "string" },
-          "roles": { "type": "array", "items": { "type": "string" } }
+          "person_id": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "UpdateUserRequest": {
         "type": "object",
         "properties": {
-          "roles": { "type": "array", "items": { "type": "string" } },
-          "status": { "type": "string", "enum": ["active", "inactive", "suspended"] }
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "suspended"
+            ]
+          }
         }
       },
       "UsersPage": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
-          "data": { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
-          "next_cursor": { "type": ["string", "null"] }
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "RoleAssignment": {
         "type": "object",
-        "required": ["role_assignment_id", "person_id", "role", "scope_type", "status", "valid_from"],
+        "required": [
+          "role_assignment_id",
+          "person_id",
+          "role",
+          "scope_type",
+          "status",
+          "valid_from"
+        ],
         "properties": {
-          "role_assignment_id": { "type": "string" },
-          "person_id": { "type": "string" },
-          "role": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] },
-          "scope_type": { "type": "string", "enum": ["company", "amoeba", "site", "team"] },
-          "scope_id": { "type": ["string", "null"], "description": "Null only for company scope. Team scope currently references the supervisor person_id." },
-          "status": { "type": "string", "enum": ["active", "inactive"] },
-          "valid_from": { "type": "string", "format": "date-time" },
-          "valid_to": { "type": ["string", "null"], "format": "date-time" },
-          "created_by_person_id": { "type": ["string", "null"] },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "role_assignment_id": {
+            "type": "string"
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "manager",
+              "finance",
+              "supervisor",
+              "operator"
+            ]
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": [
+              "company",
+              "amoeba",
+              "site",
+              "team"
+            ]
+          },
+          "scope_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null only for company scope. Team scope currently references the supervisor person_id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "valid_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_by_person_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "CreateRoleAssignmentRequest": {
         "type": "object",
-        "required": ["person_id", "role", "scope_type"],
+        "required": [
+          "person_id",
+          "role",
+          "scope_type"
+        ],
         "properties": {
-          "person_id": { "type": "string" },
-          "role": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] },
-          "scope_type": { "type": "string", "enum": ["company", "amoeba", "site", "team"] },
-          "scope_id": { "type": ["string", "null"] },
-          "valid_from": { "type": "string", "format": "date-time" },
-          "valid_to": { "type": ["string", "null"], "format": "date-time" }
+          "person_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "manager",
+              "finance",
+              "supervisor",
+              "operator"
+            ]
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": [
+              "company",
+              "amoeba",
+              "site",
+              "team"
+            ]
+          },
+          "scope_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "valid_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
         }
       },
       "UpdateRoleAssignmentRequest": {
         "type": "object",
         "properties": {
-          "role": { "type": "string", "enum": ["manager", "finance", "supervisor", "operator"] },
-          "scope_type": { "type": "string", "enum": ["company", "amoeba", "site", "team"] },
-          "scope_id": { "type": ["string", "null"] },
-          "status": { "type": "string", "enum": ["active", "inactive"] },
-          "valid_from": { "type": "string", "format": "date-time" },
-          "valid_to": { "type": ["string", "null"], "format": "date-time" }
+          "role": {
+            "type": "string",
+            "enum": [
+              "manager",
+              "finance",
+              "supervisor",
+              "operator"
+            ]
+          },
+          "scope_type": {
+            "type": "string",
+            "enum": [
+              "company",
+              "amoeba",
+              "site",
+              "team"
+            ]
+          },
+          "scope_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "valid_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
         }
       },
       "RoleAssignmentsPage": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
-          "data": { "type": "array", "items": { "$ref": "#/components/schemas/RoleAssignment" } },
-          "next_cursor": { "type": ["string", "null"] }
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleAssignment"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "IdentityProfile": {
         "type": "object",
-        "required": ["actor_type", "person_id", "user_id", "roles", "role_assignments", "status"],
+        "required": [
+          "actor_type",
+          "person_id",
+          "user_id",
+          "roles",
+          "role_assignments",
+          "status"
+        ],
         "properties": {
-          "actor_type": { "type": "string", "enum": ["human"] },
-          "person_id": { "type": "string" },
-          "user_id": { "type": "string" },
-          "roles": { "type": "array", "items": { "type": "string" } },
-          "role_assignments": { "type": "array", "items": { "$ref": "#/components/schemas/RoleAssignment" } },
-          "status": { "type": "string" },
-          "person": { "$ref": "#/components/schemas/Person" }
+          "actor_type": {
+            "type": "string",
+            "enum": [
+              "human"
+            ]
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "role_assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleAssignment"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          }
         }
       },
       "LoginRequest": {
         "type": "object",
-        "required": ["phone_or_email", "pin"],
+        "required": [
+          "phone_or_email",
+          "pin"
+        ],
         "properties": {
-          "phone_or_email": { "type": "string" },
-          "pin": { "type": "string", "minLength": 6, "maxLength": 6 }
+          "phone_or_email": {
+            "type": "string"
+          },
+          "pin": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6
+          }
         }
       },
       "AuthSession": {
         "type": "object",
-        "required": ["access_token", "expires_in"],
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
         "properties": {
-          "access_token": { "type": "string" },
-          "refresh_token": { "type": "string" },
-          "expires_in": { "type": "integer", "examples": [900] }
+          "access_token": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "examples": [
+              900
+            ]
+          }
         }
       },
       "ServiceAccount": {
         "type": "object",
-        "required": ["service_account_id", "name", "scopes"],
+        "required": [
+          "service_account_id",
+          "name",
+          "scopes"
+        ],
         "properties": {
-          "service_account_id": { "type": "string" },
-          "name": { "type": "string" },
-          "scopes": { "type": "array", "items": { "type": "string" } },
-          "status": { "type": "string", "enum": ["active", "revoked"] }
+          "service_account_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked"
+            ]
+          }
         }
       },
       "CreateServiceAccountRequest": {
         "type": "object",
-        "required": ["name", "scopes"],
+        "required": [
+          "name",
+          "scopes"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "scopes": { "type": "array", "items": { "type": "string" } }
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "ServiceAccountsPage": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
-          "data": { "type": "array", "items": { "$ref": "#/components/schemas/ServiceAccount" } }
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceAccount"
+            }
+          }
         }
       },
       "IssuedServiceAccountToken": {
         "type": "object",
-        "required": ["token_id", "service_account_id", "token", "status", "created_at"],
+        "required": [
+          "token_id",
+          "service_account_id",
+          "token",
+          "status",
+          "created_at"
+        ],
         "properties": {
-          "token_id": { "type": "string" },
-          "service_account_id": { "type": "string" },
-          "token": { "type": "string", "description": "Raw token shown only once." },
-          "status": { "type": "string", "enum": ["active"] },
-          "created_at": { "type": "string", "format": "date-time" }
+          "token_id": {
+            "type": "string"
+          },
+          "service_account_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "description": "Raw token shown only once."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "RevokedServiceAccountToken": {
         "type": "object",
-        "required": ["token_id", "status"],
+        "required": [
+          "token_id",
+          "status"
+        ],
         "properties": {
-          "token_id": { "type": "string" },
-          "status": { "type": "string", "enum": ["revoked"] }
+          "token_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "revoked"
+            ]
+          }
         }
       },
       "HistoryPage": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
           "data": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "changed_at": { "type": "string", "format": "date-time" },
-                "actor_person_id": { "type": "string" },
-                "change_type": { "type": "string" },
-                "diff": { "type": "object" }
+                "changed_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "actor_person_id": {
+                  "type": "string"
+                },
+                "change_type": {
+                  "type": "string"
+                },
+                "diff": {
+                  "type": "object"
+                }
               }
             }
           },
-          "next_cursor": { "type": ["string", "null"] }
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "ErrorResponse": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "object",
-            "required": ["code", "message", "request_id"],
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
             "properties": {
-              "code": { "type": "string", "examples": ["validation_failed"] },
-              "message": { "type": "string" },
-              "request_id": { "type": "string" },
-              "details": { "type": "array", "items": { "type": "object" } }
+              "code": {
+                "type": "string",
+                "examples": [
+                  "validation_failed"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
             }
           }
         }

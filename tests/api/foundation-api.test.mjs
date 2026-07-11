@@ -184,6 +184,39 @@ test("creates people idempotently", async () => {
   assert.equal(first.body.person_id, second.body.person_id);
 });
 
+test("stores, validates, and deduplicates the national ID number (NIN)", async () => {
+  const created = await request("/identity/v1/people", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-person-nin-001" },
+    body: JSON.stringify({ display_name: "NIN Holder", phone: "+2347000000111", nin: "12345678901" })
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.nin, "12345678901");
+
+  const invalid = await request("/identity/v1/people", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-person-nin-002" },
+    body: JSON.stringify({ display_name: "Bad NIN", phone: "+2347000000112", nin: "12AB" })
+  });
+  assert.equal(invalid.response.status, 400);
+  assert.ok(invalid.body.error.details.some((item) => item.field === "nin"));
+
+  const duplicate = await request("/identity/v1/people", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-person-nin-003" },
+    body: JSON.stringify({ display_name: "NIN Copycat", phone: "+2347000000113", nin: "12345678901" })
+  });
+  assert.equal(duplicate.response.status, 409);
+
+  const updated = await request(`/identity/v1/people/${created.body.person_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "test-person-nin-004" },
+    body: JSON.stringify({ nin: "10987654321" })
+  });
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.body.nin, "10987654321");
+});
+
 test("rejects duplicate person contact details", async () => {
   const duplicate = await request("/identity/v1/people", {
     method: "POST",

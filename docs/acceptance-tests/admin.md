@@ -78,7 +78,10 @@ valid set saves and the summary line updates.
    and replay `daily-report-generate`.
 
 **Expected:** 15 registered jobs with freshness states; the replay queues a
-run that appears under recent job runs.
+run that appears under recent job runs. The health tiles are clickable —
+"Attention required" opens the job list filtered to those jobs, "Queued or
+running" opens recent runs, and "Ops without vehicle" opens the roster-gaps
+panel naming each active operator with no assigned vehicle.
 
 ### AD-10 · Inspection compliance
 1. Open **Data health → View inspection compliance**.
@@ -99,11 +102,12 @@ removes it from the list; deletions are audited.
 
 ### AD-12 · Manage people and users
 1. Open the Identity admin URL.
-2. Create a person (name + phone), then create a user for them with the
-   operator role.
+2. Create a person (name + phone + 11-digit NIN), then create a user for
+   them, ticking the operator role.
 
 **Expected:** both records save and appear in the tables; counts at the top
-update.
+update. Roles are chosen from checkboxes (free text is not accepted), a NIN
+that is not exactly 11 digits is rejected, and a duplicate NIN is refused.
 
 ### AD-13 · Scoped role assignments
 1. Under **Access Assignments**, give a person a Manager role scoped to one

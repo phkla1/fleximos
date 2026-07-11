@@ -146,13 +146,19 @@
           <span id="jobHealthSummary" class="subtle"></span>
         </div>
         <div id="jobHealthMetrics" class="metrics health-metrics"></div>
-        <details class="management-panel">
+        <details class="management-panel" id="jobsPanel">
           <summary>View scheduled jobs</summary>
+          <p id="jobFilterSummary" class="filter-summary"></p>
           <div id="scheduledJobList" class="data-list job-list"></div>
         </details>
-        <details class="management-panel">
+        <details class="management-panel" id="runsPanel">
           <summary>View recent job runs</summary>
           <div id="scheduledJobRuns" class="data-list compact-list"></div>
+        </details>
+        <details class="management-panel" id="rosterGapsPanel">
+          <summary>View roster gaps</summary>
+          <p class="panel-intro">Active operators without an assigned vehicle. Operators and vehicles are managed independently (vehicles rotate through repair and reassignment), but an active operator with no vehicle usually means an assignment was missed — fix it under Roster.</p>
+          <div id="rosterGapList" class="data-list compact-list"></div>
         </details>
         <details class="management-panel">
           <summary>View platform import runs</summary>
@@ -174,6 +180,7 @@
         <p class="section-intro">Use the team summary for daily oversight. Open roster management only to add, reassign, suspend, or inspect an operator.</p>
         <details class="management-panel" id="rosterPanel">
           <summary>Manage operator roster</summary>
+          <p class="form-hint">This is where a rider or driver is operationally assigned: amoeba, site, field supervisor and daily target. (Access scopes for managers, finance and supervisors — who can <em>see</em> what — are separate and live in the Identity admin console under Access Assignments.)</p>
           <form id="operatorForm" class="entry-form">
           <label>Person<select name="person_id" required></select></label>
           <label>Type

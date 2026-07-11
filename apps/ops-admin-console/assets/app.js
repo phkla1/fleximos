@@ -19,7 +19,8 @@ const state = {
   teams: [],
   alertGroups: [],
   serviceHealth: null,
-  operatingDate: null
+  operatingDate: null,
+  jobFilter: ""
 };
 
 const el = Object.fromEntries(
@@ -35,6 +36,7 @@ const el = Object.fromEntries(
     "leaderboardConfigForm", "leaderboardConfigSummary",
     "inspectionComplianceSummary", "inspectionComplianceList",
     "jobHealthSummary", "jobHealthMetrics", "scheduledJobList", "scheduledJobRuns",
+    "jobFilterSummary", "rosterGapList",
     "teamDialog", "teamDialogTitle", "teamDialogSummary", "teamOperatorList",
     "operatorSummaryCount", "vehicleSummaryCount", "performanceTeamFilter",
     "performanceOperatorFilter", "alertGroupDialog", "alertGroupDialogTitle",
@@ -518,13 +520,36 @@ function render() {
   const attention = state.scheduledJobs.filter((job) => ["failed", "stale"].includes(job.freshness_status)).length;
   const pending = state.scheduledJobs.filter((job) => job.freshness_status === "pending_source").length;
   const queued = state.scheduledJobRuns.filter((run) => ["queued", "running", "retrying"].includes(run.status)).length;
+  const operatorsWithoutVehicle = state.operators.filter((operator) =>
+    operator.operator_status === "active" && !operator.vehicle_id && !operator.vehicle_plate);
   el.jobHealthSummary.textContent = `${state.scheduledJobs.length} registered jobs`;
   el.jobHealthMetrics.innerHTML = `
-    <article><span>Healthy / provisional</span><strong>${state.scheduledJobs.length - attention - pending}</strong></article>
-    <article><span>Attention required</span><strong>${attention}</strong></article>
-    <article><span>Pending source</span><strong>${pending}</strong></article>
-    <article><span>Queued or running</span><strong>${queued}</strong></article>`;
-  el.scheduledJobList.innerHTML = state.scheduledJobs.map((job) => `
+    <button type="button" data-job-filter="healthy" title="Show these jobs"><span>Healthy / provisional</span><strong>${state.scheduledJobs.length - attention - pending}</strong></button>
+    <button type="button" data-job-filter="attention" title="Show these jobs"><span>Attention required</span><strong>${attention}</strong></button>
+    <button type="button" data-job-filter="pending" title="Show these jobs"><span>Pending source</span><strong>${pending}</strong></button>
+    <button type="button" data-job-filter="__runs" title="Show recent runs"><span>Queued or running</span><strong>${queued}</strong></button>
+    <button type="button" data-job-filter="__gaps" title="Show operators without a vehicle" class="${operatorsWithoutVehicle.length ? "attention" : ""}"><span>Ops without vehicle</span><strong>${operatorsWithoutVehicle.length}</strong></button>`;
+
+  el.rosterGapList.innerHTML = operatorsWithoutVehicle.length ? operatorsWithoutVehicle.map((operator) => `
+    <article class="data-row run-row">
+      <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_type)}</small></div>
+      <div><span class="row-label">Assignment</span><strong>${escapeHtml(nameForAmoeba(operator.amoeba_id))}</strong><small>${escapeHtml(nameForSite(operator.site_id))}</small></div>
+      <div><span class="row-label">Supervisor</span><strong>${escapeHtml(nameForPerson(operator.supervisor_person_id))}</strong></div>
+      <div><span class="pill open">No vehicle</span></div>
+    </article>
+  `).join("") : `<div class="empty">Every active operator has an assigned vehicle.</div>`;
+
+  const jobMatchesFilter = (job) => {
+    if (state.jobFilter === "attention") return ["failed", "stale"].includes(job.freshness_status);
+    if (state.jobFilter === "pending") return job.freshness_status === "pending_source";
+    if (state.jobFilter === "healthy") return !["failed", "stale", "pending_source"].includes(job.freshness_status);
+    return true;
+  };
+  const visibleJobs = state.scheduledJobs.filter(jobMatchesFilter);
+  el.jobFilterSummary.innerHTML = state.jobFilter && !state.jobFilter.startsWith("__")
+    ? `Showing ${visibleJobs.length} of ${state.scheduledJobs.length} jobs (${escapeHtml(state.jobFilter)}). <button type="button" class="linklike" data-job-filter="">Show all</button>`
+    : "";
+  el.scheduledJobList.innerHTML = visibleJobs.map((job) => `
     <article class="job-row">
       <div><strong>${escapeHtml(job.job_name)}</strong><small>${escapeHtml(job.owning_module)} · ${escapeHtml(job.queue_name)}</small></div>
       <div><span class="row-label">Schedule</span><strong>${escapeHtml(job.schedule_wat)}</strong><small>SLA ${escapeHtml(job.freshness_sla_minutes)} min</small></div>
@@ -532,7 +557,7 @@ function render() {
       <div><span class="pill ${escapeHtml(job.freshness_status)}">${escapeHtml(job.freshness_status.replaceAll("_", " "))}</span><small>${escapeHtml(job.source_finality.replaceAll("_", " "))} source</small></div>
       <div class="row-actions"><button type="button" data-replay-job="${escapeHtml(job.job_name)}">Replay</button></div>
     </article>
-  `).join("") || `<div class="empty">No jobs registered.</div>`;
+  `).join("") || `<div class="empty">${state.jobFilter ? "No jobs match this state." : "No jobs registered."}</div>`;
   el.scheduledJobRuns.innerHTML = state.scheduledJobRuns.slice(0, 12).map((run) => `
     <article class="data-row run-row">
       <div><strong>${escapeHtml(run.job_name)}</strong><small>${escapeHtml(run.scheduled_job_run_id)}</small></div>
@@ -662,6 +687,26 @@ el.operatorSearch.addEventListener("input", render);
 el.paceProfileForm.elements.vehicle_type.addEventListener("change", syncPaceProfileForm);
 el.efficiencyPolicyForm.elements.vehicle_type.addEventListener("change", syncEfficiencyPolicyForm);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
+
+document.addEventListener("click", (event) => {
+  const jobTile = event.target.closest("[data-job-filter]");
+  if (!jobTile) return;
+  const filter = jobTile.dataset.jobFilter;
+  if (filter === "__runs") {
+    document.getElementById("runsPanel").open = true;
+    document.getElementById("runsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (filter === "__gaps") {
+    document.getElementById("rosterGapsPanel").open = true;
+    document.getElementById("rosterGapsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  state.jobFilter = filter;
+  document.getElementById("jobsPanel").open = true;
+  render();
+  document.getElementById("jobsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 for (const tile of document.querySelectorAll(".metrics a[data-jump]")) {
   tile.addEventListener("click", () => {

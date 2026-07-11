@@ -56,10 +56,13 @@ async function initDb() {
       display_name TEXT NOT NULL,
       phone TEXT UNIQUE,
       email TEXT UNIQUE,
+      nin TEXT UNIQUE,
       global_status TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
+
+    ALTER TABLE people ADD COLUMN IF NOT EXISTS nin TEXT UNIQUE;
 
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
@@ -446,6 +449,7 @@ function validatePersonInput(body, partial = false) {
   const details = [];
   if (!partial && !body.display_name) details.push({ field: "display_name", reason: "required" });
   if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) details.push({ field: "email", reason: "invalid_email" });
+  if (body.nin && !/^\d{11}$/.test(String(body.nin))) details.push({ field: "nin", reason: "invalid_nin_must_be_11_digits" });
   if (body.global_status && !allowedPersonStatuses.has(body.global_status)) {
     details.push({ field: "global_status", reason: "invalid_status" });
   }
@@ -577,6 +581,9 @@ async function handleIdentity(req, res, parts) {
     if (await findPersonByPhoneOrEmail(body.phone, body.email)) {
       return error(res, 409, "duplicate_person", "A person with this phone or email already exists.");
     }
+    if (body.nin && (await one("SELECT person_id FROM people WHERE nin = $1", [String(body.nin)]))) {
+      return error(res, 409, "duplicate_person", "A person with this NIN already exists.");
+    }
     const response = await onceForIdempotency(key, async () => {
       const timestamp = now();
       const person = {
@@ -585,20 +592,22 @@ async function handleIdentity(req, res, parts) {
         display_name: body.display_name,
         phone: body.phone || null,
         email: body.email || null,
+        nin: body.nin ? String(body.nin) : null,
         global_status: body.global_status || "active",
         created_at: timestamp,
         updated_at: timestamp
       };
       await exec(
         `INSERT INTO people
-          (person_id, legal_name, display_name, phone, email, global_status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          (person_id, legal_name, display_name, phone, email, nin, global_status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           person.person_id,
           person.legal_name,
           person.display_name,
           person.phone,
           person.email,
+          person.nin,
           person.global_status,
           person.created_at,
           person.updated_at
@@ -633,6 +642,9 @@ async function handleIdentity(req, res, parts) {
     if (await findPersonByPhoneOrEmail(body.phone, body.email, id)) {
       return error(res, 409, "duplicate_person", "A person with this phone or email already exists.");
     }
+    if (body.nin && (await one("SELECT person_id FROM people WHERE nin = $1 AND person_id <> $2", [String(body.nin), id]))) {
+      return error(res, 409, "duplicate_person", "A person with this NIN already exists.");
+    }
     const response = await onceForIdempotency(key, async () => {
       const updated = { ...person, ...body, updated_at: now() };
       await exec(
@@ -641,10 +653,11 @@ async function handleIdentity(req, res, parts) {
           display_name = $3,
           phone = $4,
           email = $5,
-          global_status = $6,
-          updated_at = $7
+          nin = $6,
+          global_status = $7,
+          updated_at = $8
          WHERE person_id = $1`,
-        [id, updated.legal_name, updated.display_name, updated.phone, updated.email, updated.global_status, updated.updated_at]
+        [id, updated.legal_name, updated.display_name, updated.phone, updated.email, updated.nin ? String(updated.nin) : null, updated.global_status, updated.updated_at]
       );
       await addHistory("person", id, auth.actor_person_id, "updated", body);
       return { status: 200, body: updated };

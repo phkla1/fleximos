@@ -173,6 +173,7 @@ function render() {
         <td><input class="row-edit" data-field="display_name" value="${escapeHtml(person.display_name)}" /></td>
         <td><input class="row-edit" data-field="phone" value="${escapeHtml(person.phone || "")}" /></td>
         <td><input class="row-edit" data-field="email" type="email" value="${escapeHtml(person.email || "")}" /></td>
+        <td><input class="row-edit" data-field="nin" value="${escapeHtml(person.nin || "")}" maxlength="11" inputmode="numeric" placeholder="Not set" /></td>
         <td>${statusSelect("person", person.global_status)}</td>
         <td><button type="button" data-save-person="${escapeHtml(person.person_id)}">Save</button></td>
         <td class="id-cell">${escapeHtml(person.person_id)}</td>
@@ -187,7 +188,9 @@ function render() {
       <tr data-user-row="${escapeHtml(user.user_id)}">
         <td class="id-cell">${escapeHtml(user.user_id)}</td>
         <td>${escapeHtml(personName(user.person_id))}</td>
-        <td><input class="row-edit" data-field="roles" value="${escapeHtml((user.roles || []).join(", "))}" /></td>
+        <td><select class="row-edit role-select" data-field="roles" multiple size="3" title="Hold Ctrl/Cmd to select multiple">
+          ${["owner", "admin", "manager", "finance", "supervisor", "operator"].map((role) => `<option value="${role}" ${(user.roles || []).includes(role) ? "selected" : ""}>${role}</option>`).join("")}
+        </select></td>
         <td>${statusSelect("user", user.status)}</td>
         <td><button type="button" data-save-user="${escapeHtml(user.user_id)}">Save</button></td>
       </tr>
@@ -328,7 +331,8 @@ els.personForm.addEventListener("submit", async (event) => {
 els.userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const body = formData(els.userForm);
-  body.roles = body.roles.split(",").map((role) => role.trim()).filter(Boolean);
+  body.roles = [...els.userForm.querySelectorAll('input[name="roles"]:checked')].map((box) => box.value);
+  if (!body.roles.length) return setNotice("Select at least one system role.", true);
   try {
     await api("/identity/v1/users", {
       method: "POST",
@@ -461,11 +465,12 @@ document.addEventListener("click", async (event) => {
     if (personButton) {
       const id = personButton.dataset.savePerson;
       const row = document.querySelector(`[data-person-row="${id}"]`);
-      const body = rowBody(row, ["display_name", "phone", "email", "status"]);
+      const body = rowBody(row, ["display_name", "phone", "email", "nin", "status"]);
       body.global_status = body.status;
       delete body.status;
       body.phone = cleanOptional(body.phone);
       body.email = cleanOptional(body.email);
+      body.nin = cleanOptional(body.nin);
       await api(`/identity/v1/people/${id}`, {
         method: "PATCH",
         headers: { "Idempotency-Key": idempotencyKey("person-update") },
@@ -479,8 +484,8 @@ document.addEventListener("click", async (event) => {
     if (userButton) {
       const id = userButton.dataset.saveUser;
       const row = document.querySelector(`[data-user-row="${id}"]`);
-      const body = rowBody(row, ["roles", "status"]);
-      body.roles = body.roles.split(",").map((role) => role.trim()).filter(Boolean);
+      const body = rowBody(row, ["status"]);
+      body.roles = [...row.querySelector('select[data-field="roles"]').selectedOptions].map((option) => option.value);
       await api(`/identity/v1/users/${id}`, {
         method: "PATCH",
         headers: { "Idempotency-Key": idempotencyKey("user-update") },
