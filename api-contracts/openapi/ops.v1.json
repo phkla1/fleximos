@@ -700,6 +700,65 @@
             "description": "Daily report snapshot"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Delete a daily report snapshot",
+        "description": "System admin only. Removes a generated snapshot revision; the deletion is recorded in the audit log with the full report payload.",
+        "operationId": "deleteDailyReport",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; repeated deletes with the same key return the first response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "report_id": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or non-admin credentials"
+          },
+          "404": {
+            "description": "Report not found"
+          }
+        }
       }
     },
     "/scheduled-jobs": {

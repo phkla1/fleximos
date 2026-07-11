@@ -15,6 +15,8 @@ day-to-day operations (that lives with supervisors and managers).
 
 **Expected:** "Today's operating picture" with green connection and summary
 tiles (active operators, open alerts, vehicles ready, platform feeds).
+Clicking a tile jumps to the matching section — Active operators opens the
+full roster, Open alerts the inbox, Vehicles ready the fleet list.
 
 ### AD-2 · Team summary drilldown
 1. Go to **Team board**, open a team.
@@ -27,7 +29,9 @@ open one); the dialog lists the team's operators with status and revenue.
 2. Open a condition's **View affected operators**.
 
 **Expected:** alerts group by condition with an "active operators affected"
-count before you see individuals.
+count before you see individuals. This view is observational: acknowledging
+and resolving happens in the supervisor console (managers handle
+escalations), so there are no action buttons here.
 
 ### AD-4 · Manual performance entry
 1. Go to **Manual entry → Enter a performance record**.
@@ -55,8 +59,11 @@ the failed search. Same behaviour under **Vehicles**.
 1. Review both panels under **Controls**; add a new economics policy with an
    effective date of today.
 
-**Expected:** policies list with their assumptions; the new policy appears and
-becomes the one Analytics and the leaderboard use for expected hours.
+**Expected:** choosing a vehicle type in the efficiency form loads that
+type's current values; saving creates a new version for that type only. Both
+lists show each version's effective window with an active / scheduled /
+superseded pill. The newly saved economics policy becomes the one Analytics
+and the leaderboard use for expected hours.
 
 ### AD-8 · Leaderboard weights
 1. Go to **Controls → Leaderboard weights → Adjust Performance Score weights**.
@@ -83,8 +90,10 @@ last-inspected time and a current/overdue/never-inspected pill.
 1. Go to **Reports**, generate a report for the whole company.
 2. Open it and press **Download CSV**.
 
-**Expected:** a new immutable revision appears, opens with summary and rows,
-and downloads as `fleximotion-ops-….csv`.
+**Expected:** the button shows "Generating…" while it works, then a new
+revision appears, opens with summary and rows, and downloads as
+`fleximotion-ops-….csv`. Deleting a stale revision (Delete, then confirm)
+removes it from the list; deletions are audited.
 
 ## Part B — Identity/Amoeba admin console
 

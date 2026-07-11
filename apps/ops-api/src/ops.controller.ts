@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -517,6 +518,20 @@ export class OpsController {
       if (!scopedOperators.length) throw new UnauthorizedException("Amoeba is outside your Ops scope.");
     }
     return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.ops.generateDailyReport(body, actor.person_id));
+  }
+
+  @ApiTags("Reporting")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a daily report snapshot (system admin only; the deletion is audited)" })
+  @Delete("ops/v1/daily-reports/:reportId")
+  async deleteDailyReport(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.ops.deleteDailyReport(reportId, actor.person_id));
   }
 
   @ApiTags("Data Health")

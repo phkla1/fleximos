@@ -692,6 +692,34 @@ test("generates immutable daily report revisions", async () => {
   assert.equal(reports.body.data[0].revision, 2);
 });
 
+test("deletes a daily report snapshot with audit and admin-only access", async () => {
+  const created = await request("/ops/v1/daily-reports", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ops-daily-report-delete-target" },
+    body: JSON.stringify({ record_date: "2026-06-07" })
+  });
+  assert.equal(created.response.status, 201);
+  const reportId = created.body.report_id;
+
+  const missingKey = await request(`/ops/v1/daily-reports/${reportId}`, { method: "DELETE" });
+  assert.equal(missingKey.response.status, 401);
+
+  const deleted = await request(`/ops/v1/daily-reports/${reportId}`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "ops-daily-report-delete-001" }
+  });
+  assert.equal(deleted.body.deleted, true);
+
+  const fetchAfter = await request(`/ops/v1/daily-reports/${reportId}`);
+  assert.equal(fetchAfter.response.status, 404);
+
+  const replay = await request(`/ops/v1/daily-reports/${reportId}`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "ops-daily-report-delete-001" }
+  });
+  assert.equal(replay.body.deleted, true, "idempotent replay returns the first response");
+});
+
 test("registers scheduled jobs and records replay lifecycle", async () => {
   const jobs = await request("/ops/v1/scheduled-jobs");
   assert.equal(jobs.response.status, 200);

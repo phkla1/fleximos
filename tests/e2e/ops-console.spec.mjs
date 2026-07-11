@@ -124,7 +124,7 @@ test.describe("Ops admin console", () => {
     await page.getByText("View performance records", { exact: true }).click();
     await expect(page.locator("#performanceTeamFilter")).toBeVisible();
     await expect(page.locator("#performanceOperatorFilter")).toHaveValue("");
-    await expect(page.locator("#performanceRows")).toContainText("Choose a team and operator");
+    await expect(page.locator("#performanceRows")).toContainText("Choose a team");
     await page.locator("#performanceTeamFilter").selectOption({ index: 1 });
     expect(await page.locator("#performanceOperatorFilter option").count()).toBeGreaterThan(1);
     await page.locator("#performanceOperatorFilter").selectOption({ index: 1 });

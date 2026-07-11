@@ -28,6 +28,7 @@
       <a href="#vehicles">Vehicles</a>
       <a href="#controls">Controls</a>
       <a href="#settings">System settings</a>
+      <a href="../admin-console/" target="_blank" rel="noopener" title="People, users, roles and scoped access (Identity admin console)">Users ↗</a>
     </nav>
 
     <main>
@@ -44,10 +45,10 @@
       </section>
 
       <section class="metrics" aria-label="Operational summary">
-        <article><span>Active operators</span><strong id="activeOperatorCount">0</strong></article>
-        <article><span>Open alerts</span><strong id="openAlertCount">0</strong></article>
-        <article><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></article>
-        <article><span>Platform feeds</span><strong id="activePlatformCount">0</strong></article>
+        <a href="#operators" data-jump="operators" title="Open the operator roster"><span>Active operators</span><strong id="activeOperatorCount">0</strong></a>
+        <a href="#alerts" data-jump="alerts" title="Open the alert inbox"><span>Open alerts</span><strong id="openAlertCount">0</strong></a>
+        <a href="#vehicles" data-jump="vehicles" title="Open the fleet list"><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></a>
+        <a href="#data-health" data-jump="data-health" title="Open feed and job health"><span>Platform feeds</span><strong id="activePlatformCount">0</strong></a>
       </section>
 
       <p id="notice" class="notice" role="status"></p>
@@ -73,7 +74,7 @@
             </select>
           </label>
         </div>
-        <p class="section-intro">Conditions are grouped so their scale is visible first. Open a condition to see affected teams and operators.</p>
+        <p class="section-intro">Conditions are grouped so their scale is visible first. Open a condition to see affected teams and operators. Acknowledging and resolving alerts is the supervisor’s job (escalations go to managers) — this admin view is for monitoring scale and spotting systemic issues.</p>
         <div id="alertList" class="alert-list"></div>
       </section>
 
@@ -135,7 +136,7 @@
             <button type="submit">Generate report</button>
           </form>
         </div>
-        <p class="section-intro">Each generation creates a new revision. Open a snapshot to inspect its summary and operator rows, or download it for audit and sharing.</p>
+        <p class="section-intro">Each generation creates a new revision. Open a snapshot to inspect its summary and operator rows, or download it for audit and sharing. Snapshots you no longer need can be deleted — deletions are recorded in the audit log.</p>
         <div id="reportList" class="data-list report-list"></div>
       </section>
 
@@ -171,7 +172,7 @@
           <div><p class="eyebrow">Fleet roster</p><h2>Operators</h2><p class="section-count"><strong id="operatorSummaryCount">0</strong> active operators</p></div>
         </div>
         <p class="section-intro">Use the team summary for daily oversight. Open roster management only to add, reassign, suspend, or inspect an operator.</p>
-        <details class="management-panel">
+        <details class="management-panel" id="rosterPanel">
           <summary>Manage operator roster</summary>
           <form id="operatorForm" class="entry-form">
           <label>Person<select name="person_id" required></select></label>
@@ -203,7 +204,7 @@
           <div><p class="eyebrow">Fleet assets</p><h2>Vehicles</h2><p class="section-count"><strong id="vehicleSummaryCount">0</strong> active vehicles</p></div>
         </div>
         <p class="section-intro">The default view shows fleet scale only. Open asset management when a vehicle must be added, inspected, or reassigned.</p>
-        <details class="management-panel">
+        <details class="management-panel" id="vehiclePanel">
           <summary>Manage fleet assets</summary>
           <form id="vehicleForm" class="entry-form">
           <label>Plate<input name="plate" required /></label>
@@ -258,7 +259,7 @@
             <h3>Vehicle efficiency policy</h3>
             <div id="efficiencyPolicyList" class="data-list compact-list"></div>
             <details class="management-panel">
-              <summary>Add or change an efficiency policy</summary>
+              <summary>Update the efficiency policy for a vehicle type</summary>
               <form id="efficiencyPolicyForm" class="entry-form compact-form">
               <label>Vehicle type
                 <select name="vehicle_type"><option value="car">Car</option><option value="motorbike">Motorbike</option></select>
@@ -268,13 +269,15 @@
               <label>Expected distance (km)<input name="expected_distance_km" type="number" min="0" step="0.1" value="150" required /></label>
               <label>Allowed variance %<input name="allowed_variance_pct" type="number" min="0" value="10" required /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
-              <button type="submit">Add efficiency policy</button>
+              <p class="form-hint">Choosing a vehicle type loads its current policy. Saving creates a new version for that vehicle type only, effective from the chosen date — other vehicle types are not affected and earlier versions stay listed for history.</p>
+              <button type="submit">Save efficiency policy version</button>
               </form>
             </details>
           </div>
           <div class="control-panel">
             <h3>Leaderboard weights</h3>
             <div id="leaderboardConfigSummary" class="data-list compact-list"></div>
+            <p class="form-hint">How each component is measured: <strong>Acceptance</strong> — trip acceptance rate reported by the ride platforms. <strong>Time online</strong> — hours online versus the expected hours in the economics policy. <strong>Cash receipts</strong> — how much of the platform-expected cash actually arrived as Monnify deposits (remittance compliance, not revenue size). <strong>Net Earnings</strong> — the operator’s net earnings as reported by the platforms (Bolt/Uber), not bank deposits.</p>
             <details class="management-panel">
               <summary>Adjust Performance Score weights</summary>
               <form id="leaderboardConfigForm" class="entry-form compact-form">
@@ -301,7 +304,7 @@
             <h3>Finance economics policy</h3>
             <div id="economicsPolicyList" class="data-list compact-list"></div>
             <details class="management-panel">
-              <summary>Add or change economics assumptions</summary>
+              <summary>Update the economics assumptions</summary>
               <form id="economicsPolicyForm" class="entry-form compact-form">
               <label>Policy name<input name="policy_name" value="Daily economics policy" required /></label>
               <label>Admin staff daily cost (NGN)<input name="admin_staff_daily_cost_ngn" type="number" min="0" step="100" value="50000" required /></label>
@@ -309,7 +312,8 @@
               <label>Daily overhead (NGN)<input name="daily_overhead_ngn" type="number" min="0" step="100" value="75000" required /></label>
               <label>Expected hours / operator<input name="expected_hours_per_operator" type="number" min="0" step="0.1" value="10" required /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
-              <button type="submit">Add economics policy</button>
+              <p class="form-hint">The form shows the current company-wide assumptions. Saving creates a new version effective from the chosen date; earlier versions stay listed for history.</p>
+              <button type="submit">Save economics policy version</button>
               </form>
             </details>
           </div>
@@ -321,6 +325,11 @@
           <div><p class="eyebrow">Development environment</p><h2>Admin console connection</h2></div>
         </div>
         <p class="section-intro">These settings tell this admin console which Fleximotion backend services to use. They are not external-platform connector status or API-consumer documentation.</p>
+        <div class="control-panel">
+          <h3>User management</h3>
+          <p class="form-hint">People, login users, role assignments and scoped access (who can see which amoeba, site or team) are managed in the Identity admin console.</p>
+          <a class="panel-link" href="../admin-console/" target="_blank" rel="noopener">Open the Identity admin console ↗</a>
+        </div>
         <details class="management-panel">
           <summary>Configure development connection</summary>
           <div class="entry-form">

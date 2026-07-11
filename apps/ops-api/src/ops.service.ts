@@ -1427,6 +1427,14 @@ export class OpsService {
     return report;
   }
 
+  async deleteDailyReport(reportId: string, actorPersonId: string) {
+    const report = await this.db.one<any>("SELECT * FROM ops_daily_report_snapshots WHERE report_id = $1", [reportId]);
+    if (!report) throw new NotFoundException("Daily report not found.");
+    await this.db.exec("DELETE FROM ops_daily_report_snapshots WHERE report_id = $1", [reportId]);
+    await this.audit("daily_report.deleted", "daily_report", reportId, report, null, actorPersonId);
+    return { report_id: reportId, deleted: true };
+  }
+
   async generateDailyReport(body: RecordBody, actorPersonId: string) {
     const recordDate = this.date(body.record_date || this.lagosDate());
     const amoebaId = body.amoeba_id ? String(body.amoeba_id) : null;

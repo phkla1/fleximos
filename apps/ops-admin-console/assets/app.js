@@ -191,8 +191,8 @@ function updateVehicleFilters() {
 
   el.vehicleAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
-  ).join("");
-  if (state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.vehicleAmoebaFilter.value = previousAmoeba;
+  ).join("") + `<option value="__all">All operating units</option>`;
+  if (previousAmoeba === "__all" || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.vehicleAmoebaFilter.value = previousAmoeba;
 }
 
 function updateOperatorFilters() {
@@ -205,8 +205,8 @@ function updateOperatorFilters() {
 
   el.operatorAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
-  ).join("");
-  if (state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.operatorAmoebaFilter.value = previousAmoeba;
+  ).join("") + `<option value="__all">All operating units</option>`;
+  if (previousAmoeba === "__all" || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.operatorAmoebaFilter.value = previousAmoeba;
 }
 
 function syncPaceProfileForm() {
@@ -223,6 +223,52 @@ function syncPaceProfileForm() {
   el.paceProfileForm.elements.warning_tolerance_pct.value = Number(profile.warning_tolerance_pct);
   el.paceProfileForm.elements.critical_tolerance_pct.value = Number(profile.critical_tolerance_pct);
   el.paceProfileForm.elements.effective_from.value = String(profile.effective_from).slice(0, 10);
+}
+
+function policyStatus(policy, peers) {
+  const today = state.operatingDate || todayLagos;
+  const from = String(policy.effective_from).slice(0, 10);
+  const to = policy.effective_to ? String(policy.effective_to).slice(0, 10) : null;
+  if (from > today) return "scheduled";
+  if (to && to < today) return "superseded";
+  const newer = peers.some((peer) => peer !== policy &&
+    String(peer.effective_from).slice(0, 10) > from &&
+    String(peer.effective_from).slice(0, 10) <= today);
+  return newer ? "superseded" : "active";
+}
+
+function effectiveWindow(policy) {
+  const from = String(policy.effective_from).slice(0, 10);
+  return policy.effective_to ? `${from} → ${String(policy.effective_to).slice(0, 10)}` : `from ${from}`;
+}
+
+function currentEfficiencyPolicy(vehicleType) {
+  return state.efficiencyPolicies
+    .filter((policy) => policy.vehicle_type === vehicleType && String(policy.effective_from).slice(0, 10) <= (state.operatingDate || todayLagos))
+    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+}
+
+function syncEfficiencyPolicyForm() {
+  const form = el.efficiencyPolicyForm.elements;
+  const policy = currentEfficiencyPolicy(form.vehicle_type.value);
+  if (!policy) return;
+  form.make_model.value = policy.make_model || "";
+  form.standard_daily_fuel_quantity.value = Number(policy.standard_daily_fuel_quantity);
+  form.expected_distance_km.value = Number(policy.expected_distance_km);
+  form.allowed_variance_pct.value = Number(policy.allowed_variance_pct);
+}
+
+function syncEconomicsPolicyForm() {
+  const policy = state.economicsPolicies
+    .filter((item) => String(item.effective_from).slice(0, 10) <= (state.operatingDate || todayLagos))
+    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+  if (!policy) return;
+  const form = el.economicsPolicyForm.elements;
+  form.policy_name.value = policy.policy_name;
+  form.admin_staff_daily_cost_ngn.value = Number(policy.admin_staff_daily_cost_ngn);
+  form.operator_labour_share_pct.value = Number(policy.operator_labour_share_pct);
+  form.daily_overhead_ngn.value = Number(policy.daily_overhead_ngn);
+  form.expected_hours_per_operator.value = Number(policy.expected_hours_per_operator);
 }
 
 function render() {
@@ -317,7 +363,7 @@ function render() {
   const currentOperators = hasOperatorScope ? state.operators.filter((operator) => {
     if (["inactive", "suspended"].includes(operator.operator_status)) return false;
     if (selectedOperatorTeam && !rosterOperatorIds.has(operator.operator_id)) return false;
-    if (!selectedOperatorTeam && selectedOperatorAmoeba && operator.amoeba_id !== selectedOperatorAmoeba) return false;
+    if (!selectedOperatorTeam && selectedOperatorAmoeba && selectedOperatorAmoeba !== "__all" && operator.amoeba_id !== selectedOperatorAmoeba) return false;
     const platforms = operator.platform_registrations?.map((item) => item.platform_display_name).join(" ") || "";
     const searchable = `${nameForPerson(operator.person_id)} ${operator.vehicle_plate || ""} ${platforms}`.toLowerCase();
     if (operatorQuery && !searchable.includes(operatorQuery)) return false;
@@ -358,7 +404,7 @@ function render() {
   const currentVehicles = hasVehicleScope ? state.vehicles.filter((vehicle) => {
     if (vehicle.status !== "active") return false;
     if (selectedVehicleTeam && !teamVehicleIds.has(vehicle.vehicle_id) && !teamVehiclePlates.has(vehicle.plate)) return false;
-    if (!selectedVehicleTeam && selectedVehicleAmoeba && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
+    if (!selectedVehicleTeam && selectedVehicleAmoeba && selectedVehicleAmoeba !== "__all" && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
     if (vehicleQuery && !`${vehicle.plate} ${vehicle.make_model || ""}`.toLowerCase().includes(vehicleQuery)) return false;
     return true;
   }) : [];
@@ -383,7 +429,7 @@ function render() {
     teamOperatorIds.has(record.operator_id) &&
     (!selectedOperator || record.operator_id === selectedOperator)
   ) : [];
-  el.performanceRows.innerHTML = performance.length ? performance.map((record) => `
+  const recordRows = performance.map((record) => `
     <tr>
       <td>${escapeHtml(nameForPerson(record.person_id))}</td>
       <td>${escapeHtml(record.platform_display_name)}</td>
@@ -393,7 +439,24 @@ function render() {
       <td><span class="pill">${escapeHtml(record.current_status)}</span></td>
       <td><span class="quality ${escapeHtml(record.data_quality)}">${escapeHtml(record.data_quality)}</span></td>
     </tr>
-  `).join("") : `<tr><td colspan="7" class="empty">Choose a team and operator to view records.</td></tr>`;
+  `);
+  // Operators in the selected scope with no record for the operating date are
+  // listed explicitly so a short table is never mistaken for full coverage.
+  const coveredIds = new Set(performance.map((record) => record.operator_id));
+  const missingRows = selectedTeam
+    ? state.operators
+        .filter((operator) => teamOperatorIds.has(operator.operator_id) && operator.operator_status === "active")
+        .filter((operator) => (!selectedOperator || operator.operator_id === selectedOperator) && !coveredIds.has(operator.operator_id))
+        .map((operator) => `
+          <tr class="missing-record">
+            <td>${escapeHtml(nameForPerson(operator.person_id))}</td>
+            <td colspan="6">No performance record for ${escapeHtml(state.operatingDate)} — not reported by any platform feed or manual entry.</td>
+          </tr>
+        `)
+    : [];
+  el.performanceRows.innerHTML = recordRows.length || missingRows.length
+    ? recordRows.join("") + missingRows.join("")
+    : `<tr><td colspan="7" class="empty">${selectedTeam ? "No active operators in this team." : "Choose a team to view its record coverage, then an operator for detail."}</td></tr>`;
 
   el.ingestionRuns.innerHTML = state.ingestionRuns.length ? state.ingestionRuns.slice(0, 6).map((run) => `
     <article class="data-row run-row">
@@ -411,19 +474,24 @@ function render() {
     </article>
   `).join("") || `<div class="empty">No pace profiles configured.</div>`;
 
-  el.efficiencyPolicyList.innerHTML = state.efficiencyPolicies.map((policy) => `
-    <article class="policy-row">
-      <div><strong>${escapeHtml(policy.vehicle_type)}</strong><small>${escapeHtml(policy.make_model || "All models")}</small></div>
-      <div><strong>${Number(policy.standard_daily_fuel_quantity)} ${escapeHtml(policy.fuel_unit)} → ${Number(policy.expected_distance_km)} km</strong><small>Allowed variance ±${Number(policy.allowed_variance_pct)}%</small></div>
-    </article>
-  `).join("") || `<div class="empty">No efficiency policies configured.</div>`;
+  el.efficiencyPolicyList.innerHTML = state.efficiencyPolicies.map((policy) => {
+    const peers = state.efficiencyPolicies.filter((peer) => peer.vehicle_type === policy.vehicle_type);
+    const status = policyStatus(policy, peers);
+    return `
+    <article class="policy-row ${status}">
+      <div><strong>${escapeHtml(policy.vehicle_type)}</strong><small>${escapeHtml(policy.make_model || "All models")}</small><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
+      <div><strong>${Number(policy.standard_daily_fuel_quantity)} ${escapeHtml(policy.fuel_unit)} → ${Number(policy.expected_distance_km)} km</strong><small>Allowed variance ±${Number(policy.allowed_variance_pct)}% · Effective ${escapeHtml(effectiveWindow(policy))}</small></div>
+    </article>`;
+  }).join("") || `<div class="empty">No efficiency policies configured.</div>`;
 
-  el.economicsPolicyList.innerHTML = state.economicsPolicies.map((policy) => `
-    <article class="policy-row">
-      <div><strong>${escapeHtml(policy.policy_name)}</strong><small>Effective ${escapeHtml(String(policy.effective_from).slice(0, 10))}</small></div>
+  el.economicsPolicyList.innerHTML = state.economicsPolicies.map((policy) => {
+    const status = policyStatus(policy, state.economicsPolicies);
+    return `
+    <article class="policy-row ${status}">
+      <div><strong>${escapeHtml(policy.policy_name)}</strong><small>Effective ${escapeHtml(effectiveWindow(policy))}</small><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
       <div><strong>₦${Number(policy.admin_staff_daily_cost_ngn).toLocaleString()} fixed + ${Number(policy.operator_labour_share_pct)}% operators</strong><small>Overhead ₦${Number(policy.daily_overhead_ngn).toLocaleString()} · ${Number(policy.expected_hours_per_operator)}h/operator</small></div>
-    </article>
-  `).join("") || `<div class="empty">No economics policies configured.</div>`;
+    </article>`;
+  }).join("") || `<div class="empty">No economics policies configured.</div>`;
 
   const config = state.leaderboardConfig;
   el.leaderboardConfigSummary.innerHTML = config ? `
@@ -482,7 +550,10 @@ function render() {
         <div><span class="row-label">Operators</span><strong>${escapeHtml(summary.live_operators || 0)} / ${escapeHtml(summary.active_operators || 0)} live</strong><small>${escapeHtml(summary.open_alerts || 0)} open alerts</small></div>
         <div><span class="row-label">Revenue</span><strong>₦${Number(summary.revenue_total_ngn || 0).toLocaleString()}</strong><small>Cars ₦${Number(summary.car_revenue_ngn || 0).toLocaleString()} · Bikes ₦${Number(summary.motorbike_revenue_ngn || 0).toLocaleString()}</small></div>
         <div><span class="pill">${escapeHtml(report.status)}</span><small>${new Date(report.generated_at).toLocaleString("en-NG")}</small></div>
-        <button type="button" class="secondary" data-open-report="${escapeHtml(report.report_id)}">Open report</button>
+        <div class="row-actions">
+          <button type="button" class="secondary" data-open-report="${escapeHtml(report.report_id)}">Open report</button>
+          <button type="button" class="secondary danger" data-delete-report="${escapeHtml(report.report_id)}">Delete</button>
+        </div>
       </article>`;
   }).join("") : `<div class="empty">No report snapshot exists for ${escapeHtml(state.operatingDate)}.</div>`;
 }
@@ -555,6 +626,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     el.leaderboardConfigForm.elements.company_wide_visible.value = String(Boolean(leaderboardConfig.company_wide_visible));
   }
   syncPaceProfileForm();
+  syncEfficiencyPolicyForm();
+  syncEconomicsPolicyForm();
   render();
   setConnection("connected", "Live APIs connected");
   setNotice(message);
@@ -587,7 +660,23 @@ el.operatorAmoebaFilter.addEventListener("change", () => {
 });
 el.operatorSearch.addEventListener("input", render);
 el.paceProfileForm.elements.vehicle_type.addEventListener("change", syncPaceProfileForm);
+el.efficiencyPolicyForm.elements.vehicle_type.addEventListener("change", syncEfficiencyPolicyForm);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
+
+for (const tile of document.querySelectorAll(".metrics a[data-jump]")) {
+  tile.addEventListener("click", () => {
+    const target = tile.dataset.jump;
+    if (target === "operators") {
+      document.getElementById("rosterPanel").open = true;
+      if (!el.operatorTeamFilter.value && !el.operatorAmoebaFilter.value) el.operatorAmoebaFilter.value = "__all";
+    }
+    if (target === "vehicles") {
+      document.getElementById("vehiclePanel").open = true;
+      if (!el.vehicleTeamFilter.value && !el.vehicleAmoebaFilter.value) el.vehicleAmoebaFilter.value = "__all";
+    }
+    render();
+  });
+}
 el.operatingDate.addEventListener("change", () => refresh(`Showing operations for ${el.operatingDate.value}.`).catch(showError));
 
 el.operatorForm.addEventListener("submit", async (event) => {
@@ -711,6 +800,9 @@ el.leaderboardConfigForm.addEventListener("submit", async (event) => {
 el.reportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(el.reportForm));
+  const submitButton = el.reportForm.querySelector("button[type=submit]");
+  submitButton.disabled = true;
+  submitButton.textContent = "Generating…";
   try {
     await ops("/ops/v1/daily-reports", {
       method: "POST",
@@ -721,7 +813,10 @@ el.reportForm.addEventListener("submit", async (event) => {
       })
     });
     await refresh(`Daily report generated for ${state.operatingDate}.`);
-  } catch (error) { showError(error); }
+  } catch (error) { showError(error); } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Generate report";
+  }
 });
 
 el.ingestionForm.addEventListener("submit", async (event) => {
@@ -781,6 +876,19 @@ document.addEventListener("click", async (event) => {
   const openReport = event.target.closest("[data-open-report]");
   const closeReport = event.target.closest("[data-close-report]");
   const downloadReport = event.target.closest("[data-download-report]");
+  const deleteReport = event.target.closest("[data-delete-report]");
+
+  if (deleteReport) {
+    if (!window.confirm("Delete this report snapshot? The deletion is recorded in the audit log.")) return;
+    try {
+      await ops(`/ops/v1/daily-reports/${encodeURIComponent(deleteReport.dataset.deleteReport)}`, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": key("report-delete") }
+      });
+      await refresh("Report snapshot deleted.");
+    } catch (error) { showError(error); }
+    return;
+  }
 
   if (closeReport) {
     el.reportDialog.close();
@@ -827,16 +935,13 @@ document.addEventListener("click", async (event) => {
     const group = state.alertGroups.find((item) => item.key === openAlertGroup.dataset.openAlertGroup);
     if (!group) return;
     el.alertGroupDialogTitle.textContent = humanize(group.key);
-    el.alertGroupDialogSummary.textContent = `${group.people.size} of ${state.operators.filter((operator) => operator.operator_status === "active").length} active operators affected across ${group.teams.size} ${group.teams.size === 1 ? "team" : "teams"}.`;
+    el.alertGroupDialogSummary.textContent = `${group.people.size} of ${state.operators.filter((operator) => operator.operator_status === "active").length} active operators affected across ${group.teams.size} ${group.teams.size === 1 ? "team" : "teams"}. Supervisors acknowledge and resolve these from their console; escalations go to managers.`;
     el.alertGroupList.innerHTML = group.alerts.map((alert) => `
       <article class="alert-detail-row">
         <div><strong>${escapeHtml(nameForPerson(alert.person_id))}</strong><small>${escapeHtml(nameForAmoeba(alert.amoeba_id))} · ${escapeHtml(alert.platform_display_name || "General")}</small></div>
         <div><strong>Tier ${escapeHtml(alert.tier)}</strong><small>${new Date(alert.fired_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</small></div>
         <div><span class="pill ${escapeHtml(alert.resolution_status)}">${escapeHtml(alert.resolution_status)}</span></div>
-        <div class="row-actions">
-          ${alert.resolution_status === "open" ? `<button type="button" data-alert-action="acknowledge" data-alert-id="${escapeHtml(alert.alert_id)}">Acknowledge</button>` : ""}
-          ${alert.resolution_status !== "resolved" ? `<button type="button" class="secondary" data-alert-action="resolve" data-alert-id="${escapeHtml(alert.alert_id)}">Resolve</button>` : ""}
-        </div>
+        <div></div>
       </article>
     `).join("");
     el.alertGroupDialog.showModal();
