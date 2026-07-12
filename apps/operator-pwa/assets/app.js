@@ -4,7 +4,7 @@ const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const storageKey = "fleximotion_operator_access_token";
 const ids = [
   "loginView", "appView", "loginForm", "loginNotice", "appNotice", "operatorName",
-  "logoutButton", "operatingDate", "connectionStatus", "liveStatus", "revenueTotal",
+  "logoutButton", "dateFrom", "dateTo", "connectionStatus", "liveStatus", "revenueTotal",
   "paceLabel", "paceContext", "tripCount", "hoursOnline", "targetTotal", "assignment",
   "alertCount", "alerts", "mileage", "leaderboard", "myRank", "maintenanceForm",
   "supportButton", "supportDialog", "incidentNote", "explainDialog", "explainContext",
@@ -18,7 +18,8 @@ let currentAlerts = [];
 const today = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
-el.operatingDate.value = today;
+el.dateFrom.value = today;
+el.dateTo.value = today;
 
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -60,13 +61,19 @@ async function load() {
   if (!operator) throw new Error("No active Ops assignment is linked to this account.");
 
   currentOperator = operator;
-  const date = el.operatingDate.value || today;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || today;
+  let dateTo = el.dateTo.value || dateFrom;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  el.dateFrom.value = dateFrom;
+  el.dateTo.value = dateTo;
+  const range = `date_from=${dateFrom}&date_to=${dateTo}`;
+  const date = dateTo;
   const weekStart = new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
   const [boardPage, performancePage, alertPage, mileagePage, leaderboardPage] = await Promise.all([
-    api(opsBase, `/ops/v1/team-board?record_date=${date}`),
-    api(opsBase, `/ops/v1/daily-performance?record_date=${date}`),
+    api(opsBase, `/ops/v1/team-board?${range}`),
+    api(opsBase, `/ops/v1/daily-performance?${range}`),
     api(opsBase, `/ops/v1/alerts?operator_id=${encodeURIComponent(operator.operator_id)}`),
-    api(opsBase, `/ops/v1/mileage-reconciliations?record_date=${date}`),
+    api(opsBase, `/ops/v1/mileage-reconciliations?${range}`),
     api(opsBase, `/ops/v1/leaderboard?period_start=${weekStart}&period_end=${date}&amoeba_id=${encodeURIComponent(operator.amoeba_id)}`).catch(() => null)
   ]);
   const board = boardPage.data[0] || {};
@@ -148,7 +155,10 @@ el.loginForm.addEventListener("submit", async (event) => {
   }
 });
 el.logoutButton.addEventListener("click", () => showLogin("Signed out."));
-el.operatingDate.addEventListener("change", () => load().catch((error) => {
+el.dateFrom.addEventListener("change", () => load().catch((error) => {
+  setNotice(error.message, true);
+}));
+el.dateTo.addEventListener("change", () => load().catch((error) => {
   el.appNotice.textContent = error.message;
   el.appNotice.classList.add("error");
 }));

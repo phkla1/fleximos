@@ -49,7 +49,7 @@ explain shortfalls but only Finance can record adjustments — this dialog is
 the control point.
 
 ### FI-6 · Close an accounting period
-1. Pick a past operating date, press **Close selected period**.
+1. Set **To** to a past date, press **Close selected period** (the close always acts on the To date).
 
 **Expected:** the period close is recorded and appears under **Recent period
 closes** with its exception counts. Once closed, cash records for that date
@@ -75,11 +75,12 @@ open cleanly in a spreadsheet.
 **Expected:** operational exceptions (fuel-efficiency variance, unexplained
 mileage) that affect cost review, with dates and operators.
 
-### FI-10 · Change the operating date
-1. Set an earlier operating date and refresh.
+### FI-10 · Review a date range
+1. Set **From** to three days ago and **To** to today, then refresh.
 
-**Expected:** cash summaries, exceptions and the period banner update; closed
-dates show the locked banner state.
+**Expected:** cash summaries and exceptions aggregate across the range (both
+dates equal means a single day); the period banner reflects the To date, and
+closed dates show the locked banner state.
 
 ## Results
 

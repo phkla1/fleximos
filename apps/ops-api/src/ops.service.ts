@@ -60,6 +60,27 @@ export class OpsService {
     }).sort((a, b) => a.time.localeCompare(b.time));
   }
 
+  // Resolves a from/to operating-date range. A single record_date (legacy
+  // callers) collapses to a one-day range; both bounds default to today in
+  // Lagos. Reversed bounds are swapped, and ranges are capped at 92 days.
+  dateRange(filters: { record_date?: string; date_from?: string; date_to?: string }) {
+    const single = filters.record_date;
+    let from = this.date(filters.date_from || single || this.lagosDate());
+    let to = this.date(filters.date_to || single || this.lagosDate());
+    if (from > to) [from, to] = [to, from];
+    const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+    if (days > 92) throw new BadRequestException("Date range cannot exceed 92 days.");
+    return { from, to, days };
+  }
+
+  private rangeDays(from: string, days: number) {
+    return Array.from({ length: days }, (_, index) => {
+      const date = new Date(`${from}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + index);
+      return date.toISOString().slice(0, 10);
+    });
+  }
+
   private expectedPct(checkpoints: any[], recordDate: string) {
     const today = this.lagosDate();
     if (recordDate < today) return 100;
@@ -378,7 +399,7 @@ export class OpsService {
   }
 
   async listCashAdjustments(
-    filters: { operator_id?: string; adjustment_date?: string },
+    filters: { operator_id?: string; adjustment_date?: string; date_from?: string; date_to?: string },
     scope: OpsDataScope = {}
   ) {
     const clauses: string[] = [];
@@ -387,7 +408,11 @@ export class OpsService {
       params.push(filters.operator_id);
       clauses.push(`a.operator_id = $${params.length}`);
     }
-    if (filters.adjustment_date) {
+    if (filters.date_from || filters.date_to) {
+      const { from, to } = this.dateRange(filters);
+      params.push(from, to);
+      clauses.push(`a.adjustment_date BETWEEN $${params.length - 1}::date AND $${params.length}::date`);
+    } else if (filters.adjustment_date) {
       params.push(this.date(filters.adjustment_date));
       clauses.push(`a.adjustment_date = $${params.length}::date`);
     }
@@ -403,11 +428,11 @@ export class OpsService {
   }
 
   async cashStatus(
-    filters: { record_date?: string; operator_id?: string; amoeba_id?: string },
+    filters: { record_date?: string; date_from?: string; date_to?: string; operator_id?: string; amoeba_id?: string },
     scope: OpsDataScope = {}
   ) {
-    const recordDate = this.date(filters.record_date || this.lagosDate());
-    const params: unknown[] = [recordDate];
+    const { from, to } = this.dateRange(filters);
+    const params: unknown[] = [from, to];
     const clauses = ["o.operator_status = 'active'"];
     if (filters.operator_id) {
       params.push(filters.operator_id);
@@ -445,20 +470,20 @@ export class OpsService {
             END
           ) AS expected_cash_ngn
          FROM ops_platform_daily_records
-         WHERE record_date = $1
+         WHERE record_date BETWEEN $1 AND $2
          GROUP BY operator_id
        ) d ON d.operator_id = o.operator_id
        LEFT JOIN (
          SELECT operator_id, SUM(amount_ngn) AS remitted_cash_ngn,
           COUNT(*) AS transaction_count, MAX(paid_at) AS latest_paid_at
          FROM ops_cash_transactions
-         WHERE (paid_at AT TIME ZONE 'Africa/Lagos')::date = $1::date
+         WHERE (paid_at AT TIME ZONE 'Africa/Lagos')::date BETWEEN $1::date AND $2::date
          GROUP BY operator_id
        ) t ON t.operator_id = o.operator_id
        LEFT JOIN (
          SELECT operator_id, SUM(amount_ngn) AS adjustment_ngn, COUNT(*) AS adjustment_count
          FROM ops_cash_adjustments
-         WHERE adjustment_date = $1
+         WHERE adjustment_date BETWEEN $1 AND $2
          GROUP BY operator_id
        ) a ON a.operator_id = o.operator_id
        WHERE ${clauses.join(" AND ")}
@@ -476,7 +501,9 @@ export class OpsService {
         : Math.abs(net) <= 100 ? "balanced" : net > 0 ? "in_credit" : "shortfall";
       return {
         ...row,
-        record_date: recordDate,
+        record_date: to,
+        date_from: from,
+        date_to: to,
         expected_cash_ngn: Math.round(expected * 100) / 100,
         remitted_cash_ngn: Math.round(remitted * 100) / 100,
         adjustment_ngn: Math.round(adjustment * 100) / 100,
@@ -524,10 +551,17 @@ export class OpsService {
     return adjustment;
   }
 
-  async listDailyCloseouts(filters: { record_date?: string; amoeba_id?: string }, scope: OpsDataScope = {}) {
+  async listDailyCloseouts(
+    filters: { record_date?: string; date_from?: string; date_to?: string; amoeba_id?: string },
+    scope: OpsDataScope = {}
+  ) {
     const params: unknown[] = [];
     const clauses: string[] = [];
-    if (filters.record_date) {
+    if (filters.date_from || filters.date_to) {
+      const { from, to } = this.dateRange(filters);
+      params.push(from, to);
+      clauses.push(`c.record_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    } else if (filters.record_date) {
       params.push(this.date(filters.record_date));
       clauses.push(`c.record_date = $${params.length}`);
     }
@@ -832,10 +866,17 @@ export class OpsService {
     return policy;
   }
 
-  async listFuelIssues(filters: { operating_date?: string; operator_id?: string }, scope: OpsDataScope = {}) {
+  async listFuelIssues(
+    filters: { operating_date?: string; date_from?: string; date_to?: string; operator_id?: string },
+    scope: OpsDataScope = {}
+  ) {
     const params: unknown[] = [];
     const clauses: string[] = [];
-    if (filters.operating_date) { params.push(this.date(filters.operating_date)); clauses.push(`f.operating_date = $${params.length}`); }
+    if (filters.date_from || filters.date_to) {
+      const { from, to } = this.dateRange(filters);
+      params.push(from, to);
+      clauses.push(`f.operating_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    } else if (filters.operating_date) { params.push(this.date(filters.operating_date)); clauses.push(`f.operating_date = $${params.length}`); }
     if (filters.operator_id) { params.push(filters.operator_id); clauses.push(`f.operator_id = $${params.length}`); }
     this.addScope(clauses, params, scope);
     return this.db.many(
@@ -879,6 +920,19 @@ export class OpsService {
     }
     await this.audit("fuel_issue.created", "fuel_issue", issue.fuel_issue_id, null, issue, actorPersonId);
     return issue;
+  }
+
+  async mileageReconciliationsRange(
+    filters: { record_date?: string; date_from?: string; date_to?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const { from, days } = this.dateRange(filters);
+    const results = [];
+    for (const day of this.rangeDays(from, days)) {
+      const rows = await this.mileageReconciliations(day, scope);
+      results.push(...rows.map((row: any) => ({ ...row, operating_date: day })));
+    }
+    return results;
   }
 
   async mileageReconciliations(recordDate?: string, scope: OpsDataScope = {}) {
@@ -995,7 +1049,19 @@ export class OpsService {
     return registration;
   }
 
-  async listIngestionRuns(recordDate?: string) {
+  async listIngestionRuns(recordDate?: string, dateFrom?: string, dateTo?: string) {
+    if (dateFrom || dateTo) {
+      const { from, to } = this.dateRange({ date_from: dateFrom, date_to: dateTo });
+      return this.db.many(
+        `SELECT r.*, pa.platform, pa.display_name AS platform_display_name
+         FROM ops_ingestion_runs r
+         JOIN ops_platform_accounts pa ON pa.platform_account_id = r.platform_account_id
+         WHERE r.record_date BETWEEN $1 AND $2
+         ORDER BY r.started_at DESC
+         LIMIT 100`,
+        [from, to]
+      );
+    }
     return this.db.many(
       `SELECT r.*, pa.platform, pa.display_name AS platform_display_name
        FROM ops_ingestion_runs r
@@ -1130,12 +1196,16 @@ export class OpsService {
   }
 
   async listDailyPerformance(
-    filters: { record_date?: string; operator_id?: string; amoeba_id?: string },
+    filters: { record_date?: string; date_from?: string; date_to?: string; operator_id?: string; amoeba_id?: string },
     scope: OpsDataScope = {}
   ) {
     const clauses: string[] = [];
     const params: unknown[] = [];
-    if (filters.record_date) {
+    if (filters.date_from || filters.date_to) {
+      const { from, to } = this.dateRange(filters);
+      params.push(from, to);
+      clauses.push(`d.record_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    } else if (filters.record_date) {
       params.push(this.date(filters.record_date));
       clauses.push(`d.record_date = $${params.length}`);
     }
@@ -1165,9 +1235,12 @@ export class OpsService {
     );
   }
 
-  async teamBoard(filters: { record_date?: string; amoeba_id?: string }, scope: OpsDataScope = {}) {
-    const recordDate = this.date(filters.record_date || this.lagosDate());
-    const params: unknown[] = [recordDate];
+  async teamBoard(
+    filters: { record_date?: string; date_from?: string; date_to?: string; amoeba_id?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const { from, to, days } = this.dateRange(filters);
+    const params: unknown[] = [from, to];
     const clauses = ["o.operator_status = 'active'"];
     if (filters.amoeba_id) {
       params.push(filters.amoeba_id);
@@ -1207,13 +1280,13 @@ export class OpsService {
           )) AS platforms
          FROM ops_platform_daily_records records
          JOIN ops_platform_accounts pa ON pa.platform_account_id = records.platform_account_id
-         WHERE records.record_date = $1
+         WHERE records.record_date BETWEEN $1 AND $2
          GROUP BY records.operator_id
        ) d ON d.operator_id = o.operator_id
        LEFT JOIN (
          SELECT operator_id, COUNT(*) AS open_alerts
          FROM ops_alerts
-         WHERE alert_date = $1 AND resolution_status IN ('open', 'escalated')
+         WHERE alert_date BETWEEN $1 AND $2 AND resolution_status IN ('open', 'escalated')
          GROUP BY operator_id
        ) a ON a.operator_id = o.operator_id
        WHERE ${clauses.join(" AND ")}
@@ -1226,15 +1299,24 @@ export class OpsService {
       const vehicleType = platformVehicleType || row.vehicle_type;
       const profile: any = profiles.find((item: any) =>
         item.vehicle_type === vehicleType
-        && item.effective_from <= recordDate
-        && (!item.effective_to || item.effective_to >= recordDate)
+        && item.effective_from <= to
+        && (!item.effective_to || item.effective_to >= to)
       );
-      const target = Number(row.daily_revenue_target_ngn || profile?.daily_target_ngn || 0);
-      const expectedPct = profile ? this.expectedPct(profile.checkpoints, recordDate) : 100;
-      const expectedRevenue = target * expectedPct / 100;
+      const dailyTarget = Number(row.daily_revenue_target_ngn || profile?.daily_target_ngn || 0);
+      // Over a range, the target scales by whole days; the final day only
+      // counts its intraday checkpoint share when the range ends today.
+      const finalDayPct = profile ? this.expectedPct(profile.checkpoints, to) : 100;
+      const target = dailyTarget * days;
+      const expectedRevenue = dailyTarget * (days - 1) + (dailyTarget * finalDayPct / 100);
+      const expectedPct = target > 0 ? (expectedRevenue / target) * 100 : 100;
       return {
         ...row,
         vehicle_type: vehicleType,
+        date_from: from,
+        date_to: to,
+        day_count: days,
+        daily_revenue_target_ngn: dailyTarget,
+        range_revenue_target_ngn: Math.round(target * 100) / 100,
         expected_revenue_pct: Math.round(expectedPct * 10) / 10,
         expected_revenue_ngn: Math.round(expectedRevenue * 100) / 100,
         ...this.paceStatus(Number(row.ride_revenue_ngn), expectedRevenue, target,
@@ -1243,10 +1325,19 @@ export class OpsService {
     });
   }
 
-  async listAlerts(filters: { resolution_status?: string; operator_id?: string }, scope: OpsDataScope = {}) {
+  async listAlerts(
+    filters: { resolution_status?: string; operator_id?: string; date_from?: string; date_to?: string },
+    scope: OpsDataScope = {}
+  ) {
     const clauses: string[] = [];
     const params: unknown[] = [];
-    for (const [key, value] of Object.entries(filters)) {
+    const { date_from, date_to, ...exactFilters } = filters;
+    if (date_from || date_to) {
+      const { from, to } = this.dateRange({ date_from, date_to });
+      params.push(from, to);
+      clauses.push(`a.alert_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    }
+    for (const [key, value] of Object.entries(exactFilters)) {
       if (!value) continue;
       params.push(value);
       clauses.push(`a.${key} = $${params.length}`);
@@ -1371,10 +1462,17 @@ export class OpsService {
     return updated;
   }
 
-  async listDailyReports(filters: { record_date?: string; amoeba_id?: string }, scope: OpsDataScope = {}) {
+  async listDailyReports(
+    filters: { record_date?: string; date_from?: string; date_to?: string; amoeba_id?: string },
+    scope: OpsDataScope = {}
+  ) {
     const clauses: string[] = [];
     const params: unknown[] = [];
-    if (filters.record_date) {
+    if (filters.date_from || filters.date_to) {
+      const { from, to } = this.dateRange(filters);
+      params.push(from, to);
+      clauses.push(`r.record_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    } else if (filters.record_date) {
       params.push(this.date(filters.record_date));
       clauses.push(`r.record_date = $${params.length}`);
     }

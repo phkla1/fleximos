@@ -92,7 +92,7 @@ button, a, input, select { min-height: 44px; }
 main { padding: 30px clamp(16px, 4vw, 54px) 76px; }
 .overview-band { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .overview-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
-.overview-actions label { min-width: 170px; }
+.overview-actions label { min-width: 128px; }
 .eyebrow { margin: 0 0 6px; color: var(--green); font-size: 12px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(31px, 4vw, 50px); line-height: 1.04; letter-spacing: -.025em; }
 h2 { margin: 0; font-size: 25px; letter-spacing: -.015em; }
@@ -360,7 +360,7 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
   .connection-status { padding-top: 10px; }
   main { padding: 22px 14px 52px; }
   .overview-band, .overview-actions { display: grid; align-items: start; }
-  .overview-actions { grid-template-columns: 1fr auto; }
+  .overview-actions { grid-template-columns: 1fr 1fr; }
   .metrics, .summary-grid, .data-row, .data-list.compact-list .data-row { grid-template-columns: 1fr; }
   .card-kpis { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }

@@ -480,6 +480,26 @@
               "type": "string",
               "format": "date"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -558,6 +578,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -595,6 +635,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -632,6 +692,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -1141,6 +1221,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -1204,6 +1304,26 @@
               "type": "string",
               "format": "date"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -1248,6 +1368,26 @@
                 "escalated"
               ]
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -1369,6 +1509,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {
@@ -1406,6 +1566,26 @@
               "type": "string",
               "format": "date"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive adjustment-date range bound; both default to today (Lagos)."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive adjustment-date range bound; both default to today (Lagos)."
           }
         ],
         "responses": {
@@ -1480,6 +1660,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive). Defaults to date_to, record_date, or today (Lagos). Ranges are capped at 92 days."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive). Defaults to date_from, record_date, or today (Lagos)."
           }
         ],
         "responses": {

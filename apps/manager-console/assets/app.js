@@ -4,10 +4,10 @@ const state = {
   operatingDate: null
 };
 const ids = [
-  "connectionText", "operatingDate", "activeCount", "liveCount", "liveContext", "revenueTotal", "expectedContext",
+  "connectionText", "dateFrom", "dateTo", "activeCount", "liveCount", "liveContext", "revenueTotal", "expectedContext",
   "grossPnl", "pnlContext", "escalationCount", "escalationContext", "notice", "updatedLabel", "teamPortfolio",
   "escalationSummary", "escalationList", "incidentList", "fleetFollowups",
-  "pnlStart", "pnlEnd", "pnlTotals", "pnlList", "expenseForm", "expenseList",
+  "pnlRangeLabel", "pnlTotals", "pnlList", "expenseForm", "expenseList",
   "leaderboardList", "leaderboardIntro", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
@@ -16,7 +16,8 @@ const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
 const token = window.flexiServiceToken();
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-el.operatingDate.value = today;
+el.dateFrom.value = today;
+el.dateTo.value = today;
 
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const money = (value) => `₦${Math.round(Number(value || 0)).toLocaleString()}`;
@@ -247,8 +248,9 @@ function render() {
 }
 
 async function loadPnlAndLeaderboard() {
-  const start = el.pnlStart.value || state.operatingDate;
-  const end = el.pnlEnd.value || state.operatingDate;
+  const start = state.dateFrom || state.operatingDate;
+  const end = state.dateTo || state.operatingDate;
+  el.pnlRangeLabel.textContent = start === end ? `Period: ${end}` : `Period: ${start} → ${end}`;
   const [pnl, expenses, leaderboard] = await Promise.all([
     ops(`/ops/v1/pnl?period_start=${start}&period_end=${end}`),
     ops(`/ops/v1/expenses?period_start=${start}&period_end=${end}`),
@@ -267,20 +269,29 @@ async function refresh() {
     foundation("/identity/v1/people"), foundation("/amoeba/v1/amoebas"), ops("/ops/v1/operators"), ops("/ops/v1/daily-performance")
   ]);
   const dates = [...new Set(allPerformance.data.map((item) => String(item.record_date).slice(0, 10)))].sort().reverse();
-  const operatingDate = dates.includes(el.operatingDate.value) ? el.operatingDate.value : (dates[0] || el.operatingDate.value || today);
-  el.operatingDate.value = operatingDate;
-  state.operatingDate = operatingDate;
-  if (!el.pnlStart.value) el.pnlStart.value = dates.length ? dates[Math.min(dates.length - 1, 6)] : operatingDate;
-  if (!el.pnlEnd.value) el.pnlEnd.value = operatingDate;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || today;
+  let dateTo = el.dateTo.value || dateFrom;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  const rangeHasData = dates.some((date) => date >= dateFrom && date <= dateTo);
+  if (!rangeHasData && dates.length) {
+    dateFrom = dates[0];
+    dateTo = dates[0];
+  }
+  el.dateFrom.value = dateFrom;
+  el.dateTo.value = dateTo;
+  state.dateFrom = dateFrom;
+  state.dateTo = dateTo;
+  state.operatingDate = dateTo;
   const expenseDate = el.expenseForm.querySelector('input[name="expense_date"]');
   if (!expenseDate.value) expenseDate.value = today;
   Object.assign(state, { people: people.data, amoebas: amoebas.data, operators: operators.data });
   el.expenseForm.querySelector('select[name="amoeba_id"]').innerHTML =
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 
+  const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const [board, alerts, reports, escalations] = await Promise.all([
-    ops(`/ops/v1/team-board?record_date=${operatingDate}`), ops("/ops/v1/alerts"),
-    ops(`/ops/v1/daily-reports?record_date=${operatingDate}`), ops("/ops/v1/escalations")
+    ops(`/ops/v1/team-board?${range}`), ops(`/ops/v1/alerts?${range}`),
+    ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations")
   ]);
   Object.assign(state, { board: board.data, alerts: alerts.data, reports: reports.data, escalations });
   await loadPnlAndLeaderboard();
@@ -371,7 +382,13 @@ document.getElementById("leaderboardSort").addEventListener("click", async (even
   }
 });
 
-document.getElementById("loadPnl").addEventListener("click", async () => {
+const rangeChanged = async () => {
+  try { await refresh(); } catch (error) { showError(error); }
+};
+el.dateFrom.addEventListener("change", rangeChanged);
+el.dateTo.addEventListener("change", rangeChanged);
+
+document.getElementById("loadPnlRemoved")?.addEventListener("click", async () => {
   try {
     await loadPnlAndLeaderboard();
     render();
@@ -412,6 +429,5 @@ document.getElementById("exportLeaderboardCsv").addEventListener("click", () => 
 });
 
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
-el.operatingDate.addEventListener("change", () => refresh().catch(showError));
 function showError(error) { connection("error", "API error"); el.notice.textContent = error.message; el.notice.classList.add("error"); }
 refresh().catch(showError);

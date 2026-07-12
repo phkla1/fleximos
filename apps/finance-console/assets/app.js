@@ -19,7 +19,7 @@ const state = {
   operatingDate: null
 };
 const ids = [
-  "connectionText", "operatingDate", "operatorCount", "exceptionCount", "notice",
+  "connectionText", "dateFrom", "dateTo", "operatorCount", "exceptionCount", "notice",
   "revenueContext", "carRevenue", "bikeRevenue", "onlineHours", "operatorAccountList",
   "exceptionList", "operatorDialog", "operatorDialogTitle", "operatorDialogSummary",
   "operatorDialogList", "paymentsContext", "providerMode", "reservedAccountCount",
@@ -37,7 +37,8 @@ const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase
 const paymentsBase = query.get("paymentsApiBase") || window.flexiServiceBase("payments", 4040);
 const token = window.flexiServiceToken();
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-el.operatingDate.value = today;
+el.dateFrom.value = today;
+el.dateTo.value = today;
 
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const money = (value) => `₦${Number(value || 0).toLocaleString()}`;
@@ -142,7 +143,7 @@ function render() {
   el.carRevenue.textContent = money(netEarnings.car);
   el.bikeRevenue.textContent = money(netEarnings.bike);
   el.onlineHours.textContent = netEarnings.hours.toFixed(1);
-  el.revenueContext.textContent = `Scoped platform activity for ${state.operatingDate}. This is operational Net Earnings, not accounting revenue or a bank-reconciled cash balance.`;
+  el.revenueContext.textContent = `Scoped platform activity ${state.dateFrom === state.dateTo ? `for ${state.operatingDate}` : `from ${state.dateFrom} to ${state.dateTo}`}. This is operational Net Earnings, not accounting revenue or a bank-reconciled cash balance.`;
   const accountByOperator = new Map(state.reservedAccounts.map((account) => [account.operator_id, account]));
   const provisionedOperators = activeOperators.filter((operator) => accountByOperator.has(operator.operator_id));
   const reservedAccountBalance = state.reservedAccounts.reduce((sum, account) => sum + Number(account.current_balance_ngn || 0), 0);
@@ -195,7 +196,7 @@ function render() {
     <div><span>Exceptions</span><strong>${selectedPeriodClose.exception_count}</strong><small>${Number(selectedPeriodClose.ops_exception_count || 0)} cash</small></div>
     <div><span>Total received</span><strong>${money(selectedPeriodClose.total_amount_ngn)}</strong></div>
   ` : `
-    <div><strong>Open for Finance review</strong><small>Adjustments and evidence can still be recorded for ${escapeHtml(state.operatingDate)}.</small></div>
+    <div><strong>Open for Finance review</strong><small>Adjustments and evidence can still be recorded for ${escapeHtml(state.operatingDate)}${state.dateFrom !== state.dateTo ? ` (period close acts on the To date; totals cover ${escapeHtml(state.dateFrom)} to ${escapeHtml(state.dateTo)})` : ""}.</small></div>
     <div><span>Expected</span><strong>${money(cashTotals.expected)}</strong></div>
     <div><span>Received</span><strong>${money(cashTotals.remitted)}</strong></div>
     <div><span>Adjustments</span><strong>${money(cashTotals.adjustments)}</strong></div>
@@ -361,14 +362,24 @@ async function refresh() {
     foundation("/identity/v1/people"), foundation("/amoeba/v1/amoebas"), ops("/ops/v1/operators"), ops("/ops/v1/daily-performance")
   ]);
   const dates = [...new Set(allPerformance.data.map((item) => String(item.record_date).slice(0, 10)))].sort().reverse();
-  const operatingDate = dates.includes(el.operatingDate.value) ? el.operatingDate.value : (dates[0] || el.operatingDate.value || today);
-  el.operatingDate.value = operatingDate;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || today;
+  let dateTo = el.dateTo.value || dateFrom;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  const rangeHasData = dates.some((date) => date >= dateFrom && date <= dateTo);
+  if (!rangeHasData && dates.length) {
+    dateFrom = dates[0];
+    dateTo = dates[0];
+  }
+  el.dateFrom.value = dateFrom;
+  el.dateTo.value = dateTo;
+  const range = `date_from=${dateFrom}&date_to=${dateTo}`;
+  const operatingDate = dateTo;
   const [performance, mileage, cashStatus, cashAdjustments, closeouts] = await Promise.all([
-    ops(`/ops/v1/daily-performance?record_date=${operatingDate}`),
-    ops(`/ops/v1/mileage-reconciliations?record_date=${operatingDate}`),
-    ops(`/ops/v1/cash/status?record_date=${operatingDate}`),
-    ops(`/ops/v1/cash/adjustments?adjustment_date=${operatingDate}`),
-    ops(`/ops/v1/daily-closeouts?record_date=${operatingDate}`)
+    ops(`/ops/v1/daily-performance?${range}`),
+    ops(`/ops/v1/mileage-reconciliations?${range}`),
+    ops(`/ops/v1/cash/status?${range}`),
+    ops(`/ops/v1/cash/adjustments?${range}`),
+    ops(`/ops/v1/daily-closeouts?${range}`)
   ]);
   let paymentsState = {
     paymentsHealth: null,
@@ -411,6 +422,8 @@ async function refresh() {
     closeouts: closeouts.data,
     actorProfile,
     operatingDate,
+    dateFrom,
+    dateTo,
     ...paymentsState
   });
   render();
@@ -429,7 +442,8 @@ el.adjustmentForm.addEventListener("submit", (event) => {
   event.preventDefault();
   submitAdjustment().catch(showError);
 });
-el.operatingDate.addEventListener("change", () => refresh().catch(showError));
+el.dateFrom.addEventListener("change", () => refresh().catch(showError));
+el.dateTo.addEventListener("change", () => refresh().catch(showError));
 function showError(error) { connection("error", "API error"); el.notice.textContent = error.message; el.notice.classList.add("error"); }
 
 function exportCashCsv() {

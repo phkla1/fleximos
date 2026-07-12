@@ -24,7 +24,7 @@ const state = {
 };
 
 const ids = [
-  "connectionText", "operatingDate", "netEarningsTotal", "netEarningsGrowth",
+  "connectionText", "dateFrom", "dateTo", "netEarningsTotal", "netEarningsGrowth",
   "netEarningsWeek", "hourlyEfficiencyCard", "hourlyEfficiency", "hourlyEfficiencyNote",
   "hourlyEfficiencyThreshold", "utilisationMetric", "utilisationNote",
   "cashVarianceMetric", "cashVarianceNote", "alertGroupCount", "alertGroupNote",
@@ -55,7 +55,8 @@ let labourCostPerHour = Number(query.get("labourCostPerHour") || 0);
 let adminLabourCost = Number(query.get("adminLabourCostNg")) || Number(query.get("adminLabourCost")) || 0;
 let operatorLabourSharePct = Number(query.get("operatorLabourSharePct")) || Number(query.get("operatorLabourPct")) || 0;
 let dailyOverheadAssumption = Number(query.get("dailyOverheadsNg")) || Number(query.get("dailyOverheads")) || 0;
-el.operatingDate.value = today;
+el.dateFrom.value = today;
+el.dateTo.value = today;
 
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const money = (value) => `₦${Number(value || 0).toLocaleString()}`;
@@ -129,15 +130,12 @@ function addDays(date, days) {
 }
 
 function periodLength() {
-  if (state.periodMode === "month") return 30;
-  if (state.periodMode === "week") return 7;
-  return 1;
+  return Math.max(1, state.rangeDays || 1);
 }
 
 function periodLabel() {
-  if (state.periodMode === "month") return `30 days ending ${state.operatingDate}`;
-  if (state.periodMode === "week") return `7 days ending ${state.operatingDate}`;
-  return state.operatingDate;
+  if (!state.dateFrom || state.dateFrom === state.dateTo) return state.operatingDate;
+  return `${state.rangeDays} days ending ${state.dateTo}`;
 }
 
 function datesForPeriod(endDate, length = periodLength()) {
@@ -158,8 +156,14 @@ function syncPeriodModeButtons() {
   });
 }
 
+// The Day / Week / Month buttons are presets: they keep the current To
+// date and pull From back 0, 6, or 29 days. Custom From/To works directly.
 function setPeriodMode(mode) {
   state.periodMode = mode;
+  const to = el.dateTo.value || today;
+  const length = mode === "month" ? 29 : mode === "week" ? 6 : 0;
+  el.dateTo.value = to;
+  el.dateFrom.value = addDays(to, -length);
   syncPeriodModeButtons();
   refresh().catch(showError);
 }
@@ -273,7 +277,7 @@ function dailyNetEarningsSeries() {
 }
 
 function renderTrendChart(series) {
-  const windowed = series.filter((point) => point.date <= state.operatingDate).slice(-(state.periodMode === "month" ? 30 : 7));
+  const windowed = series.filter((point) => point.date <= state.dateTo).slice(-Math.max(7, state.rangeDays || 1));
   const byDate = new Map(series.map((point) => [point.date, point.netEarnings]));
   const paired = windowed.map((point) => ({ ...point, priorWeek: byDate.get(addDays(point.date, -7)) || 0 }));
   const max = Math.max(1, ...paired.flatMap((point) => [point.netEarnings, point.priorWeek]));
@@ -1103,7 +1107,7 @@ function showDataQualityDetail() {
         <div><span class="row-label">Signal</span><strong>${escapeHtml(qualityLabel(qualityBucket(row)))}</strong><small>${escapeHtml(String(row.record_date || "").slice(0, 10))}</small></div>
         <div><span class="pill ${qualityBucket(row) === "stale" ? "open" : "pending"}">${escapeHtml(String(row.data_quality || "derived").replaceAll("_", " "))}</span></div>
         <div></div>
-      </article>`).join("") : '<div class="empty">No weak source rows are visible for this operating date.</div>'}`;
+      </article>`).join("") : '<div class="empty">No weak source rows are visible for this period.</div>'}`;
   openDetailDialog();
 }
 
@@ -1119,22 +1123,41 @@ async function refresh() {
     ops("/ops/v1/economics-policies")
   ]);
   const dates = [...new Set(allPerformance.data.map((item) => String(item.record_date).slice(0, 10)))].sort().reverse();
-  const operatingDate = dates.includes(el.operatingDate.value) ? el.operatingDate.value : (dates[0] || el.operatingDate.value || today);
   const availableDates = dates.slice().sort();
   state.availableDates = availableDates;
-  const selectedDates = datesForPeriod(operatingDate);
+  let dateFrom = el.dateFrom.value || el.dateTo.value || today;
+  let dateTo = el.dateTo.value || dateFrom;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  const rangeHasData = availableDates.some((date) => date >= dateFrom && date <= dateTo);
+  if (!rangeHasData && dates.length) {
+    dateFrom = dates[0];
+    dateTo = dates[0];
+  }
+  el.dateFrom.value = dateFrom;
+  el.dateTo.value = dateTo;
+  const rangeDays = Math.round((Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) / 86400000) + 1;
+  state.dateFrom = dateFrom;
+  state.dateTo = dateTo;
+  state.rangeDays = rangeDays;
+  state.periodMode = rangeDays === 1 ? "day" : rangeDays <= 7 ? "week" : "month";
+  syncPeriodModeButtons();
+  const operatingDate = dateTo;
+  const singleDay = rangeDays === 1;
+  const selectedDates = availableDates.filter((date) => date >= dateFrom && date <= dateTo);
+  // The prior period is the same calendar length immediately before From.
+  const priorTo = addDays(dateFrom, -1);
+  const priorFrom = addDays(dateFrom, -rangeDays);
+  const priorPeriodDates = availableDates.filter((date) => date >= priorFrom && date <= priorTo);
   const priorDate = dates.find((date) => date < operatingDate);
-  const priorPeriodEnd = availableDates.filter((date) => date < selectedDates[0]).at(-1);
-  const priorPeriodDates = priorPeriodEnd ? datesForPeriod(priorPeriodEnd, selectedDates.length) : [];
   const priorWeekDate = addDays(operatingDate, -7);
-  el.operatingDate.value = operatingDate;
+  const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const [board, dailyPerformance, priorDayPerformance, sameWeekdayPerformance, alerts, cashStatus] = await Promise.all([
-    ops(`/ops/v1/team-board?record_date=${operatingDate}`),
-    ops(`/ops/v1/daily-performance?record_date=${operatingDate}`),
-    priorDate ? ops(`/ops/v1/daily-performance?record_date=${priorDate}`) : Promise.resolve({ data: [] }),
-    dates.includes(priorWeekDate) ? ops(`/ops/v1/daily-performance?record_date=${priorWeekDate}`) : Promise.resolve({ data: [] }),
-    ops("/ops/v1/alerts"),
-    ops(`/ops/v1/cash/status?record_date=${operatingDate}`)
+    ops(`/ops/v1/team-board?${range}`),
+    ops(`/ops/v1/daily-performance?${range}`),
+    singleDay && priorDate ? ops(`/ops/v1/daily-performance?record_date=${priorDate}`) : Promise.resolve({ data: [] }),
+    singleDay && dates.includes(priorWeekDate) ? ops(`/ops/v1/daily-performance?record_date=${priorWeekDate}`) : Promise.resolve({ data: [] }),
+    ops(`/ops/v1/alerts?${range}`),
+    ops(`/ops/v1/cash/status?${range}`)
   ]);
   let paymentState = { reservedAccounts: [], transactions: [], paymentsAvailable: false };
   try {
@@ -1155,9 +1178,9 @@ async function refresh() {
     board: board.data,
     availableDates,
     selectedDates,
-    performance: state.periodMode === "day" ? dailyPerformance.data : rowsForDates(allPerformance.data, selectedDates),
-    priorPerformance: state.periodMode === "day" ? priorDayPerformance.data : rowsForDates(allPerformance.data, priorPeriodDates),
-    priorWeekPerformance: state.periodMode === "day" ? sameWeekdayPerformance.data : rowsForDates(allPerformance.data, priorPeriodDates),
+    performance: dailyPerformance.data,
+    priorPerformance: singleDay ? priorDayPerformance.data : rowsForDates(allPerformance.data, priorPeriodDates),
+    priorWeekPerformance: singleDay ? sameWeekdayPerformance.data : rowsForDates(allPerformance.data, priorPeriodDates),
     alerts: alerts.data,
     cashStatus: cashStatus.data,
     reservedAccounts: paymentState.reservedAccounts,
@@ -1173,7 +1196,8 @@ async function refresh() {
 
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 el.exportAnalyticsCsv.addEventListener("click", exportAnalyticsCsv);
-el.operatingDate.addEventListener("change", () => refresh().catch(showError));
+el.dateFrom.addEventListener("change", () => refresh().catch(showError));
+el.dateTo.addEventListener("change", () => refresh().catch(showError));
 document.addEventListener("click", (event) => {
   const periodButton = event.target.closest("[data-period-mode]");
   if (periodButton) {

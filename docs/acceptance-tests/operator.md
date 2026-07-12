@@ -70,10 +70,13 @@ phone asks for location permission, granting it attaches your GPS position.
 Accident and police reports also escalate to the manager if not acknowledged
 within 30 minutes.
 
-### OP-9 · Look at an earlier day
-1. Change the **Operating date** at the top to yesterday (the demo seed covers the last three days).
+### OP-9 · Look at an earlier day or a range
+1. Set **From** and **To** at the top to yesterday (the demo seed covers the last three days).
+2. Then set **From** to two days ago, keeping **To** on today.
 
-**Expected:** revenue, trips and hours update to that day.
+**Expected:** with both dates equal, figures show that single day; with a
+wider range, revenue, trips and hours sum across the days and the target
+scales to match.
 
 ### OP-10 · Sign out and back in
 1. Tap the sign-out button (top right), then sign in again.

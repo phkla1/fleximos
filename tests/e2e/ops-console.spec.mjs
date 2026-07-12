@@ -105,6 +105,11 @@ test.describe("Ops admin console", () => {
   test("groups alerts and drills into affected operators", async ({ page }) => {
     await page.goto(`${url}#alerts`);
     await expect(page.locator("#notice")).toContainText("Connected");
+    // Alerts are scoped to the From/To range; widen it so seeded alerts from
+    // earlier operating days stay visible regardless of when the suite runs.
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    await page.locator("#dateFrom").fill(from);
+    await expect(page.locator("#notice")).toContainText("Showing operations");
     await page.locator("#alertFilter").selectOption("");
     const alertGroups = page.locator("#alertList .alert-group");
     expect(await alertGroups.count()).toBeGreaterThan(0);

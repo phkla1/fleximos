@@ -13,8 +13,8 @@ follows your Manager role assignments.
 ### MA-1 · Open the console
 1. Open the console URL.
 
-**Expected:** "Operations across your teams" with green connection status and
-five KPI tiles: active operators, live operators, Net Earnings, Gross P&L for
+**Expected:** "Operations across your teams" with green connection status,
+the From/To range control (defaulting to today), and five KPI tiles: active operators, live operators, Net Earnings, Gross P&L for
 the selected period, and the escalation queue count.
 
 ### MA-2 · Read the team portfolio
@@ -45,8 +45,8 @@ counts change on refresh.
 **Expected:** confirmations, and the incident leaves the queue.
 
 ### MA-6 · Read the P&L
-1. Go to **P&L**. Adjust **From**/**To** to cover the seeded history (about a
-   month back) and press **Recalculate**.
+1. Go to **P&L**. The period follows the From/To range at the top of the
+   page — set it to cover the last few days.
 
 **Expected:** company totals (Net Earnings, direct expenses, maintenance,
 central costs, hourly P&L) and one card per amoeba showing Net Earnings,

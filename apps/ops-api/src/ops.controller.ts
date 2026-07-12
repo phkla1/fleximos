@@ -153,6 +153,8 @@ export class OpsController {
   async cashStatus(
     @Req() req: Request,
     @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
     @Query("operator_id") operatorId?: string,
     @Query("amoeba_id") amoebaId?: string
   ) {
@@ -160,7 +162,7 @@ export class OpsController {
     this.identity.requireBusinessOversight(actor);
     return {
       data: await this.ops.cashStatus(
-        { record_date: recordDate, operator_id: operatorId, amoeba_id: amoebaId },
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, operator_id: operatorId, amoeba_id: amoebaId },
         this.identity.dataScope(actor)
       ),
       next_cursor: null
@@ -191,13 +193,15 @@ export class OpsController {
   async listCashAdjustments(
     @Req() req: Request,
     @Query("operator_id") operatorId?: string,
-    @Query("adjustment_date") adjustmentDate?: string
+    @Query("adjustment_date") adjustmentDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
   ) {
     const actor = await this.auth(req);
     this.identity.requireBusinessOversight(actor);
     return {
       data: await this.ops.listCashAdjustments(
-        { operator_id: operatorId, adjustment_date: adjustmentDate },
+        { operator_id: operatorId, adjustment_date: adjustmentDate, date_from: dateFrom, date_to: dateTo },
         this.identity.dataScope(actor)
       ),
       next_cursor: null
@@ -222,12 +226,18 @@ export class OpsController {
   @ApiTags("Closeouts")
   @ApiBearerAuth()
   @Get("ops/v1/daily-closeouts")
-  async listDailyCloseouts(@Req() req: Request, @Query("record_date") recordDate?: string, @Query("amoeba_id") amoebaId?: string) {
+  async listDailyCloseouts(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("amoeba_id") amoebaId?: string
+  ) {
     const actor = await this.auth(req);
     this.identity.requireBusinessOversight(actor);
     return {
       data: await this.ops.listDailyCloseouts(
-        { record_date: recordDate, amoeba_id: amoebaId },
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, amoeba_id: amoebaId },
         this.identity.dataScope(actor)
       ),
       next_cursor: null
@@ -394,11 +404,17 @@ export class OpsController {
   @ApiTags("Fuel and Mileage")
   @ApiBearerAuth()
   @Get("ops/v1/fuel-issues")
-  async listFuelIssues(@Req() req: Request, @Query("operating_date") operatingDate?: string, @Query("operator_id") operatorId?: string) {
+  async listFuelIssues(
+    @Req() req: Request,
+    @Query("operating_date") operatingDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("operator_id") operatorId?: string
+  ) {
     const actor = await this.auth(req);
     return {
       data: await this.ops.listFuelIssues(
-        { operating_date: operatingDate, operator_id: operatorId },
+        { operating_date: operatingDate, date_from: dateFrom, date_to: dateTo, operator_id: operatorId },
         this.identity.dataScope(actor)
       ),
       next_cursor: null
@@ -418,21 +434,37 @@ export class OpsController {
   @ApiTags("Fuel and Mileage")
   @ApiBearerAuth()
   @Get("ops/v1/mileage-reconciliations")
-  async mileageReconciliations(@Req() req: Request, @Query("record_date") recordDate?: string) {
+  async mileageReconciliations(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
+  ) {
     const actor = await this.auth(req);
+    const range = this.ops.dateRange({ record_date: recordDate, date_from: dateFrom, date_to: dateTo });
     return {
-      record_date: recordDate || this.ops.lagosDate(),
-      data: await this.ops.mileageReconciliations(recordDate, this.identity.dataScope(actor))
+      record_date: range.to,
+      date_from: range.from,
+      date_to: range.to,
+      data: await this.ops.mileageReconciliationsRange(
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo },
+        this.identity.dataScope(actor)
+      )
     };
   }
 
   @ApiTags("Ingestion")
   @ApiBearerAuth()
   @Get("ops/v1/ingestion-runs")
-  async listIngestionRuns(@Req() req: Request, @Query("record_date") recordDate?: string) {
+  async listIngestionRuns(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
+  ) {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
-    return { data: await this.ops.listIngestionRuns(recordDate), next_cursor: null };
+    return { data: await this.ops.listIngestionRuns(recordDate, dateFrom, dateTo), next_cursor: null };
   }
 
   @ApiTags("Ingestion")
@@ -454,13 +486,15 @@ export class OpsController {
   async listDailyPerformance(
     @Req() req: Request,
     @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
     @Query("operator_id") operatorId?: string,
     @Query("amoeba_id") amoebaId?: string
   ) {
     const actor = await this.auth(req);
     return {
       data: await this.ops.listDailyPerformance(
-        { record_date: recordDate, operator_id: operatorId, amoeba_id: amoebaId },
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, operator_id: operatorId, amoeba_id: amoebaId },
         this.identity.dataScope(actor)
       ),
       next_cursor: null
@@ -470,12 +504,22 @@ export class OpsController {
   @ApiTags("Reporting")
   @ApiBearerAuth()
   @Get("ops/v1/team-board")
-  async teamBoard(@Req() req: Request, @Query("record_date") recordDate?: string, @Query("amoeba_id") amoebaId?: string) {
+  async teamBoard(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("amoeba_id") amoebaId?: string
+  ) {
     const actor = await this.auth(req);
+    const range = this.ops.dateRange({ record_date: recordDate, date_from: dateFrom, date_to: dateTo });
     return {
-      record_date: recordDate || this.ops.lagosDate(),
+      record_date: range.to,
+      date_from: range.from,
+      date_to: range.to,
+      day_count: range.days,
       data: await this.ops.teamBoard(
-        { record_date: recordDate, amoeba_id: amoebaId },
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, amoeba_id: amoebaId },
         this.identity.dataScope(actor)
       )
     };
@@ -484,11 +528,17 @@ export class OpsController {
   @ApiTags("Reporting")
   @ApiBearerAuth()
   @Get("ops/v1/daily-reports")
-  async listDailyReports(@Req() req: Request, @Query("record_date") recordDate?: string, @Query("amoeba_id") amoebaId?: string) {
+  async listDailyReports(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("amoeba_id") amoebaId?: string
+  ) {
     const actor = await this.auth(req);
     return {
       data: await this.ops.listDailyReports(
-        { record_date: recordDate, amoeba_id: amoebaId },
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, amoeba_id: amoebaId },
         this.identity.dataScope(actor)
       ),
       next_cursor: null
@@ -595,12 +645,14 @@ export class OpsController {
   async listAlerts(
     @Req() req: Request,
     @Query("resolution_status") resolutionStatus?: string,
-    @Query("operator_id") operatorId?: string
+    @Query("operator_id") operatorId?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
   ) {
     const actor = await this.auth(req);
     return {
       data: await this.ops.listAlerts(
-        { resolution_status: resolutionStatus, operator_id: operatorId },
+        { resolution_status: resolutionStatus, operator_id: operatorId, date_from: dateFrom, date_to: dateTo },
         this.identity.dataScope(actor)
       ),
       next_cursor: null

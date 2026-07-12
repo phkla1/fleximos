@@ -67,8 +67,8 @@ button, a, input, select { min-height: 44px; }
 
 main { padding: 28px clamp(16px, 4vw, 54px) 70px; }
 .overview-band { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
-.overview-actions { display: flex; align-items: end; gap: 8px; }
-.overview-actions label { min-width: 170px; }
+.overview-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.overview-actions label { min-width: 128px; }
 .eyebrow { margin: 0 0 5px; color: var(--green); font-size: 12px; font-weight: 850; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(31px, 4vw, 52px); line-height: 1.04; letter-spacing: -.025em; }
 h2 { margin: 0; font-size: 25px; letter-spacing: -.015em; }
@@ -249,7 +249,7 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
   .tabs { top: 65px; }
   main { padding: 22px 14px 52px; }
   .overview-band { display: grid; align-items: start; }
-  .overview-actions { display: grid; grid-template-columns: 1fr auto; }
+  .overview-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .overview-band button { width: 100%; }
   .metrics, .entry-form, .data-row, .alert-row { grid-template-columns: 1fr; }
   .job-row { grid-template-columns: 1fr; }

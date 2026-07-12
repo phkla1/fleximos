@@ -88,10 +88,13 @@ issued, expected distance, official platform distance, tracker distance where
 available (bikes typically show "Tracker unavailable" — that is expected) and
 exception pills.
 
-### SU-11 · Look at an earlier operating day
-1. Change **Operating date** to yesterday (the demo seed covers the last three days).
+### SU-11 · Review a date range
+1. Set **From** to two days ago and **To** to today (the demo seed covers the last three days).
 
-**Expected:** the board, alerts and performance update to that day.
+**Expected:** the board sums revenue, trips and hours across the range and
+scales targets by the number of days; alerts and performance records cover
+the whole range, and mileage rows show which day they belong to. Setting
+From = To returns to a single-day view.
 
 ## Results
 

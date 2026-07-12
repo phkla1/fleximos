@@ -22,7 +22,7 @@
     <main>
       <section id="portfolio" class="overview-band">
         <div><p class="eyebrow">Scoped management view</p><h1>Operations across your teams</h1><p class="subtle">Visibility follows the active Manager assignments on your identity profile.</p></div>
-        <div class="overview-actions"><label>Operating date<input id="operatingDate" type="date" /></label><button id="refreshButton" type="button">Refresh</button></div>
+        <div class="overview-actions"><label>From<input id="dateFrom" type="date" /></label><label>To<input id="dateTo" type="date" /></label><button id="refreshButton" type="button">Refresh</button></div>
       </section>
       <section class="metrics" aria-label="Manager summary">
         <article><span>Active operators</span><strong id="activeCount">0</strong><small id="liveContext"></small></article>
@@ -55,13 +55,11 @@
         <div class="section-heading">
           <div><p class="eyebrow">Amoeba economics</p><h2>Profit &amp; loss</h2></div>
           <div class="overview-actions">
-            <label>From<input id="pnlStart" type="date" /></label>
-            <label>To<input id="pnlEnd" type="date" /></label>
-            <button id="loadPnl" type="button" class="secondary">Recalculate</button>
+            <span class="subtle" id="pnlRangeLabel"></span>
             <button id="exportPnlCsv" type="button">Download CSV</button>
           </div>
         </div>
-        <p class="section-intro">Net Earnings less direct expenses, resolved maintenance costs and headcount-allocated central overheads, adjusted by transfer pricing. Ops is the canonical P&amp;L calculator.</p>
+        <p class="section-intro">The period follows the From/To range at the top of the page. Net Earnings less direct expenses, resolved maintenance costs and headcount-allocated central overheads, adjusted by transfer pricing. Ops is the canonical P&amp;L calculator.</p>
         <div id="pnlTotals" class="metrics" aria-label="P&amp;L totals"></div>
         <div id="pnlList" class="summary-grid"></div>
         <h3 class="sub-section-heading">Record an expense</h3>

@@ -13,8 +13,9 @@ day-to-day operations (that lives with supervisors and managers).
 ### AD-1 · Open the console
 1. Open the Ops admin URL.
 
-**Expected:** "Today's operating picture" with green connection and summary
-tiles (active operators, open alerts, vehicles ready, platform feeds).
+**Expected:** "Today's operating picture" with green connection, a From/To
+date range (defaulting to today — set both dates equal for a single day, or
+widen them to aggregate several days) and summary tiles (active operators, open alerts, vehicles ready, platform feeds).
 Clicking a tile jumps to the matching section — Active operators opens the
 full roster, Open alerts the inbox, Vehicles ready the fleet list.
 

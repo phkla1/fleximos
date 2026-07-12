@@ -669,6 +669,57 @@ test("configures revenue pace and fuel efficiency controls", async () => {
   assert.equal(reconciliation.body.data[0].official_distance_status, "exception");
 });
 
+test("aggregates team board and performance over an operating-date range", async () => {
+  const baseRecord = {
+    platform_operator_id: "bolt-demo-driver",
+    trips_total: 10,
+    trips_completed: 8,
+    trips_cancelled: 1,
+    trips_no_response: 1,
+    net_earnings_ngn: 15000,
+    booking_fees_ngn: 1000,
+    cash_trips: 2,
+    card_trips: 6,
+    acceptance_pct: 90,
+    cancellation_pct: 10,
+    completion_pct: 80,
+    hours_online: 6,
+    current_status: "checked_out",
+    data_quality: "authoritative",
+    provenance: { fixture: "range-test" }
+  };
+  for (const [date, revenue] of [["2026-06-08", 20000], ["2026-06-09", 30000]]) {
+    await request("/ops/v1/ingestion-runs", {
+      method: "POST",
+      headers: { "Idempotency-Key": `ops-range-ingest-${date}` },
+      body: JSON.stringify({
+        platform_account_id: "platform_bolt_lagos",
+        record_date: date,
+        source: "connector_test",
+        records: [{ ...baseRecord, ride_revenue_ngn: revenue, last_seen_at: `${date}T13:30:00.000Z` }]
+      })
+    });
+  }
+
+  const board = await request("/ops/v1/team-board?date_from=2026-06-08&date_to=2026-06-09");
+  assert.equal(board.body.date_from, "2026-06-08");
+  assert.equal(board.body.day_count, 2);
+  const row = board.body.data.find((item) => Number(item.ride_revenue_ngn) >= 50000);
+  assert.ok(row, "range board sums revenue across both days");
+  assert.equal(row.day_count, 2);
+  assert.equal(Number(row.range_revenue_target_ngn), Number(row.daily_revenue_target_ngn) * 2);
+
+  const performance = await request("/ops/v1/daily-performance?date_from=2026-06-08&date_to=2026-06-09");
+  const dates = new Set(performance.body.data.map((item) => String(item.record_date).slice(0, 10)));
+  assert.ok(dates.has("2026-06-08") && dates.has("2026-06-09"));
+
+  const reversed = await request("/ops/v1/team-board?date_from=2026-06-09&date_to=2026-06-08");
+  assert.equal(reversed.body.date_from, "2026-06-08", "reversed bounds are swapped");
+
+  const tooWide = await request("/ops/v1/team-board?date_from=2026-01-01&date_to=2026-12-31");
+  assert.equal(tooWide.response.status, 400);
+});
+
 test("generates immutable daily report revisions", async () => {
   const first = await request("/ops/v1/daily-reports", {
     method: "POST",

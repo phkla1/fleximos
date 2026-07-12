@@ -17,7 +17,7 @@ const state = {
 const el = Object.fromEntries([
   "notice", "connectionText", "activeOperatorCount", "liveOperatorCount",
   "openAlertCount", "carRevenueTotal", "bikeRevenueTotal", "alertList", "alertFilter", "teamBoard",
-  "boardUpdated", "performanceList", "operatingDate", "actionDialog",
+  "boardUpdated", "performanceList", "dateFrom", "dateTo", "actionDialog",
   "dialogTitle", "dialogContext", "dialogNotes", "confirmActionButton",
   "fuelIssueForm", "mileageList",
   "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
@@ -32,7 +32,8 @@ let actorPersonId = query.get("actorPersonId") || "person_founder_wole";
 const todayLagos = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
-el.operatingDate.value = todayLagos;
+el.dateFrom.value = todayLagos;
+el.dateTo.value = todayLagos;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -222,7 +223,7 @@ function render() {
   ).join("");
   el.mileageList.innerHTML = state.mileageReconciliations.length ? state.mileageReconciliations.map((record) => `
     <article class="mileage-row">
-      <div><strong>${escapeHtml(personName(record.person_id))}</strong><small>${escapeHtml(record.plate)} · ${escapeHtml(record.vehicle_type)}</small></div>
+      <div><strong>${escapeHtml(personName(record.person_id))}</strong><small>${escapeHtml(record.plate)} · ${escapeHtml(record.vehicle_type)}${state.dateFrom !== state.dateTo ? ` · ${escapeHtml(record.operating_date)}` : ""}</small></div>
       <dl>
         <div><dt>Fuel issued</dt><dd>${record.fuel_quantity === null ? "Not confirmed" : `${Number(record.fuel_quantity)} ${escapeHtml(record.fuel_unit)}`}</dd></div>
         <div><dt>Expected</dt><dd>${record.expected_distance_km === null ? "Unavailable" : `${Number(record.expected_distance_km)} km`}</dd></div>
@@ -243,7 +244,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const [people, operators, alerts, allPerformance] = await Promise.all([
     foundation("/identity/v1/people"),
     ops("/ops/v1/operators"),
-    ops("/ops/v1/alerts"),
+    ops(`/ops/v1/alerts?date_from=${el.dateFrom.value || todayLagos}&date_to=${el.dateTo.value || todayLagos}`),
     ops("/ops/v1/daily-performance")
   ]);
   if (!query.get("actorPersonId")) {
@@ -256,13 +257,22 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const availableDates = [...new Set(allPerformance.data
     .filter((record) => assignedIds.has(record.operator_id))
     .map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
-  const requestedDate = el.operatingDate.value;
-  const operatingDate = availableDates.includes(requestedDate) ? requestedDate : (availableDates[0] || requestedDate || todayLagos);
-  el.operatingDate.value = operatingDate;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
+  let dateTo = el.dateTo.value || dateFrom;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  const rangeHasData = availableDates.some((date) => date >= dateFrom && date <= dateTo);
+  if (!rangeHasData && availableDates.length) {
+    dateFrom = availableDates[0];
+    dateTo = availableDates[0];
+  }
+  el.dateFrom.value = dateFrom;
+  el.dateTo.value = dateTo;
+  const range = `date_from=${dateFrom}&date_to=${dateTo}`;
+  const operatingDate = dateTo;
   const [teamBoard, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles] = await Promise.all([
-    ops(`/ops/v1/team-board?record_date=${operatingDate}`),
-    ops(`/ops/v1/fuel-issues?operating_date=${operatingDate}`),
-    ops(`/ops/v1/mileage-reconciliations?record_date=${operatingDate}`),
+    ops(`/ops/v1/team-board?${range}`),
+    ops(`/ops/v1/fuel-issues?${range}`),
+    ops(`/ops/v1/mileage-reconciliations?${range}`),
     ops("/ops/v1/incidents"),
     ops("/ops/v1/inspections"),
     ops("/ops/v1/inspections/compliance"),
@@ -277,7 +287,10 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     operators: assigned,
     alerts: alerts.data.filter((alert) => assignedIds.has(alert.operator_id)),
     teamBoard: teamBoard.data.filter((item) => assignedIds.has(item.operator_id)),
-    dailyPerformance: allPerformance.data.filter((record) => assignedIds.has(record.operator_id) && String(record.record_date).slice(0, 10) === operatingDate),
+    dailyPerformance: allPerformance.data.filter((record) => {
+      const recordDate = String(record.record_date).slice(0, 10);
+      return assignedIds.has(record.operator_id) && recordDate >= dateFrom && recordDate <= dateTo;
+    }),
     fuelIssues: fuelIssues.data.filter((record) => assignedIds.has(record.operator_id)),
     mileageReconciliations: mileageReconciliations.data.filter((record) => assignedIds.has(record.operator_id)),
     incidents: incidents.data.filter((incident) => assignedIds.has(incident.operator_id)),
@@ -288,7 +301,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     },
     maintenance: maintenance.data.filter((report) => scopedVehicleIds.has(report.vehicle_id)),
     vehicles: scopedVehicles,
-    operatingDate
+    operatingDate,
+    dateFrom,
+    dateTo
   });
   render();
   setConnection("connected", "Team data connected");
@@ -297,7 +312,11 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
 
 el.alertFilter.addEventListener("change", render);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
-el.operatingDate.addEventListener("change", () => refresh(`Showing team activity for ${el.operatingDate.value}.`).catch(showError));
+const describeRange = () => el.dateFrom.value === el.dateTo.value
+  ? `Showing team activity for ${el.dateTo.value}.`
+  : `Showing team activity from ${el.dateFrom.value} to ${el.dateTo.value}.`;
+el.dateFrom.addEventListener("change", () => refresh(describeRange()).catch(showError));
+el.dateTo.addEventListener("change", () => refresh(describeRange()).catch(showError));
 
 el.fuelIssueForm.addEventListener("submit", async (event) => {
   event.preventDefault();

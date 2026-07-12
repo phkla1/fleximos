@@ -30,13 +30,14 @@ const el = Object.fromEntries(
     "vehicleList", "operatorForm", "vehicleForm", "alertFilter", "opsApiBase",
     "foundationApiBase", "apiToken", "actionDialog", "dialogTitle",
     "dialogContext", "dialogNotes", "confirmActionButton", "teamBoard",
-    "boardUpdated", "ingestionForm", "performanceRows", "ingestionRuns", "operatingDate",
+    "boardUpdated", "ingestionForm", "performanceRows", "ingestionRuns",
     "paceProfileForm", "paceProfileList", "efficiencyPolicyForm", "efficiencyPolicyList",
     "economicsPolicyForm", "economicsPolicyList",
     "leaderboardConfigForm", "leaderboardConfigSummary",
     "inspectionComplianceSummary", "inspectionComplianceList",
     "jobHealthSummary", "jobHealthMetrics", "scheduledJobList", "scheduledJobRuns",
     "jobFilterSummary", "rosterGapList",
+    "dateFrom", "dateTo",
     "teamDialog", "teamDialogTitle", "teamDialogSummary", "teamOperatorList",
     "operatorSummaryCount", "vehicleSummaryCount", "performanceTeamFilter",
     "performanceOperatorFilter", "alertGroupDialog", "alertGroupDialogTitle",
@@ -61,7 +62,8 @@ const todayLagos = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
 el.ingestionForm.elements.record_date.value = todayLagos;
-el.operatingDate.value = todayLagos;
+el.dateFrom.value = todayLagos;
+el.dateTo.value = todayLagos;
 el.paceProfileForm.elements.effective_from.value = todayLagos;
 el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
 el.economicsPolicyForm.elements.effective_from.value = todayLagos;
@@ -452,7 +454,7 @@ function render() {
         .map((operator) => `
           <tr class="missing-record">
             <td>${escapeHtml(nameForPerson(operator.person_id))}</td>
-            <td colspan="6">No performance record for ${escapeHtml(state.operatingDate)} — not reported by any platform feed or manual entry.</td>
+            <td colspan="6">No performance record ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`} — not reported by any platform feed or manual entry.</td>
           </tr>
         `)
     : [];
@@ -580,7 +582,7 @@ function render() {
           <button type="button" class="secondary danger" data-delete-report="${escapeHtml(report.report_id)}">Delete</button>
         </div>
       </article>`;
-  }).join("") : `<div class="empty">No report snapshot exists for ${escapeHtml(state.operatingDate)}.</div>`;
+  }).join("") : `<div class="empty">No report snapshot exists ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`}.</div>`;
 }
 
 async function refresh(message = "Connected to Fleximotion Ops.") {
@@ -608,17 +610,27 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/inspections/compliance").catch(() => null)
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
-  const requestedDate = el.operatingDate.value;
-  const operatingDate = requestedDate && availableDates.includes(requestedDate)
-    ? requestedDate
-    : (availableDates[0] || requestedDate || todayLagos);
-  el.operatingDate.value = operatingDate;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
+  let dateTo = el.dateTo.value || dateFrom;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  // If the chosen range has no performance data at all, snap to the most
+  // recent day that does, so a fresh console never opens onto emptiness.
+  const rangeHasData = availableDates.some((date) => date >= dateFrom && date <= dateTo);
+  if (!rangeHasData && availableDates.length) {
+    dateFrom = availableDates[0];
+    dateTo = availableDates[0];
+  }
+  el.dateFrom.value = dateFrom;
+  el.dateTo.value = dateTo;
+  const range = `date_from=${dateFrom}&date_to=${dateTo}`;
+  const operatingDate = dateTo;
   el.ingestionForm.elements.record_date.value = operatingDate;
-  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports] = await Promise.all([
-    ops(`/ops/v1/team-board?record_date=${operatingDate}`),
-    ops(`/ops/v1/daily-performance?record_date=${operatingDate}`),
-    ops(`/ops/v1/ingestion-runs?record_date=${operatingDate}`),
-    ops(`/ops/v1/daily-reports?record_date=${operatingDate}`)
+  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports, rangedAlerts] = await Promise.all([
+    ops(`/ops/v1/team-board?${range}`),
+    ops(`/ops/v1/daily-performance?${range}`),
+    ops(`/ops/v1/ingestion-runs?${range}`),
+    ops(`/ops/v1/daily-reports?${range}`),
+    ops(`/ops/v1/alerts?${range}`)
   ]);
   Object.assign(state, {
     people: people.data,
@@ -627,7 +639,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     operators: operators.data,
     vehicles: vehicles.data,
     platformAccounts: platformAccounts.data,
-    alerts: alerts.data,
+    alerts: rangedAlerts.data,
     teamBoard: teamBoard.data,
     dailyPerformance: dailyPerformance.data,
     ingestionRuns: ingestionRuns.data,
@@ -641,7 +653,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     serviceHealth,
     leaderboardConfig,
     inspectionCompliance,
-    operatingDate
+    operatingDate,
+    dateFrom,
+    dateTo
   });
   if (leaderboardConfig) {
     for (const field of ["acceptance_weight", "online_weight", "cash_weight", "revenue_weight"]) {
@@ -722,7 +736,11 @@ for (const tile of document.querySelectorAll(".metrics a[data-jump]")) {
     render();
   });
 }
-el.operatingDate.addEventListener("change", () => refresh(`Showing operations for ${el.operatingDate.value}.`).catch(showError));
+const describeRange = () => el.dateFrom.value === el.dateTo.value
+  ? `Showing operations for ${el.dateTo.value}.`
+  : `Showing operations from ${el.dateFrom.value} to ${el.dateTo.value}.`;
+el.dateFrom.addEventListener("change", () => refresh(describeRange()).catch(showError));
+el.dateTo.addEventListener("change", () => refresh(describeRange()).catch(showError));
 
 el.operatorForm.addEventListener("submit", async (event) => {
   event.preventDefault();
