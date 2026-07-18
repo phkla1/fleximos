@@ -28,10 +28,11 @@ const operators = [
   ...item
 }));
 
-// The three-day demo window ends on the anchor date (default: today in
-// Lagos), so freshly seeded dashboards look live without picking a date.
+// The demo window covers SEED_WINDOW_DAYS days (default 30) ending on the
+// anchor date (default: today in Lagos), so freshly seeded dashboards look
+// live and week/month analytics comparisons have real history to work with.
 // Set SEED_ANCHOR_DATE=YYYY-MM-DD for a reproducible window. Re-running on a
-// later day seeds the new window and leaves earlier windows as history.
+// later day seeds the new days and leaves earlier windows as history.
 const anchorDate = process.env.SEED_ANCHOR_DATE ||
   new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
 function dayAt(offset) {
@@ -40,7 +41,7 @@ function dayAt(offset) {
   return date.toISOString().slice(0, 10);
 }
 
-const recentRows = {
+const dayPatterns = {
   [dayAt(-2)]: [
     ["Danjimoh Osheimoh",36,9,2,24,36224.22,31516.25,2075.78,11.51],
     ["Odulaja Abiodun Odufuwa",16,0,0,9,38229,46411,0,13.57],
@@ -224,7 +225,48 @@ for (const item of operators) {
   }
 }
 
-for (const [recordDate, rows] of Object.entries(recentRows)) {
+// Deterministic per-operator/per-date variation so re-runs are idempotent
+// and the generated month looks organic rather than repeated.
+function seededHash(text) {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash);
+}
+
+const windowDays = Number(process.env.SEED_WINDOW_DAYS || 30);
+const patternRows = Object.values(dayPatterns);
+const generatedDays = {};
+for (let offset = -(windowDays - 1); offset <= 0; offset++) {
+  const date = dayAt(offset);
+  const pattern = patternRows[seededHash(date) % patternRows.length];
+  generatedDays[date] = pattern.map((row) => {
+    const [name, total, completed, cancelled, noResponse, revenue, earnings, fees, hours] = row;
+    const hash = seededHash(`${name}:${date}`);
+    if (hash % 100 < 10) return [name, 0, 0, 0, 0, 0, 0, 0, 0]; // rest day
+    const factor = 0.75 + (hash % 51) / 100;
+    let scaledRevenue = Math.round(revenue * factor * 100) / 100;
+    let scaledEarnings = Math.round(earnings * factor * 100) / 100;
+    // Clean source anomalies: money without activity gets plausible
+    // trips/hours derived from the amount, never zero-trip positive earnings.
+    if (scaledRevenue === 0 && scaledEarnings > 0) scaledRevenue = Math.round(scaledEarnings * 0.85);
+    let scaledTotal = Math.round(total * factor);
+    if (scaledTotal === 0 && (scaledRevenue > 0 || scaledEarnings > 0)) {
+      scaledTotal = Math.max(4, Math.round(scaledRevenue / 3500));
+    }
+    const scaledCompleted = Math.min(scaledTotal, Math.round(completed * factor));
+    const scaledCancelled = Math.min(scaledTotal, Math.round(cancelled * factor));
+    const scaledNoResponse = Math.min(scaledTotal, Math.round(noResponse * factor));
+    let scaledHours = Math.round(hours * factor * 100) / 100;
+    if (scaledHours < 2 && (scaledRevenue > 0 || scaledEarnings > 0)) scaledHours = 5 + (hash % 60) / 10;
+    return [name, scaledTotal, scaledCompleted, scaledCancelled, scaledNoResponse,
+      scaledRevenue, scaledEarnings, Math.round(fees * factor * 100) / 100, scaledHours];
+  });
+}
+
+for (const [recordDate, rows] of Object.entries(generatedDays)) {
   for (const accountId of ["platform_bolt_lagos", "platform_uber_cars", "platform_uber_courier"]) {
     const records = rows.flatMap((row) => {
       const item = operators.find((candidate) => candidate.name === row[0] && candidate.account === accountId);
@@ -268,4 +310,64 @@ for (const [recordDate, rows] of Object.entries(recentRows)) {
   }
 }
 
-console.log(`Seeded ${operators.length} recent operators across ${Object.keys(recentRows).length} report dates.`);
+// A default Finance economics policy so breakeven/labour analytics have
+// real assumptions from day one (admins refine it under Controls).
+const economicsPolicies = (await get(opsBase, "/ops/v1/economics-policies")).data;
+if (!economicsPolicies.length) {
+  await post(opsBase, "/ops/v1/economics-policies", "realistic-seed-economics-policy", {
+    policy_name: "Baseline daily economics",
+    admin_staff_daily_cost_ngn: 50000,
+    operator_labour_share_pct: 25,
+    daily_overhead_ngn: 75000,
+    expected_hours_per_operator: 10,
+    effective_from: dayAt(-(windowDays - 1))
+  });
+  console.log("Seeded the baseline economics policy.");
+}
+
+console.log(`Seeded ${operators.length} operators across ${Object.keys(generatedDays).length} report dates ending ${anchorDate}.`);
+
+// Reserved accounts and a few simulated Monnify deposits so Finance and
+// Analytics cash views have data. Skipped cleanly when the Payments
+// Integration service is not running.
+const paymentsBase = process.env.PAYMENTS_API_BASE || "http://127.0.0.1:4040";
+try {
+  await fetch(`${paymentsBase}/health`).then((response) => { if (!response.ok) throw new Error("unhealthy"); });
+  let provisioned = 0;
+  for (const item of operators) {
+    const existing = await fetch(`${paymentsBase}/payments/v1/operators/${item.operatorId}/reserved-account`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (existing.status === 404) {
+      await request(paymentsBase, `/payments/v1/operators/${item.operatorId}/reserved-account`, {
+        method: "POST",
+        headers: { "Idempotency-Key": `realistic-seed-reserved-${item.externalId}` },
+        body: JSON.stringify({
+          customer_name: item.name,
+          customer_email: `${item.externalId}@fleximotion.test`
+        })
+      });
+      provisioned += 1;
+    }
+  }
+  // Simulated deposits for the Bolt cash operator across the last three days
+  // (one intentionally short so the Finance variance workflow has a case).
+  const cashOperator = operators.find((item) => item.account === "platform_bolt_lagos");
+  if (cashOperator) {
+    for (const [offset, amount] of [[-2, 9000], [-1, 7500], [0, 5000]]) {
+      await request(paymentsBase, "/payments/v1/test/simulate-deposit", {
+        method: "POST",
+        headers: { "Idempotency-Key": `realistic-seed-deposit-${dayAt(offset)}` },
+        body: JSON.stringify({
+          operator_id: cashOperator.operatorId,
+          amount_ngn: amount,
+          transaction_reference: `seed-dep-${dayAt(offset)}`,
+          paid_at: `${dayAt(offset)}T18:30:00+01:00`
+        })
+      }).catch(() => {});
+    }
+  }
+  console.log(`Payments: ${provisioned} reserved accounts provisioned; simulated deposits ensured for the cash operator.`);
+} catch {
+  console.log("Payments Integration not reachable — skipped reserved-account seeding.");
+}

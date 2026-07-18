@@ -109,6 +109,9 @@ removes it from the list; deletions are audited.
 **Expected:** both records save and appear in the tables; counts at the top
 update. Roles are chosen from checkboxes (free text is not accepted), a NIN
 that is not exactly 11 digits is rejected, and a duplicate NIN is refused.
+In the users table, each user's roles show as labelled chips — pick a role
+from the dropdown, press Add (or × on a chip to remove), then Save; removing
+every role is refused.
 
 ### AD-13 · Scoped role assignments
 1. Under **Access Assignments**, give a person a Manager role scoped to one

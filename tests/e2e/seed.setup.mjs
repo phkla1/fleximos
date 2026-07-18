@@ -10,7 +10,8 @@ setup("seed demo data into the e2e databases", async () => {
     env: {
       ...process.env,
       FOUNDATION_API_BASE: "http://127.0.0.1:4510",
-      OPS_API_BASE: "http://127.0.0.1:4530"
+      OPS_API_BASE: "http://127.0.0.1:4530",
+      PAYMENTS_API_BASE: "http://127.0.0.1:4542"
     }
   });
   console.log(stdout.trim());

@@ -285,7 +285,8 @@ function renderTrendChart(series) {
   el.trendLegend.textContent = windowed.length ? `${windowed[0].date} to ${windowed[windowed.length - 1].date}` : "No trend data";
   const currentLabel = state.periodMode === "month" ? "Current 30 days" : state.periodMode === "week" ? "Current week" : "Selected week context";
   el.trendChart.innerHTML = windowed.length ? `
-    <div class="chart-legend"><span><i class="current"></i>${currentLabel}</span><span><i class="prior"></i>Same weekday last week</span>${priorCount ? "" : "<span>Last-week overlay unavailable for this seed period</span>"}</div>
+    ${priorCount ? "" : `<p class="trend-warning">No prior-week data exists before ${escapeHtml(windowed[0].date)} — the bars below show the selected days only, with no last-week comparison.</p>`}
+    <div class="chart-legend"><span><i class="current"></i>${currentLabel}</span>${priorCount ? '<span><i class="prior"></i>Same weekday last week</span>' : ""}</div>
     <div class="bar-chart">
       ${paired.map((point) => {
         const height = Math.max(6, Math.round(point.netEarnings / max * 100));
@@ -390,8 +391,8 @@ function renderEconomics(totals, expectedLabourHours) {
   el.breakevenVariance.textContent = money(breakeven);
   el.breakevenStatus.textContent = breakeven >= 0 ? "Above breakeven" : "Below breakeven";
   el.breakevenContext.textContent = labour.configured || dailyOverheadAssumption
-    ? `${money(totals.netEarnings)} Net Earnings less ${money(expectedLabourCost)} labour cost and ${money(dailyOverheadAssumption)} overhead.`
-    : "Set adminLabourCostNg/operatorLabourSharePct or labourCostPerHour in the URL to turn this into a real target.";
+    ? `${money(totals.netEarnings)} Net Earnings less ${money(expectedLabourCost)} labour cost and ${money(dailyOverheadAssumption)} overhead — assumptions come from the active Finance economics policy.`
+    : "No Finance economics policy is active for this date. An admin sets labour costs, overheads and expected hours in the Ops admin console under Controls → Finance economics policy.";
   el.cashOnHand.textContent = state.paymentsAvailable ? money(accountBalance || cashOnHand) : "Unavailable";
   el.cashOnHandNote.textContent = state.paymentsAvailable
     ? accountBalance
@@ -496,7 +497,7 @@ function boardRowsForSelectedPeriod(performanceByOperator) {
     return {
       ...row,
       net_earnings_ngn: summary.netEarnings,
-      expected_revenue_ngn: summary.expected,
+      expected_revenue_ngn: summary.expected || row.expected_revenue_ngn,
       trips_completed: summary.tripsCompleted,
       hours_online: summary.hoursOnline
     };
@@ -552,6 +553,10 @@ function render() {
   syncOperatorSortButtons();
   const periodRows = state.performance.length ? state.performance : state.board;
   const totals = totalsFrom(periodRows);
+  // Performance records carry no expected_revenue_ngn; the team board does
+  // (scaled to the selected range), so pace targets always come from it.
+  const boardExpected = state.board.reduce((sum, row) => sum + Number(row.expected_revenue_ngn || 0), 0);
+  if (boardExpected > 0) totals.expected = boardExpected;
   const priorTotals = totalsFrom(state.priorPerformance);
   const priorWeekTotals = totalsFrom(state.priorWeekPerformance);
   const liveAssets = state.board.filter((item) => liveStatus(item.current_status)).length;

@@ -1,3 +1,22 @@
+const KNOWN_ROLES = ["owner", "admin", "manager", "finance", "supervisor", "operator"];
+// Unsaved role edits per user row (user_id -> roles[]). Cleared on refresh.
+const roleEdits = new Map();
+
+function rolesCellHtml(userId, roles) {
+  const remaining = KNOWN_ROLES.filter((role) => !roles.includes(role));
+  return `
+    <div class="role-chip-list">
+      ${roles.length ? roles.map((role) => `
+        <span class="role-chip">${escapeHtml(role)}<button type="button" data-remove-role="${escapeHtml(role)}" data-role-user="${escapeHtml(userId)}" aria-label="Remove ${escapeHtml(role)} role">×</button></span>
+      `).join("") : '<span class="role-chip empty-chip">no roles</span>'}
+    </div>
+    ${remaining.length ? `
+    <div class="role-add-row">
+      <select data-role-pick aria-label="Role to add">${remaining.map((role) => `<option value="${role}">${role}</option>`).join("")}</select>
+      <button type="button" class="secondary" data-add-role data-role-user="${escapeHtml(userId)}">Add</button>
+    </div>` : ""}`;
+}
+
 const state = {
   people: [],
   users: [],
@@ -188,9 +207,7 @@ function render() {
       <tr data-user-row="${escapeHtml(user.user_id)}">
         <td class="id-cell">${escapeHtml(user.user_id)}</td>
         <td>${escapeHtml(personName(user.person_id))}</td>
-        <td><select class="row-edit role-select" data-field="roles" multiple size="3" title="Hold Ctrl/Cmd to select multiple">
-          ${["owner", "admin", "manager", "finance", "supervisor", "operator"].map((role) => `<option value="${role}" ${(user.roles || []).includes(role) ? "selected" : ""}>${role}</option>`).join("")}
-        </select></td>
+        <td class="roles-cell" data-roles-cell="${escapeHtml(user.user_id)}">${rolesCellHtml(user.user_id, roleEdits.get(user.user_id) || user.roles || [])}</td>
         <td>${statusSelect("user", user.status)}</td>
         <td><button type="button" data-save-user="${escapeHtml(user.user_id)}">Save</button></td>
       </tr>
@@ -441,6 +458,26 @@ function rowBody(row, fields) {
   return body;
 }
 
+document.addEventListener("click", (event) => {
+  const addRole = event.target.closest("[data-add-role]");
+  const removeRole = event.target.closest("[data-remove-role]");
+  if (!addRole && !removeRole) return;
+  const userId = (addRole || removeRole).dataset.roleUser;
+  const user = state.users.find((item) => item.user_id === userId);
+  const current = roleEdits.get(userId) || user?.roles || [];
+  let next = current;
+  if (addRole) {
+    const pick = addRole.closest(".roles-cell").querySelector("[data-role-pick]");
+    if (pick?.value && !current.includes(pick.value)) next = [...current, pick.value];
+  } else {
+    next = current.filter((role) => role !== removeRole.dataset.removeRole);
+  }
+  roleEdits.set(userId, next);
+  const cell = document.querySelector(`[data-roles-cell="${userId}"]`);
+  if (cell) cell.innerHTML = rolesCellHtml(userId, next);
+  setNotice(`Roles staged for ${personName(user?.person_id) || userId} — press Save to apply.`);
+});
+
 document.addEventListener("click", async (event) => {
   const issueButton = event.target.closest("[data-issue-token]");
   const personButton = event.target.closest("[data-save-person]");
@@ -485,12 +522,15 @@ document.addEventListener("click", async (event) => {
       const id = userButton.dataset.saveUser;
       const row = document.querySelector(`[data-user-row="${id}"]`);
       const body = rowBody(row, ["status"]);
-      body.roles = [...row.querySelector('select[data-field="roles"]').selectedOptions].map((option) => option.value);
+      const savedUser = state.users.find((item) => item.user_id === id);
+      body.roles = roleEdits.get(id) || savedUser?.roles || [];
+      if (!body.roles.length) return setNotice("A user needs at least one role before saving.", true);
       await api(`/identity/v1/users/${id}`, {
         method: "PATCH",
         headers: { "Idempotency-Key": idempotencyKey("user-update") },
         body: JSON.stringify(body)
       });
+      roleEdits.delete(id);
       await refresh();
       setNotice("User updated.");
       return;

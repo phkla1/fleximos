@@ -323,3 +323,13 @@ tr:last-child td { border-bottom: 0; }
 .role-picker label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .role-select { min-width: 120px; }
 .hint { margin: 6px 0 14px; font-size: 13px; line-height: 1.55; color: var(--muted, #5b6a70); max-width: 720px; }
+
+.roles-cell { min-width: 180px; }
+.role-chip-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.role-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 9px; border-radius: 999px; background: #e8f1ed; color: var(--green-dark, #14523f); font-size: 12px; font-weight: 800; }
+.role-chip.empty-chip { background: #f1f1ee; color: #8a8a82; font-weight: 600; }
+.role-chip button { border: 0; padding: 0 2px; background: none; color: inherit; font-size: 14px; line-height: 1; cursor: pointer; opacity: .65; }
+.role-chip button:hover { opacity: 1; }
+.role-add-row { display: flex; gap: 5px; align-items: center; }
+.role-add-row select { max-width: 130px; padding: 4px 6px; }
+.role-add-row button { padding: 4px 10px; font-size: 12.5px; }
