@@ -11,6 +11,14 @@ test.describe("role consoles", () => {
     await expect(page.locator("#teamPortfolio .summary-card")).not.toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Escalations" })).toBeVisible();
     await expect(page.locator("#escalationSummary article")).toHaveCount(5);
+
+    // KPI tiles are links into their sections.
+    await expect(page.locator(".metrics > a")).toHaveCount(5);
+
+    // Managers can generate a daily report snapshot for the To date.
+    await page.locator("#reportForm").getByRole("button", { name: "Generate report" }).click();
+    await expect(page.locator("#notice")).toContainText("Daily report generated");
+    await expect(page.locator("#reportList .data-row").first()).toBeVisible();
   });
 
   test("manager console computes P&L, records expenses and ranks the leaderboard", async ({ page }) => {
@@ -84,6 +92,8 @@ test.describe("role consoles", () => {
     await expect(page).toHaveTitle("Fleximotion Analytics Console");
     await expect(page.getByRole("heading", { name: "Net Earnings control room" })).toBeVisible();
     await expect(page.locator("#notice")).toContainText("Analytics view uses Net Earnings");
+    await expect(page.locator("[data-kpi-jump='trend']")).toBeVisible();
+    await expect(page.locator("[data-kpi-jump='attention']")).toBeVisible();
     await expect(page.locator("#netEarningsTotal")).not.toHaveText("₦0");
     await expect(page.locator("#hourlyEfficiency")).not.toHaveText("₦0/h");
     await expect(page.locator("#hourlyEfficiencyThreshold")).toContainText("labour cost");

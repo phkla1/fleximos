@@ -25,15 +25,15 @@
         <div class="overview-actions"><label>From<input id="dateFrom" type="date" /></label><label>To<input id="dateTo" type="date" /></label><button id="refreshButton" type="button">Refresh</button></div>
       </section>
       <section class="metrics" aria-label="Manager summary">
-        <article><span>Active operators</span><strong id="activeCount">0</strong><small id="liveContext"></small></article>
-        <article><span>Live operators</span><strong id="liveCount">0</strong></article>
-        <article><span>Net Earnings</span><strong id="revenueTotal">₦0</strong><small id="expectedContext"></small></article>
-        <article><span>Gross P&amp;L (period)</span><strong id="grossPnl">₦0</strong><small id="pnlContext"></small></article>
-        <article><span>Escalation queue</span><strong id="escalationCount">0</strong><small id="escalationContext"></small></article>
+        <a href="#leaderboard" title="Open the operator leaderboard"><span>Active operators</span><strong id="activeCount">0</strong><small id="liveContext"></small></a>
+        <a href="#portfolio-cards" title="Open the team portfolio"><span>Live operators</span><strong id="liveCount">0</strong></a>
+        <a href="#pnl" title="Open the P&amp;L"><span>Net Earnings</span><strong id="revenueTotal">₦0</strong><small id="expectedContext"></small></a>
+        <a href="#pnl" title="Open the P&amp;L"><span>Gross P&amp;L (period)</span><strong id="grossPnl">₦0</strong><small id="pnlContext"></small></a>
+        <a href="#escalations" title="Open the escalation queue"><span>Escalation queue</span><strong id="escalationCount">0</strong><small id="escalationContext"></small></a>
       </section>
       <p id="notice" class="notice" role="status"></p>
 
-      <section class="workspace-section">
+      <section id="portfolio-cards" class="workspace-section">
         <div class="section-heading"><div><p class="eyebrow">Amoeba owner oversight</p><h2>Team portfolio</h2></div><span id="updatedLabel" class="subtle"></span></div>
         <p class="section-intro">Teams are ranked by operational attention required. Net Earnings remains split between cars and bikes.</p>
         <div id="teamPortfolio" class="summary-grid"></div>
@@ -101,7 +101,13 @@
       </section>
 
       <section id="reports" class="workspace-section">
-        <div class="section-heading"><div><p class="eyebrow">Meeting-ready snapshots</p><h2>Daily reports</h2></div></div>
+        <div class="section-heading"><div><p class="eyebrow">Meeting-ready snapshots</p><h2>Daily reports</h2></div>
+          <form id="reportForm" class="overview-actions">
+            <label>Scope<select name="amoeba_id"><option value="">Whole company</option></select></label>
+            <button type="submit">Generate report</button>
+          </form>
+        </div>
+        <p class="section-intro">Generation snapshots the To date of the current range. The nightly scheduled job also generates one automatically.</p>
         <div id="reportList" class="data-list"></div>
       </section>
     </main>

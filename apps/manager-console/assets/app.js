@@ -222,12 +222,44 @@ function renderLeaderboard() {
   el.leaderboardList.innerHTML = board.entries.length ? board.entries.map((entry) => `
     <article class="data-row ${entry.rank <= 3 ? "alert" : ""}" style="${entry.rank <= 3 ? "border-left-color: var(--green);" : ""}">
       <div><strong>${entry.badge ? `${medals[entry.badge]} ` : `${entry.rank}. `}${escapeHtml(operatorName(entry.operator_id))}</strong><small>${escapeHtml(amoebaName(entry.amoeba_id))}${entry.vehicle_plate ? ` · ${escapeHtml(entry.vehicle_plate)}` : ""} · ${entry.days_worked} day${entry.days_worked === 1 ? "" : "s"} worked</small></div>
-      <div><span class="row-label">Score</span><strong>${entry.performance_score}</strong><small>acceptance ${entry.components.acceptance_score} · online ${entry.components.time_online_score} · cash ${entry.components.cash_receipt_score}</small></div>
+      <div><span class="row-label">Score</span><strong>${entry.performance_score}</strong><small>acceptance ${entry.components.acceptance_score} · online ${entry.components.time_online_score} (${(Number(entry.hours_online) / Math.max(1, entry.days_worked)).toFixed(1)}h/day vs ${Number(board.expected_hours_per_operator || 10)}h expected) · cash ${entry.components.cash_receipt_score}</small></div>
       <div><span class="row-label">Net Earnings</span><strong>${money(entry.net_earnings_ngn)}</strong><small>${entry.trips_completed} trips · ${entry.hours_online}h online</small></div>
       <div><span class="row-label">Cash</span><strong>${money(entry.remitted_ngn)}</strong><small>${Number(entry.cash_shortfall_ngn) > 0 ? `${money(entry.cash_shortfall_ngn)} short` : "No shortfall"}</small></div>
       <div></div>
     </article>`).join("") : '<div class="empty">No operators had activity in the selected period.</div>';
 }
+
+function setupReportForm() {
+  const form = document.getElementById("reportForm");
+  form.querySelector('select[name="amoeba_id"]').innerHTML =
+    `<option value="">Whole company</option>` + state.amoebas.map((amoeba) =>
+      `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
+}
+
+document.getElementById("reportForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector("button[type=submit]");
+  submitButton.disabled = true;
+  submitButton.textContent = "Generating…";
+  try {
+    await ops("/ops/v1/daily-reports", {
+      method: "POST",
+      headers: { "Idempotency-Key": `mgr-report-${Date.now()}` },
+      body: JSON.stringify({
+        record_date: state.dateTo || state.operatingDate,
+        ...(form.elements.amoeba_id.value ? { amoeba_id: form.elements.amoeba_id.value } : {})
+      })
+    });
+    await refresh();
+    el.notice.textContent = `Daily report generated for ${state.dateTo || state.operatingDate}.`;
+  } catch (error) {
+    showError(error);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Generate report";
+  }
+});
 
 function renderReports() {
   el.reportList.innerHTML = state.reports.length ? state.reports.map((report) => `
@@ -285,6 +317,7 @@ async function refresh() {
   const expenseDate = el.expenseForm.querySelector('input[name="expense_date"]');
   if (!expenseDate.value) expenseDate.value = today;
   Object.assign(state, { people: people.data, amoebas: amoebas.data, operators: operators.data });
+  setupReportForm();
   el.expenseForm.querySelector('select[name="amoeba_id"]').innerHTML =
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 

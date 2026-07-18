@@ -61,7 +61,10 @@ it is refused with a clear message.
 2. Open **View operators** on a card.
 
 **Expected:** every scoped operator with their reserved-account number and
-provisioning state (simulated accounts are labelled as such).
+provisioning state (simulated accounts are labelled as such). The intro
+states plainly that live bank balances and per-platform fund locations
+arrive with the Monnify sandbox/live phase — their absence here is
+intentional, not a defect.
 
 ### FI-8 · Export the CSVs
 1. Press **Export cash CSV**, then **Export accounts CSV**.

@@ -18,6 +18,9 @@ read-mostly — actions live in the Manager, Finance and Admin consoles.
 Earnings (with growth vs the previous comparable day), Hourly Efficiency vs
 labour cost, Utilisation (active/available assets shown as the actual
 fraction), Cash variance (expected vs Monnify received) and Grouped alerts.
+Every KPI is clickable: Net Earnings jumps to the trend, Hourly Efficiency
+to breakeven economics, Utilisation to operator signals, Cash variance opens
+the operators behind the variance, Grouped alerts opens the attention map.
 
 ### AN-2 · Net Earnings language
 1. Scan the page labels.

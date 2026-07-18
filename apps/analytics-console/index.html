@@ -40,11 +40,11 @@
       </section>
 
       <section class="metrics" aria-label="Analytics summary">
-        <article><span>Net Earnings</span><strong id="netEarningsTotal">₦0</strong><small id="netEarningsGrowth">No prior day</small><small id="netEarningsWeek">No same weekday data</small></article>
-        <article id="hourlyEfficiencyCard"><span>Hourly Efficiency</span><strong id="hourlyEfficiency">₦0/h</strong><small id="hourlyEfficiencyNote">Expected labour hours</small><small id="hourlyEfficiencyThreshold">Labour cost not configured</small></article>
-        <article><span>Utilisation</span><strong id="utilisationMetric">0%</strong><small id="utilisationNote">0 active / 0 available</small></article>
+        <button type="button" data-kpi-jump="trend" title="Open the Net Earnings trend"><span>Net Earnings</span><strong id="netEarningsTotal">₦0</strong><small id="netEarningsGrowth">No prior day</small><small id="netEarningsWeek">No same weekday data</small></button>
+        <button type="button" id="hourlyEfficiencyCard" data-kpi-jump="economics" title="Open breakeven and unit economics"><span>Hourly Efficiency</span><strong id="hourlyEfficiency">₦0/h</strong><small id="hourlyEfficiencyNote">Expected labour hours</small><small id="hourlyEfficiencyThreshold">Labour cost not configured</small></button>
+        <button type="button" data-kpi-jump="operators" title="Open grouped operator signals"><span>Utilisation</span><strong id="utilisationMetric">0%</strong><small id="utilisationNote">0 active / 0 available</small></button>
         <button type="button" class="metric-pending" data-detail-type="attention" data-detail-id="cash-shortfalls" title="Open the operators behind this variance"><span>Cash variance</span><strong id="cashVarianceMetric">₦0</strong><small id="cashVarianceNote">Platform expected vs Monnify</small></button>
-        <article><span>Grouped alerts</span><strong id="alertGroupCount">0</strong><small id="alertGroupNote">Open issues</small></article>
+        <button type="button" data-kpi-jump="attention" title="Open the attention map"><span>Grouped alerts</span><strong id="alertGroupCount">0</strong><small id="alertGroupNote">Open issues</small></button>
       </section>
       <p id="notice" class="notice" role="status"></p>
 

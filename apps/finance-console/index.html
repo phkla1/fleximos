@@ -66,7 +66,7 @@
 
       <section class="workspace-section">
         <div class="section-heading"><div><p class="eyebrow">Daily closeout</p><h2>Platform cash vs Monnify remittance</h2></div><button id="exportCashCsv" type="button" class="secondary">Export cash CSV</button></div>
-        <p class="section-intro">Platform cash expected is compared with Monnify deposits received, including any Finance adjustments. Operator rows appear here only when there is a shortfall or credit to review.</p>
+        <p class="section-intro">Platform cash expected is compared with Monnify deposits received, including any Finance adjustments. Operator rows appear here only when there is a shortfall or credit to review. Per-platform fund locations (how much sits in Bolt or Uber vs the bank) become visible in the Monnify/payout integration phase.</p>
         <div id="periodCloseBanner" class="period-banner"></div>
         <div id="cashSummaryList" class="summary-grid"></div>
         <div id="cashExceptionList" class="data-list"></div>
@@ -80,7 +80,7 @@
 
       <section id="provisioning" class="workspace-section">
         <div class="section-heading"><div><p class="eyebrow">Future provisioning queue</p><h2>Operator reserved accounts</h2></div><button id="exportAccountsCsv" type="button" class="secondary">Export accounts CSV</button></div>
-        <p class="section-intro">Every scoped operator is visible now. Account numbers and provisioning states come from the Payments Integration service; simulated mode lets us keep building while Monnify production KYC is under review.</p>
+        <p class="section-intro">Every scoped operator is visible now. Account numbers and provisioning states come from the Payments Integration service; simulated mode lets us keep building while Monnify production KYC is under review. Live bank balances, per-platform held funds and payout drilldowns arrive with the Monnify sandbox/live integration phase — until then those figures are simulated placeholders.</p>
         <div id="operatorAccountList" class="summary-grid"></div>
       </section>
 

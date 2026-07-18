@@ -1199,6 +1199,19 @@ async function refresh() {
   el.notice.textContent = "Analytics view uses Net Earnings, scoped amoebas and derived control signals for local Phase 4E review.";
 }
 
+document.addEventListener("click", (event) => {
+  const jump = event.target.closest("[data-kpi-jump]");
+  if (!jump) return;
+  const targets = {
+    trend: () => el.trendChart,
+    economics: () => document.getElementById("economics"),
+    operators: () => document.getElementById("operators"),
+    attention: () => el.attentionList
+  };
+  const target = targets[jump.dataset.kpiJump]?.();
+  if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 el.exportAnalyticsCsv.addEventListener("click", exportAnalyticsCsv);
 el.dateFrom.addEventListener("change", () => refresh().catch(showError));

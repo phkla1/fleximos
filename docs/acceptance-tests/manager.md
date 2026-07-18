@@ -15,7 +15,8 @@ follows your Manager role assignments.
 
 **Expected:** "Operations across your teams" with green connection status,
 the From/To range control (defaulting to today), and five KPI tiles: active operators, live operators, Net Earnings, Gross P&L for
-the selected period, and the escalation queue count.
+the selected period, and the escalation queue count. Each tile is clickable
+and jumps to its section (leaderboard, portfolio, P&L, escalations).
 
 ### MA-2 · Read the team portfolio
 1. Review the **Team portfolio** cards.
@@ -74,7 +75,9 @@ share" changes in proportion to its active-operator headcount.
 
 **Expected:** ranked rows with gold/silver/bronze for the top three, each row
 showing the score components, Net Earnings, trips, hours and cash position.
-Sorting reorders instantly.
+The online component shows the operator's actual average hours per day
+against the expected hours from the economics policy, so a 100 score is
+visibly earned. Sorting reorders instantly.
 
 ### MA-10 · Export CSVs
 1. Press **Download CSV** in the P&L section, then in the Leaderboard section.
@@ -83,10 +86,12 @@ Sorting reorders instantly.
 `fleximotion-leaderboard-…csv`) and open cleanly in a spreadsheet.
 
 ### MA-11 · Daily report snapshots
-1. Go to **Daily reports** (generate one from the Ops admin console if empty).
+1. Go to **Daily reports**, choose a scope and press **Generate report**.
 
-**Expected:** snapshot rows with operators live/active and Net Earnings split
-by cars and bikes.
+**Expected:** the button shows "Generating…", then a new snapshot row appears
+for the To date of the current range, with operators live/active and Net
+Earnings split by cars and bikes. The nightly scheduled job also generates
+one automatically.
 
 ## Results
 
