@@ -149,13 +149,69 @@ sudo certbot --nginx -d uat.yourdomain.com
 
 Then also open ports 80/443 in the Cloud Firewall (8080 can be closed again).
 
+## 5b. Managing processes with pm2 (preferred)
+
+The systemd user units from the installer work, but pm2 gives friendlier
+day-to-day management (`pm2 ls`, `pm2 logs`, single-command restarts). The
+repo ships `deploy/linode/ecosystem.config.cjs` defining all six processes
+with the same ports, data directories and env file as the systemd units.
+
+**Migrate an existing systemd-managed server to pm2:**
+
+```bash
+cd ~/fleximos
+npm install -g pm2                       # installs into your nvm Node, no root
+
+# stop and disable the systemd user units so the two managers don't fight
+systemctl --user disable --now fleximos-foundation fleximos-ops-api \
+  fleximos-payments fleximos-ops-worker fleximos-frontend fleximos-ops-scheduler.timer 2>/dev/null
+
+pm2 start deploy/linode/ecosystem.config.cjs
+pm2 save                                 # remember this process list
+pm2 ls
+```
+
+**Day-to-day:**
+
+```bash
+pm2 ls                                   # status of all six processes
+pm2 logs fleximos-ops-api --lines 50     # live logs / crash traces
+pm2 restart fleximos-ops-api             # after a git pull touching the API
+pm2 restart all
+pm2 monit                                # live CPU/memory dashboard
+```
+
+**Survive reboots and logouts** (keep lingering enabled —
+`sudo loginctl enable-linger $USER` — then register one tiny user unit that
+resurrects pm2's saved list):
+
+```bash
+cat > ~/.config/systemd/user/pm2-resurrect.service <<UNIT
+[Unit]
+Description=Resurrect the pm2 process list
+[Service]
+Type=forking
+ExecStart=$(command -v pm2) resurrect
+ExecStop=$(command -v pm2) kill
+Restart=no
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable pm2-resurrect
+```
+
+(The scheduler runs as a pm2 cron app — `cron_restart` every minute with
+autorestart off — so the systemd timer is no longer needed.)
+
 ## 6. Updating the deployment
 
 ```bash
 cd ~/fleximos
 git pull
 npm ci
-systemctl --user restart fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker fleximos-frontend
+pm2 restart all          # or, if still on systemd units:
+# systemctl --user restart fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker fleximos-frontend
 ```
 
 Databases live in `~/fleximos-data`, so restarts and code updates never lose
