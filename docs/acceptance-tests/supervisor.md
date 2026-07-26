@@ -81,13 +81,17 @@ High-severity incidents (accident, police) are marked red.
    level, condition).
 
 **Expected:** "Inspection submitted"; a "needs repair" inspection requires
-notes and is flagged for manager review.
+notes and is flagged for manager review. The **📷 Take photo** button opens
+the phone camera directly (not the gallery — that is deliberate, so the
+capture time is credible); the photo is optional, timestamped at capture,
+and appears as a "📷 Photo" chip on the inspection row that opens the image.
 
 ### SU-10 · Run the maintenance queue
 1. In **Field**, report an issue (category + description).
 2. On the new row: **Start repair**, then **Resolve** with a cost.
 
 **Expected:** open → in repair → resolved; the cost feeds the amoeba P&L.
+An optional camera photo can be attached when reporting, exactly as in SU-9.
 
 ### SU-11 · Confirm fuel or charge
 1. Open **Fuel**. 2. Pick an operator, enter a quantity, choose litres

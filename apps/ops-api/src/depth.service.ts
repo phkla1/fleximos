@@ -472,7 +472,9 @@ export class DepthService {
        ORDER BY MAX(n.inspected_at) ASC NULLS FIRST`,
       params
     );
-    const cutoff = Date.now() - 48 * 3600 * 1000;
+    const policy = await this.fleetPolicy();
+    const intervalHours = Number(policy?.inspection_interval_hours || 48);
+    const cutoff = Date.now() - intervalHours * 3600 * 1000;
     const vehicles = rows.map((row) => ({
       ...row,
       inspection_status: !row.last_inspected_at
@@ -487,6 +489,8 @@ export class DepthService {
       current,
       overdue: vehicles.length - current,
       compliance_pct: vehicles.length ? Math.round((current / vehicles.length) * 1000) / 10 : null,
+      inspection_interval_hours: intervalHours,
+      service_interval_days: Number(policy?.service_interval_days || 14),
       vehicles
     };
   }
@@ -865,6 +869,34 @@ export class DepthService {
 
   // ------------------------------------------------------------ leaderboard
 
+  async fleetPolicy() {
+    return this.db.one<any>("SELECT * FROM ops_fleet_policy ORDER BY updated_at DESC LIMIT 1");
+  }
+
+  async updateFleetPolicy(body: RecordBody, actorPersonId: string) {
+    const current = await this.fleetPolicy();
+    const next = {
+      inspection_interval_hours: Number(body.inspection_interval_hours ?? current.inspection_interval_hours),
+      service_interval_days: Number(body.service_interval_days ?? current.service_interval_days)
+    };
+    if (!(next.inspection_interval_hours >= 1 && next.inspection_interval_hours <= 720)) {
+      throw new BadRequestException("inspection_interval_hours must be between 1 and 720.");
+    }
+    if (!(next.service_interval_days >= 1 && next.service_interval_days <= 365)) {
+      throw new BadRequestException("service_interval_days must be between 1 and 365.");
+    }
+    await this.db.exec(
+      `UPDATE ops_fleet_policy SET
+        inspection_interval_hours = $2, service_interval_days = $3,
+        updated_by_person_id = $4, updated_at = $5
+       WHERE policy_id = $1`,
+      [current.policy_id, next.inspection_interval_hours, next.service_interval_days, actorPersonId, this.now()]
+    );
+    const updated = await this.fleetPolicy();
+    await this.ops.audit("fleet_policy.updated", "fleet_policy", current.policy_id, current, updated, actorPersonId);
+    return updated;
+  }
+
   async leaderboardConfig() {
     return this.db.one<any>("SELECT * FROM ops_leaderboard_config ORDER BY updated_at DESC LIMIT 1");
   }
@@ -1092,12 +1124,25 @@ export class DepthService {
     const maintenanceParams: unknown[] = [];
     this.amoebaScopeClause(maintenanceClauses, maintenanceParams, scope, "v.amoeba_id");
     const openMaintenance = await this.db.many<any>(
-      `SELECT m.maintenance_id, m.category, m.created_at, v.plate AS vehicle_plate, v.amoeba_id
+      `SELECT m.maintenance_id, m.category, m.created_at, m.media_ids, v.plate AS vehicle_plate, v.amoeba_id
        FROM ops_maintenance_reports m
        JOIN ops_vehicles v ON v.vehicle_id = m.vehicle_id
        WHERE ${maintenanceClauses.join(" AND ")}
        ORDER BY m.created_at ASC LIMIT 100`,
       maintenanceParams
+    );
+
+    const inspectionReviewClauses: string[] = ["n.review_status = 'pending'"];
+    const inspectionReviewParams: unknown[] = [];
+    this.amoebaScopeClause(inspectionReviewClauses, inspectionReviewParams, scope, "n.amoeba_id");
+    const pendingInspectionReviews = await this.db.many<any>(
+      `SELECT n.inspection_id, n.condition, n.issue_categories, n.notes, n.media_ids,
+              n.inspected_at, n.amoeba_id, v.plate AS vehicle_plate
+       FROM ops_vehicle_inspections n
+       JOIN ops_vehicles v ON v.vehicle_id = n.vehicle_id
+       WHERE ${inspectionReviewClauses.join(" AND ")}
+       ORDER BY n.inspected_at DESC LIMIT 50`,
+      inspectionReviewParams
     );
 
     return {
@@ -1106,6 +1151,7 @@ export class DepthService {
       high_severity_incidents_unacknowledged: overdueIncidents,
       open_incidents: incidents,
       overdue_inspections: overdueInspections,
+      pending_inspection_reviews: pendingInspectionReviews,
       missing_closeouts_today: missingCloseouts,
       open_maintenance_reports: openMaintenance,
       counts: {

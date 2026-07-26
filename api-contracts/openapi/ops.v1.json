@@ -2854,6 +2854,111 @@
           }
         }
       }
+    },
+    "/fleet-policy": {
+      "get": {
+        "tags": [
+          "Fleet"
+        ],
+        "summary": "Read the fleet inspection/service policy",
+        "operationId": "getFleetPolicy",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "policy_id": {
+                      "type": "string"
+                    },
+                    "inspection_interval_hours": {
+                      "type": "number",
+                      "description": "Vehicles must be inspected at least this often (default 48h). Drives compliance and overdue states."
+                    },
+                    "service_interval_days": {
+                      "type": "number",
+                      "description": "Preventive service cadence (default 14 days). Surfaced to fleet views; scheduling arrives with the supervisor S2 slice."
+                    },
+                    "updated_by_person_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Fleet"
+        ],
+        "summary": "Update the fleet inspection/service policy (system admin only; audited)",
+        "operationId": "updateFleetPolicy",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inspection_interval_hours": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 720
+                  },
+                  "service_interval_days": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 365
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated policy"
+          },
+          "400": {
+            "description": "Out-of-range interval"
+          },
+          "401": {
+            "description": "Not a system admin"
+          }
+        }
+      }
     }
   },
   "components": {

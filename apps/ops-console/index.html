@@ -136,7 +136,7 @@
         <div id="incidentList" class="alert-list"></div>
 
         <div class="section-heading sub-section-heading">
-          <div><p class="eyebrow">Every 48 hours</p><h2>Vehicle inspections</h2></div>
+          <div><p class="eyebrow">Regular checks</p><h2>Vehicle inspections</h2></div>
           <span id="inspectionComplianceLabel" class="subtle"></span>
         </div>
         <form id="inspectionForm" class="fuel-form">
@@ -149,6 +149,11 @@
             <option value="needs_repair">Needs repair</option>
           </select></label>
           <label>Notes<input name="notes" placeholder="Required for repairs" /></label>
+          <label class="photo-field">Photo evidence (optional)
+            <input name="photo" type="file" accept="image/*" capture="environment" hidden />
+            <span class="photo-button" data-photo-for="inspection">📷 Take photo</span>
+            <span class="photo-status" data-photo-status="inspection"></span>
+          </label>
           <button type="submit">Submit inspection</button>
         </form>
         <div id="inspectionList" class="mileage-list"></div>
@@ -164,6 +169,11 @@
             <option value="electrical">Electrical</option><option value="body_damage">Body damage</option><option value="other">Other</option>
           </select></label>
           <label>Description<input name="description" maxlength="200" placeholder="What is wrong?" /></label>
+          <label class="photo-field">Photo evidence (optional)
+            <input name="photo" type="file" accept="image/*" capture="environment" hidden />
+            <span class="photo-button" data-photo-for="maintenance">📷 Take photo</span>
+            <span class="photo-status" data-photo-status="maintenance"></span>
+          </label>
           <button type="submit">Report issue</button>
         </form>
         <div id="maintenanceList" class="alert-list"></div>

@@ -30,7 +30,9 @@ needing attention sort first.
 
 **Expected:** five count tiles (escalated alerts, open incidents, overdue
 inspections, missing closeouts, open maintenance), then three lists: alerts
-needing manager action, open incidents and fleet follow-ups. Nothing here is
+needing manager action, open incidents and fleet follow-ups. Needs-repair
+inspections awaiting review appear in fleet follow-ups, and any supervisor
+photo evidence shows as "📷 Photo" chips that open the timestamped image. Nothing here is
 routine supervisor work — it is only what outgrew the supervisor inbox.
 
 ### MA-4 · Action an escalated alert

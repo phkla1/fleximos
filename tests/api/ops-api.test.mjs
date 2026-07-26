@@ -743,6 +743,36 @@ test("generates immutable daily report revisions", async () => {
   assert.equal(reports.body.data[0].revision, 2);
 });
 
+test("configures the fleet policy and applies it to inspection compliance", async () => {
+  const current = await request("/ops/v1/fleet-policy");
+  assert.equal(Number(current.body.inspection_interval_hours), 48);
+  assert.equal(Number(current.body.service_interval_days), 14);
+
+  const invalid = await request("/ops/v1/fleet-policy", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ops-fleet-policy-invalid" },
+    body: JSON.stringify({ inspection_interval_hours: 0 })
+  });
+  assert.equal(invalid.response.status, 400);
+
+  const updated = await request("/ops/v1/fleet-policy", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ops-fleet-policy-001" },
+    body: JSON.stringify({ inspection_interval_hours: 336, service_interval_days: 21 })
+  });
+  assert.equal(Number(updated.body.inspection_interval_hours), 336);
+
+  const compliance = await request("/ops/v1/inspections/compliance");
+  assert.equal(Number(compliance.body.inspection_interval_hours), 336);
+
+  // restore the default so other tests keep their 48h assumptions
+  await request("/ops/v1/fleet-policy", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ops-fleet-policy-002" },
+    body: JSON.stringify({ inspection_interval_hours: 48, service_interval_days: 14 })
+  });
+});
+
 test("deletes a daily report snapshot with audit and admin-only access", async () => {
   const created = await request("/ops/v1/daily-reports", {
     method: "POST",

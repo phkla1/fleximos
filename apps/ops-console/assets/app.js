@@ -87,6 +87,98 @@ const personPhone = (id) => state.people.find((person) => person.person_id === i
 const money = (value) => `₦${Number(value || 0).toLocaleString()}`;
 const timeOf = (value) => new Date(value).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
 
+/* ---------- camera photo evidence ---------- */
+
+// Captured photos staged per form until submit. The input uses
+// capture="environment" so phones open the camera directly (not the
+// gallery); captured_at is stamped at capture time and the server can
+// enforce a freshness window via MEDIA_STRICT_CAPTURE.
+const stagedPhotos = { inspection: null, maintenance: null };
+
+function compressPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const maxEdge = 1280;
+      const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(image.src);
+      resolve(canvas.toDataURL("image/jpeg", 0.8).split(",")[1]);
+    };
+    image.onerror = () => reject(new Error("Could not read the captured photo."));
+    image.src = URL.createObjectURL(file);
+  });
+}
+
+function currentPosition() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      () => resolve(null),
+      { timeout: 4000, maximumAge: 60000 }
+    );
+  });
+}
+
+async function stagePhoto(kind, file) {
+  const statusEl = document.querySelector(`[data-photo-status="${kind}"]`);
+  statusEl.textContent = "Processing…";
+  try {
+    const base64 = await compressPhoto(file);
+    stagedPhotos[kind] = { base64, capturedAt: new Date().toISOString() };
+    statusEl.textContent = `Photo attached ${timeOf(stagedPhotos[kind].capturedAt)} ✓`;
+  } catch (error) {
+    stagedPhotos[kind] = null;
+    statusEl.textContent = error.message;
+  }
+}
+
+async function uploadStagedPhoto(kind, mediaKind) {
+  const staged = stagedPhotos[kind];
+  if (!staged) return [];
+  const gps = await currentPosition();
+  const media = await ops("/ops/v1/media", {
+    method: "POST",
+    headers: { "Idempotency-Key": key("media") },
+    body: JSON.stringify({
+      kind: mediaKind,
+      content_type: "image/jpeg",
+      content_base64: staged.base64,
+      captured_at: staged.capturedAt,
+      gps_lat: gps?.lat ?? null,
+      gps_lng: gps?.lng ?? null
+    })
+  });
+  stagedPhotos[kind] = null;
+  const statusEl = document.querySelector(`[data-photo-status="${kind}"]`);
+  if (statusEl) statusEl.textContent = "";
+  return [media.media_id];
+}
+
+async function openEvidence(mediaId) {
+  try {
+    const response = await fetch(`${opsApiBase}/ops/v1/media/${mediaId}/content`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("Could not load the photo.");
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) { showError(error); }
+}
+
+function evidenceChips(mediaIds) {
+  const ids = Array.isArray(mediaIds) ? mediaIds : [];
+  return ids.map((id, index) =>
+    `<button type="button" class="evidence-chip" data-open-evidence="${escapeHtml(id)}">📷 Photo ${ids.length > 1 ? index + 1 : ""}</button>`
+  ).join("");
+}
+
 /* ---------- tab navigation ---------- */
 
 const TABS = ["cockpit", "board", "alerts", "fuel", "field", "closeout"];
@@ -386,9 +478,10 @@ function renderField() {
   if (state.compliance) {
     const scoped = state.compliance.vehicles;
     const current = scoped.filter((vehicle) => vehicle.inspection_status === "current").length;
+    const intervalHours = Number(state.compliance.inspection_interval_hours || 48);
     el.inspectionComplianceLabel.textContent = !scoped.length
       ? "No active vehicles in scope"
-      : `${Math.round(current / scoped.length * 100)}% of vehicles inspected in the last 48h · ${scoped.length - current} overdue`;
+      : `${Math.round(current / scoped.length * 100)}% of vehicles inspected in the last ${intervalHours}h · ${scoped.length - current} overdue`;
   }
   const complianceByVehicle = new Map((state.compliance?.vehicles || []).map((item) => [item.vehicle_id, item]));
   el.inspectionForm.elements.vehicle_id.innerHTML = state.vehicles.map((vehicle) => {
@@ -408,7 +501,7 @@ function renderField() {
         <div><dt>Fuel</dt><dd>${inspection.fuel_level_pct === null ? "—" : `${Number(inspection.fuel_level_pct)}%`}</dd></div>
         <div><dt>Review</dt><dd>${escapeHtml(String(inspection.review_status).replaceAll("_", " "))}</dd></div>
       </dl>
-      <span class="pill ${inspection.condition === "ok" ? "" : "open"}">${escapeHtml(String(inspection.condition).replaceAll("_", " "))}</span>
+      <div class="mileage-status"><span class="pill ${inspection.condition === "ok" ? "" : "open"}">${escapeHtml(String(inspection.condition).replaceAll("_", " "))}</span>${evidenceChips(inspection.media_ids)}</div>
     </article>
   `).join("") : `<div class="empty">No inspections submitted yet.</div>`;
 
@@ -417,7 +510,7 @@ function renderField() {
       <div><strong>${escapeHtml(report.vehicle_plate)} · ${escapeHtml(String(report.category).replaceAll("_", " "))}</strong><small>${escapeHtml(report.description || "No description")}</small></div>
       <div><span class="row-label">Reported</span><strong>${new Date(report.created_at).toLocaleDateString("en-NG")}</strong></div>
       <div><span class="row-label">Cost</span><strong>${report.cost_ngn === null ? "—" : money(report.cost_ngn)}</strong></div>
-      <div><span class="pill ${escapeHtml(report.status)}">${escapeHtml(String(report.status).replaceAll("_", " "))}</span></div>
+      <div><span class="pill ${escapeHtml(report.status)}">${escapeHtml(String(report.status).replaceAll("_", " "))}</span>${evidenceChips(report.media_ids)}</div>
       <div class="row-actions">
         ${report.status === "open" ? `<button type="button" data-maintenance-status="in_repair" data-maintenance-id="${escapeHtml(report.maintenance_id)}">Start repair</button>` : ""}
         ${report.status !== "resolved" ? `<button type="button" class="secondary" data-maintenance-status="resolved" data-maintenance-id="${escapeHtml(report.maintenance_id)}">Resolve</button>` : ""}
@@ -667,6 +760,13 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
 
 /* ---------- events ---------- */
 
+for (const kind of ["inspection", "maintenance"]) {
+  const form = kind === "inspection" ? el.inspectionForm : el.maintenanceForm;
+  const input = form.querySelector('input[name="photo"]');
+  document.querySelector(`[data-photo-for="${kind}"]`).addEventListener("click", () => input.click());
+  input.addEventListener("change", () => { if (input.files[0]) stagePhoto(kind, input.files[0]); });
+}
+
 el.alertFilter.addEventListener("change", renderAlerts);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 const describeRange = () => el.dateFrom.value === el.dateTo.value
@@ -705,6 +805,11 @@ const dialogTitles = {
   escalate: "Escalate to manager"
 };
 document.addEventListener("click", async (event) => {
+  const evidenceButton = event.target.closest("[data-open-evidence]");
+  if (evidenceButton) {
+    openEvidence(evidenceButton.dataset.openEvidence);
+    return;
+  }
   const tabButton = event.target.closest("[data-goto-tab]");
   if (tabButton) {
     if (el.operatorDialog.open) { el.operatorDialog.close(); openOperatorId = null; }
@@ -830,6 +935,7 @@ el.inspectionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(el.inspectionForm));
   try {
+    const mediaIds = await uploadStagedPhoto("inspection", "inspection_evidence");
     await ops("/ops/v1/inspections", {
       method: "POST",
       headers: { "Idempotency-Key": key("inspection") },
@@ -838,7 +944,8 @@ el.inspectionForm.addEventListener("submit", async (event) => {
         odometer_km: values.odometer_km || null,
         fuel_level_pct: values.fuel_level_pct || null,
         condition: values.condition,
-        notes: values.notes || null
+        notes: values.notes || null,
+        media_ids: mediaIds
       })
     });
     el.inspectionForm.reset();
@@ -850,13 +957,15 @@ el.maintenanceForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(el.maintenanceForm));
   try {
+    const mediaIds = await uploadStagedPhoto("maintenance", "maintenance_evidence");
     await ops("/ops/v1/maintenance-reports", {
       method: "POST",
       headers: { "Idempotency-Key": key("maintenance") },
       body: JSON.stringify({
         vehicle_id: values.vehicle_id,
         category: values.category,
-        description: values.description || null
+        description: values.description || null,
+        media_ids: mediaIds
       })
     });
     el.maintenanceForm.reset();

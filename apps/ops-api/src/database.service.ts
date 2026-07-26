@@ -499,6 +499,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_ops_transfer_price_date
         ON ops_transfer_price_events(event_date DESC);
 
+      CREATE TABLE IF NOT EXISTS ops_fleet_policy (
+        policy_id TEXT PRIMARY KEY,
+        inspection_interval_hours NUMERIC(6, 1) NOT NULL DEFAULT 48,
+        service_interval_days NUMERIC(5, 1) NOT NULL DEFAULT 14,
+        updated_by_person_id TEXT,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS ops_leaderboard_config (
         config_id TEXT PRIMARY KEY,
         acceptance_weight NUMERIC(4, 2) NOT NULL DEFAULT 0.30,
@@ -515,6 +523,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     await this.seed();
     await this.seedScheduledJobs();
     await this.seedLeaderboardConfig();
+    await this.seedFleetPolicy();
   }
 
   async onModuleDestroy() {
@@ -637,6 +646,18 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
            'high_wait_ratio', CURRENT_DATE, 2, NULL, $1, 'open',
            '{"wait_ratio_pct": 34, "development_seed": true}'::jsonb)`,
         [timestamp]
+      );
+    }
+  }
+
+  private async seedFleetPolicy() {
+    const existing = await this.one("SELECT policy_id FROM ops_fleet_policy LIMIT 1");
+    if (!existing) {
+      await this.exec(
+        `INSERT INTO ops_fleet_policy
+         (policy_id, inspection_interval_hours, service_interval_days, updated_by_person_id, updated_at)
+         VALUES ('fleet_default', 48, 14, 'person_system', $1)`,
+        [new Date().toISOString()]
       );
     }
   }

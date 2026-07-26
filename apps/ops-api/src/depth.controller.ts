@@ -429,6 +429,28 @@ export class DepthController {
     );
   }
 
+  @ApiTags("Fleet")
+  @ApiBearerAuth()
+  @Get("ops/v1/fleet-policy")
+  async fleetPolicy(@Req() req: Request) {
+    await this.auth(req);
+    return this.depth.fleetPolicy();
+  }
+
+  @ApiTags("Fleet")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update inspection cadence and preventive service interval (system admin only)" })
+  @Post("ops/v1/fleet-policy")
+  async updateFleetPolicy(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.depth.updateFleetPolicy(body, actor.person_id));
+  }
+
   @ApiTags("Leaderboard")
   @ApiBearerAuth()
   @Get("ops/v1/leaderboard-config")

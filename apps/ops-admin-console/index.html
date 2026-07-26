@@ -168,7 +168,7 @@
         </details>
         <details class="management-panel">
           <summary>View inspection compliance</summary>
-          <p class="panel-intro">Every active vehicle must be inspected at least once every 48 hours. Overdue vehicles also appear in the manager escalation queue.</p>
+          <p class="panel-intro">Every active vehicle must be inspected at least as often as the fleet policy requires (see Controls). Overdue vehicles also appear in the manager escalation queue.</p>
           <p id="inspectionComplianceSummary" class="filter-summary"></p>
           <div id="inspectionComplianceList" class="data-list compact-list"></div>
         </details>
@@ -279,6 +279,19 @@
               <label>Effective from<input name="effective_from" type="date" required /></label>
               <p class="form-hint">Choosing a vehicle type loads its current policy. Saving creates a new version for that vehicle type only, effective from the chosen date — other vehicle types are not affected and earlier versions stay listed for history.</p>
               <button type="submit">Save efficiency policy version</button>
+              </form>
+            </details>
+          </div>
+          <div class="control-panel">
+            <h3>Fleet policy</h3>
+            <div id="fleetPolicySummary" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Adjust inspection and service cadence</summary>
+              <form id="fleetPolicyForm" class="entry-form compact-form">
+              <label>Inspection interval (hours)<input name="inspection_interval_hours" type="number" min="1" max="720" step="1" value="48" required /></label>
+              <label>Preventive service interval (days)<input name="service_interval_days" type="number" min="1" max="365" step="1" value="14" required /></label>
+              <p class="form-hint">The inspection interval drives every compliance figure, overdue flag and manager escalation across the suite. The service interval is recorded now and will drive preventive-service scheduling in the next supervisor slice.</p>
+              <button type="submit">Save fleet policy</button>
               </form>
             </details>
           </div>

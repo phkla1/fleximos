@@ -144,6 +144,13 @@ function renderEscalations() {
     </article>`).join("") : '<div class="empty">No open incidents in scope.</div>';
 
   const followups = [
+    ...(queue.pending_inspection_reviews || []).map((inspection) => ({
+      title: `${inspection.vehicle_plate} inspection: ${label(inspection.condition)}`,
+      context: `${amoebaName(inspection.amoeba_id)}${inspection.notes ? ` · “${inspection.notes}”` : ""}`,
+      when: `Inspected ${new Date(inspection.inspected_at).toLocaleString("en-NG")}`,
+      pill: "open", pillText: "Needs review",
+      media: inspection.media_ids
+    })),
     ...queue.overdue_inspections.map((vehicle) => ({
       title: `${vehicle.plate} inspection ${vehicle.inspection_status === "never_inspected" ? "never done" : "overdue"}`,
       context: `${amoebaName(vehicle.amoeba_id)} · ${vehicle.vehicle_type}`,
@@ -160,7 +167,8 @@ function renderEscalations() {
       title: `${report.vehicle_plate} · ${label(report.category)}`,
       context: amoebaName(report.amoeba_id),
       when: `Reported ${new Date(report.created_at).toLocaleDateString("en-NG")}`,
-      pill: "open", pillText: "Maintenance"
+      pill: "open", pillText: "Maintenance",
+      media: report.media_ids
     }))
   ];
   el.fleetFollowups.innerHTML = followups.length ? followups.map((item) => `
@@ -168,8 +176,28 @@ function renderEscalations() {
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.context)}</small></div>
       <div><span class="row-label">Status</span><span class="pill ${item.pill}">${escapeHtml(item.pillText)}</span></div>
       <div><small>${escapeHtml(item.when)}</small></div>
-      <div></div><div></div>
+      <div>${evidenceChips(item.media)}</div><div></div>
     </article>`).join("") : '<div class="empty">No fleet follow-ups outstanding.</div>';
+}
+
+async function openEvidence(mediaId) {
+  try {
+    const response = await fetch(`${opsBase}/ops/v1/media/${mediaId}/content`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("Could not load the photo.");
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) { showError(error); }
+}
+
+function evidenceChips(mediaIds) {
+  const ids = Array.isArray(mediaIds) ? mediaIds : [];
+  return ids.map((id, index) =>
+    `<button type="button" class="evidence-chip" data-open-evidence="${escapeHtml(id)}">📷 Photo ${ids.length > 1 ? index + 1 : ""}</button>`
+  ).join("");
 }
 
 function renderPnl() {
@@ -335,6 +363,11 @@ async function refresh() {
 
 let pendingAction = null;
 document.addEventListener("click", (event) => {
+  const evidenceButton = event.target.closest("[data-open-evidence]");
+  if (evidenceButton) {
+    openEvidence(evidenceButton.dataset.openEvidence);
+    return;
+  }
   const alertButton = event.target.closest("[data-alert-action]");
   if (alertButton) {
     const alert = state.escalations?.escalated_alerts.find((item) => item.alert_id === alertButton.dataset.alertId)

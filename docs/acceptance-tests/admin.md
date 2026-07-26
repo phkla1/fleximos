@@ -66,6 +66,17 @@ lists show each version's effective window with an active / scheduled /
 superseded pill. The newly saved economics policy becomes the one Analytics
 and the leaderboard use for expected hours.
 
+### AD-7b · Fleet policy
+1. Go to **Controls → Fleet policy → Adjust inspection and service cadence**.
+2. Change the inspection interval (e.g. 72 hours), save, then check
+   **Data health → View inspection compliance**.
+
+**Expected:** the policy saves (out-of-range values are rejected), the
+compliance summary immediately reads against the new cadence (e.g. "…on the
+72h cadence"), and the supervisor console's compliance line and manager
+overdue escalations follow the same policy. The preventive service interval
+is recorded for the upcoming scheduling slice.
+
 ### AD-8 · Leaderboard weights
 1. Go to **Controls → Leaderboard weights → Adjust Performance Score weights**.
 2. First try weights that do not sum to 1.0 (e.g. all 0.9) and save.
@@ -137,6 +148,7 @@ drives what managers and finance users can see in their consoles.
 | AD-5 | | |
 | AD-6 | | |
 | AD-7 | | |
+| AD-7b | | |
 | AD-8 | | |
 | AD-9 | | |
 | AD-10 | | |

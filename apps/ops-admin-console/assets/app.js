@@ -34,6 +34,7 @@ const el = Object.fromEntries(
     "paceProfileForm", "paceProfileList", "efficiencyPolicyForm", "efficiencyPolicyList",
     "economicsPolicyForm", "economicsPolicyList",
     "leaderboardConfigForm", "leaderboardConfigSummary",
+    "fleetPolicyForm", "fleetPolicySummary",
     "inspectionComplianceSummary", "inspectionComplianceList",
     "jobHealthSummary", "jobHealthMetrics", "scheduledJobList", "scheduledJobRuns",
     "jobFilterSummary", "rosterGapList",
@@ -508,7 +509,7 @@ function render() {
   if (compliance) {
     el.inspectionComplianceSummary.textContent = compliance.compliance_pct === null
       ? "No active vehicles registered."
-      : `${compliance.compliance_pct}% compliant · ${compliance.current} current · ${compliance.overdue} overdue of ${compliance.total_active_vehicles} active vehicles.`;
+      : `${compliance.compliance_pct}% compliant on the ${Number(compliance.inspection_interval_hours || 48)}h cadence · ${compliance.current} current · ${compliance.overdue} overdue of ${compliance.total_active_vehicles} active vehicles.`;
     el.inspectionComplianceList.innerHTML = compliance.vehicles.length ? compliance.vehicles.map((vehicle) => `
       <article class="data-row run-row">
         <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))} · ${escapeHtml(vehicle.vehicle_type)}</small></div>
@@ -605,9 +606,10 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/notification-deliveries"),
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
   ]);
-  const [leaderboardConfig, inspectionCompliance] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
-    ops("/ops/v1/inspections/compliance").catch(() => null)
+    ops("/ops/v1/inspections/compliance").catch(() => null),
+    ops("/ops/v1/fleet-policy").catch(() => null)
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
@@ -653,10 +655,20 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     serviceHealth,
     leaderboardConfig,
     inspectionCompliance,
+    fleetPolicy,
     operatingDate,
     dateFrom,
     dateTo
   });
+  if (fleetPolicy) {
+    el.fleetPolicySummary.innerHTML = `
+      <article class="policy-row">
+        <div><strong>Inspection cadence</strong><small>Drives compliance and overdue flags</small></div>
+        <div><strong>Every ${Number(fleetPolicy.inspection_interval_hours)}h</strong><small>Preventive service every ${Number(fleetPolicy.service_interval_days)} days</small></div>
+      </article>`;
+    el.fleetPolicyForm.elements.inspection_interval_hours.value = Number(fleetPolicy.inspection_interval_hours);
+    el.fleetPolicyForm.elements.service_interval_days.value = Number(fleetPolicy.service_interval_days);
+  }
   if (leaderboardConfig) {
     for (const field of ["acceptance_weight", "online_weight", "cash_weight", "revenue_weight"]) {
       el.leaderboardConfigForm.elements[field].value = Number(leaderboardConfig[field]);
@@ -837,6 +849,22 @@ el.economicsPolicyForm.addEventListener("submit", async (event) => {
       })
     });
     await refresh("Finance economics policy added.");
+  } catch (error) { showError(error); }
+});
+
+el.fleetPolicyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.fleetPolicyForm));
+  try {
+    await ops("/ops/v1/fleet-policy", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("fleet-policy") },
+      body: JSON.stringify({
+        inspection_interval_hours: Number(values.inspection_interval_hours),
+        service_interval_days: Number(values.service_interval_days)
+      })
+    });
+    await refresh("Fleet policy saved.");
   } catch (error) { showError(error); }
 });
 

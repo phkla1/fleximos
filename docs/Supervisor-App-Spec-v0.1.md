@@ -125,11 +125,28 @@ Ownership: Ops API (operational activity). New endpoints:
 assignments, exceptions, imports). Suite rules apply (idempotency, audit,
 scoped access).
 
-### 2.8 Inspections & Maintenance — EXISTS
-Already built (48h compliance, overdue list, submissions, maintenance
-queue with repair states and costs). Add photo evidence via the existing
-media registry (EXTEND), and "vehicles not available for work" as a
-derived group (EXTEND).
+### 2.8 Inspections & Maintenance — EXISTS (photo evidence now live)
+Built: policy-driven compliance (interval configurable in the admin
+Controls fleet policy; default 48h), overdue list, submissions, maintenance
+queue with repair states and costs. Photo evidence is live: supervisors
+capture an optional camera-only photo (input `capture=environment`, app
+timestamps `captured_at`, GPS attached when granted, server enforces a
+freshness window when `MEDIA_STRICT_CAPTURE=true`) on inspections and
+maintenance reports; managers see the evidence on needs-review inspections
+and open maintenance in their escalation queue. Remaining EXTEND:
+"vehicles not available for work" derived group.
+
+#### Photo-evidence survey (where optional camera capture belongs)
+| Surface | Status |
+|---|---|
+| Vehicle inspections (supervisor) | **Live** |
+| Maintenance reports (supervisor) | **Live** |
+| Incidents (operator PWA report + supervisor view) | Operator-app slice — model ready (`media_ids` exists; accidents can require photos via strict mode) |
+| Readiness self-checks | S2 with readiness (photo proof items) |
+| Delivery proof-of-delivery, exceptions, returns | S2/S3 deliveries |
+| Vehicle handover/return condition | S2 field-action requests |
+| Fuel receipts/gauges | **Deliberately excluded** — replaced by the card-based petrol-chain partnership |
+| Cash | Excluded — Monnify provides the digital trail |
 
 ### 2.9 Daily Closeout — EXTEND (API exists, UI missing)
 `POST /ops/v1/daily-closeouts` exists; the supervisor console has no UI.
