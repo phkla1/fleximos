@@ -13,6 +13,7 @@ Environment=PORT=4030
 Environment=HOST=127.0.0.1
 Environment=FLEXI_OPS_DB_DIR=%h/fleximos-data/ops-pglite
 Environment=FLEXI_OPS_MEDIA_DIR=%h/fleximos-data/ops-media
+Environment=FLEXI_EMBED_JOBS=true
 Environment=FOUNDATION_API_BASE=http://127.0.0.1:4010
 Environment=PAYMENTS_API_BASE=http://127.0.0.1:4040
 ExecStart=__NODE_BIN__ node_modules/.bin/tsx apps/ops-api/src/main.ts

@@ -57,12 +57,11 @@ fi
 
 echo "==> Installing systemd user units to $UNIT_DIR"
 mkdir -p "$UNIT_DIR"
-for unit in "$DEPLOY_DIR"/systemd/*.service "$DEPLOY_DIR"/systemd/*.timer; do
+for unit in "$DEPLOY_DIR"/systemd/*.service; do
   sed "s|__NODE_BIN__|$NODE_BIN|g" "$unit" > "$UNIT_DIR/$(basename "$unit")"
 done
 systemctl --user daemon-reload
-systemctl --user enable --now fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker fleximos-frontend
-systemctl --user enable --now fleximos-ops-scheduler.timer
+systemctl --user enable --now fleximos-foundation fleximos-ops-api fleximos-payments fleximos-frontend
 
 echo "==> Installing the nightly backup entry in your user crontab"
 cron_line="@daily tar -czf $BACKUP_DIR/fleximos-data-\$(date +\\%F).tar.gz -C $HOME fleximos-data && find $BACKUP_DIR -name 'fleximos-data-*.tar.gz' -mtime +14 -delete"

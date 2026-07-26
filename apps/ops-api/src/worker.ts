@@ -1,3 +1,7 @@
+// CAUTION: never run this against a PGlite data directory that another
+// process (the API with FLEXI_EMBED_JOBS, or the scheduler) has open —
+// concurrent opens corrupt the embedded database. Deployments embed the
+// worker in the API process instead.
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";

@@ -1,3 +1,5 @@
+// CAUTION: single-owner rule — see worker.ts. Deployments embed the
+// scheduler tick in the API process (FLEXI_EMBED_JOBS=true).
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";

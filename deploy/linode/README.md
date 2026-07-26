@@ -19,10 +19,15 @@ authentication hardening) are listed at the end and in
 |---|---|---|
 | Frontend host + `/services/*` proxy (public entry) | 8080 | `fleximos-frontend` |
 | Foundation API (Identity + Amoeba) | 4010 | `fleximos-foundation` |
-| Ops API | 4030 | `fleximos-ops-api` |
+| Ops API (embeds the worker drain loop and scheduler tick) | 4030 | `fleximos-ops-api` |
 | Payments Integration (Monnify) | 4040 | `fleximos-payments` |
-| Ops worker (queues, alerts, reports) | — | `fleximos-ops-worker` |
-| Ops scheduler tick (every minute) | — | `fleximos-ops-scheduler.timer` |
+
+**Single-owner rule:** the Ops API runs with `FLEXI_EMBED_JOBS=true` and is
+the only process that ever opens the ops database directory — it hosts the
+worker and scheduler loops internally. Never start `worker.ts` or
+`scheduler.ts` separately against `~/fleximos-data/ops-pglite`; concurrent
+opens corrupt the embedded database (this is what necessitated the July
+database reset).
 
 The three API ports bind to `127.0.0.1` only. The frontend host on port 8080
 is the single public surface: it serves every console from the repository and

@@ -65,32 +65,6 @@ module.exports = {
       }
     },
     {
-      ...common,
-      name: "fleximos-ops-worker",
-      script: "apps/ops-api/src/worker.ts",
-      interpreter: path.join(REPO, "node_modules/.bin/tsx"),
-      restart_delay: 5000,
-      env: {
-        ...fileEnv,
-        FLEXI_OPS_DB_DIR: `${DATA}/ops-pglite`,
-        FLEXI_OPS_MEDIA_DIR: `${DATA}/ops-media`,
-        FOUNDATION_API_BASE: "http://127.0.0.1:4010",
-        PAYMENTS_API_BASE: "http://127.0.0.1:4040"
-      }
-    },
-    {
-      // One-shot scheduler tick, re-run by pm2 every minute (cron_restart with
-      // autorestart off is the pm2 pattern for cron-style jobs).
-      ...common,
-      name: "fleximos-ops-scheduler",
-      script: "apps/ops-api/src/scheduler.ts",
-      args: "--once",
-      interpreter: path.join(REPO, "node_modules/.bin/tsx"),
-      autorestart: false,
-      cron_restart: "* * * * *",
-      env: { ...fileEnv, FLEXI_OPS_DB_DIR: `${DATA}/ops-pglite` }
-    },
-    {
       // Public entry: static frontends + /services/* proxy on port 8080.
       ...common,
       name: "fleximos-frontend",
