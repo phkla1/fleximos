@@ -2,12 +2,34 @@ import http from "node:http";
 import path from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
+import pg from "pg";
 
 const port = Number(process.env.PORT || 4010);
 const host = process.env.HOST || "127.0.0.1";
 const serviceToken = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
 const dbDir = process.env.FLEXI_DB_DIR || path.resolve(".data/foundation-pglite");
-const db = new PGlite(`file://${dbDir}`);
+
+// Backend selection: a PostgreSQL URL wins (deployments); PGlite otherwise.
+// Type parsers + JSONB param stringification keep both backends identical
+// from the handlers' point of view (see ops-api database.service.ts).
+pg.types.setTypeParser(1082, (value) => value);
+pg.types.setTypeParser(1700, (value) => parseFloat(value));
+pg.types.setTypeParser(20, (value) => parseInt(value, 10));
+const databaseUrl = process.env.FLEXI_FOUNDATION_DATABASE_URL || "";
+const pool = databaseUrl ? new pg.Pool({ connectionString: databaseUrl, max: 10 }) : null;
+const pglite = databaseUrl ? null : new PGlite(`file://${dbDir}`);
+const encodeParams = (params) => params.map((param) =>
+  param !== null && typeof param === "object" && !(param instanceof Date) ? JSON.stringify(param) : param);
+const db = {
+  async query(sql, params = []) {
+    if (pool) return params.length ? pool.query(sql, encodeParams(params)) : pool.query(sql);
+    return pglite.query(sql, params);
+  },
+  async exec(sql) {
+    if (pool) return pool.query(sql);
+    return pglite.exec(sql);
+  }
+};
 
 const allowedPersonStatuses = new Set(["active", "inactive", "suspended"]);
 const allowedUserStatuses = new Set(["active", "inactive", "suspended"]);

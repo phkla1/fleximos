@@ -253,9 +253,65 @@ systemctl --user start fleximos-foundation fleximos-ops-api fleximos-payments fl
 - Use the Linode Cloud Firewall: allow 22 and 8080 (or 80/443 with nginx)
   inbound; deny the rest.
 
-## 9. Production-hardening gates (later, not needed for UAT)
+## 9. PostgreSQL (recommended once real testing begins)
 
-- PostgreSQL with backups/restore drills, Redis + BullMQ (see `deploy/phase3-runtime.md`).
+The services default to embedded PGlite databases, but each accepts a
+PostgreSQL connection URL and switches backend automatically — no code or
+schema steps needed; every service creates and migrates its own schema on
+first boot:
+
+- `FLEXI_FOUNDATION_DATABASE_URL`
+- `FLEXI_OPS_DATABASE_URL`
+- `FLEXI_PAYMENTS_DATABASE_URL`
+
+**One-time provisioning** (as a Postgres superuser, e.g. `sudo -u postgres psql`):
+
+```sql
+CREATE ROLE fleximos LOGIN PASSWORD 'choose-a-strong-password';
+CREATE DATABASE fleximos_foundation OWNER fleximos;
+CREATE DATABASE fleximos_ops OWNER fleximos;
+CREATE DATABASE fleximos_payments OWNER fleximos;
+```
+
+**Cutover** (UAT data is reseedable, so no data migration is needed):
+
+```bash
+cat >> ~/fleximos-data/fleximos.env <<'ENV'
+FLEXI_FOUNDATION_DATABASE_URL=postgresql://fleximos:choose-a-strong-password@127.0.0.1:5432/fleximos_foundation
+FLEXI_OPS_DATABASE_URL=postgresql://fleximos:choose-a-strong-password@127.0.0.1:5432/fleximos_ops
+FLEXI_PAYMENTS_DATABASE_URL=postgresql://fleximos:choose-a-strong-password@127.0.0.1:5432/fleximos_payments
+ENV
+
+cd ~/fleximos && git pull && npm ci
+pm2 restart all --update-env    # or: pm2 delete <apps> && pm2 start deploy/linode/ecosystem.config.cjs && pm2 save
+# then re-run the seed (section 4, plus PAYMENTS_API_BASE=http://127.0.0.1:4040)
+```
+
+**Backups on Postgres** — replace the tar-based crontab entry with dumps
+(keep a tar for camera media):
+
+```bash
+( crontab -l | grep -v fleximos-data- ; cat <<'CRON'
+@daily pg_dump -U fleximos -h 127.0.0.1 fleximos_foundation | gzip > $HOME/fleximos-backups/foundation-$(date +\%F).sql.gz
+@daily pg_dump -U fleximos -h 127.0.0.1 fleximos_ops | gzip > $HOME/fleximos-backups/ops-$(date +\%F).sql.gz
+@daily pg_dump -U fleximos -h 127.0.0.1 fleximos_payments | gzip > $HOME/fleximos-backups/payments-$(date +\%F).sql.gz
+@daily tar -czf $HOME/fleximos-backups/ops-media-$(date +\%F).tar.gz -C $HOME/fleximos-data ops-media
+@daily find $HOME/fleximos-backups -mtime +14 -delete
+CRON
+) | crontab -
+```
+
+(Use `~/.pgpass` for the password: `127.0.0.1:5432:*:fleximos:choose-a-strong-password`, chmod 600.)
+
+Unlike PGlite, PostgreSQL is crash-consistent and supports concurrent
+access, which retires the corruption class behind the July database resets.
+The single-owner `FLEXI_EMBED_JOBS` mode stays on regardless — it is simpler
+operationally either way. PGlite remains the default for local dev and the
+test suites.
+
+## 10. Production-hardening gates (later, not needed for UAT)
+
+- Redis + BullMQ queue backend (see `deploy/phase3-runtime.md`); PostgreSQL is covered in section 9.
 - Live Bolt/Uber connector credentials and a real end-to-end trial.
 - Monnify sandbox → live credentials, public webhook URL and signature checks
   (`docs/developer-portal/monnify-setup-and-test.md`).

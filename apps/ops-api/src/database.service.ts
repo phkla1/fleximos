@@ -1,13 +1,31 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PGlite } from "@electric-sql/pglite";
+import pg from "pg";
 import { scheduledJobs } from "./scheduled-jobs.js";
+
+// PostgreSQL returns DATE/NUMERIC/BIGINT differently from PGlite's driver;
+// normalise so service code sees identical shapes on both backends.
+pg.types.setTypeParser(1082, (value: string) => value);            // DATE -> "YYYY-MM-DD"
+pg.types.setTypeParser(1700, (value: string) => parseFloat(value)); // NUMERIC -> number
+pg.types.setTypeParser(20, (value: string) => parseInt(value, 10)); // BIGINT (COUNT) -> number
+
+// node-postgres encodes JS arrays as Postgres arrays; every array/object
+// parameter in this codebase targets a JSONB column, so stringify them.
+function encodeParams(params: unknown[]) {
+  return params.map((param) =>
+    param !== null && typeof param === "object" && !(param instanceof Date) ? JSON.stringify(param) : param);
+}
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
-  private readonly db = new PGlite(`file://${process.env.FLEXI_OPS_DB_DIR || ".data/ops-pglite"}`);
+  // Backend selection: a PostgreSQL URL takes precedence (deployments);
+  // otherwise the embedded PGlite directory serves local dev and tests.
+  private readonly databaseUrl = process.env.FLEXI_OPS_DATABASE_URL || "";
+  private readonly pool = this.databaseUrl ? new pg.Pool({ connectionString: this.databaseUrl, max: 10 }) : null;
+  private readonly db = this.databaseUrl ? null : new PGlite(`file://${process.env.FLEXI_OPS_DB_DIR || ".data/ops-pglite"}`);
 
   async onModuleInit() {
-    await this.db.exec(`
+    await this.ddl(`
       CREATE TABLE IF NOT EXISTS ops_operators (
         operator_id TEXT PRIMARY KEY,
         person_id TEXT NOT NULL UNIQUE,
@@ -527,21 +545,40 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.db.close();
+    if (this.pool) await this.pool.end();
+    if (this.db) await this.db.close();
+  }
+
+  // Multi-statement DDL: pg's simple protocol handles it; PGlite needs exec.
+  private async ddl(sql: string) {
+    if (this.pool) return this.pool.query(sql);
+    return this.db!.exec(sql);
+  }
+
+  private async run<T>(sql: string, params: unknown[]): Promise<{ rows: T[] }> {
+    if (this.pool) {
+      // No params -> simple query protocol, which also allows the
+      // multi-statement DDL blocks used by onModuleInit.
+      const result = params.length
+        ? await this.pool.query(sql, encodeParams(params))
+        : await this.pool.query(sql);
+      return { rows: result.rows as T[] };
+    }
+    return this.db!.query<T>(sql, params);
   }
 
   async one<T>(sql: string, params: unknown[] = []): Promise<T | null> {
-    const result = await this.db.query<T>(sql, params);
+    const result = await this.run<T>(sql, params);
     return result.rows[0] || null;
   }
 
   async many<T>(sql: string, params: unknown[] = []): Promise<T[]> {
-    const result = await this.db.query<T>(sql, params);
+    const result = await this.run<T>(sql, params);
     return result.rows;
   }
 
   async exec(sql: string, params: unknown[] = []) {
-    return this.db.query(sql, params);
+    return this.run(sql, params);
   }
 
   private async seed() {

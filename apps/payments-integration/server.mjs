@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import pg from "pg";
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 
@@ -10,7 +11,26 @@ const foundationBase = process.env.FOUNDATION_API_BASE || "http://127.0.0.1:4010
 const providerMode = process.env.MONNIFY_PROVIDER_MODE || "simulated";
 const monnifyBase = process.env.MONNIFY_BASE_URL || "https://sandbox.monnify.com";
 const webhookSecret = process.env.MONNIFY_WEBHOOK_SECRET || process.env.MONNIFY_SECRET_KEY || "flexi-monnify-sandbox-secret";
-const db = new PGlite(`file://${process.env.FLEXI_PAYMENTS_DB_DIR || ".data/payments-pglite"}`);
+// Backend selection mirrors the other services: PostgreSQL URL wins,
+// PGlite serves local dev/tests. Parsers/param encoding keep them identical.
+pg.types.setTypeParser(1082, (value) => value);
+pg.types.setTypeParser(1700, (value) => parseFloat(value));
+pg.types.setTypeParser(20, (value) => parseInt(value, 10));
+const paymentsDatabaseUrl = process.env.FLEXI_PAYMENTS_DATABASE_URL || "";
+const paymentsPool = paymentsDatabaseUrl ? new pg.Pool({ connectionString: paymentsDatabaseUrl, max: 10 }) : null;
+const paymentsPglite = paymentsDatabaseUrl ? null : new PGlite(`file://${process.env.FLEXI_PAYMENTS_DB_DIR || ".data/payments-pglite"}`);
+const encodePgParams = (params) => params.map((param) =>
+  param !== null && typeof param === "object" && !(param instanceof Date) ? JSON.stringify(param) : param);
+const db = {
+  async query(sql, params = []) {
+    if (paymentsPool) return params.length ? paymentsPool.query(sql, encodePgParams(params)) : paymentsPool.query(sql);
+    return paymentsPglite.query(sql, params);
+  },
+  async exec(sql) {
+    if (paymentsPool) return paymentsPool.query(sql);
+    return paymentsPglite.exec(sql);
+  }
+};
 
 await db.exec(`
   CREATE TABLE IF NOT EXISTS payment_reserved_accounts (
