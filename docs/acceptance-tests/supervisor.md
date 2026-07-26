@@ -1,100 +1,126 @@
-# Supervisor acceptance tests — Supervisor console
+# Supervisor acceptance tests — Amoeba Control Room
 
 **Who this is for:** supervisors / amoeba owners running a team day to day.
-**Where:** `https://<host>/apps/ops-console/`
+**Where:** `https://<host>/apps/ops-console/` (mobile-first — test on a phone
+if you can; add it to your home screen and it installs like an app).
 
-The Supervisor console is your live operating picture: the team board, your
-alert inbox, field operations (incidents, inspections, maintenance), the daily
-performance report and fuel/mileage control. You only see operators assigned
-to you.
+The supervisor app is a field-operations cockpit. It opens on "What needs my
+action now?" and moves with your operating rhythm: readiness → live pace →
+alerts → fuel → field issues → closeout. You only see operators assigned to
+you. Navigation is the six-tab dock at the bottom (phone) or top (desktop):
+Cockpit · Board · Alerts · Fuel · Field · Close.
 
 ## Tests
 
-### SU-1 · Open the workspace
-1. Open the console URL.
+### SU-1 · Open the cockpit
+1. Open the app URL.
 
-**Expected:** header shows "Supervisor workspace", the status dot turns green
-("Team data connected"), and the five summary tiles fill in: active operators,
-live operators, open alerts, car revenue, bike revenue.
+**Expected:** the status dot turns green ("Team data connected") and the
+Cockpit shows three gauges — Net Earnings pace, operators live now, and
+closeout readiness — coloured green/yellow/red by state, plus Cars/Bikes
+Net Earnings chips. No API IDs or connector jargon anywhere.
 
-### SU-2 · Read the team board
-1. Scroll through **Team board**.
+### SU-2 · Read "Do these first"
+1. Look at the **Do these first** strip under the gauges.
 
-**Expected:** one tile per operator with name, plate, live status, a pace
-label (Ahead / On track / Behind / At risk), expected-by-now revenue, progress
-bar toward target, trips/hours/alerts and platform badges (e.g. "Car · Uber
-Ride-Hailing"). Risk is colour-coded on the tile's left edge.
+**Expected:** up to three ranked actions (acknowledge a high-tier alert,
+respond to an incident, review operator explanations, inspect overdue
+vehicles, confirm fuel) — each with a button that takes you straight to the
+work. On a clean day it says "All clear".
 
-### SU-3 · Acknowledge an alert
-1. Go to **Alerts**, find an open alert, tap **Acknowledge**.
-2. Add a note in the dialog and confirm.
+### SU-3 · Scan team conditions
+1. Review the **Team conditions** cards; tap one.
 
-**Expected:** notice reads "Alert acknowledged", status pill changes.
+**Expected:** red/yellow/green cards for: not seen today, offline after
+coming online, open alert, behind pace, fuel/mileage risk, vehicle issue,
+open alerts, closeout blockers. Tapping a card jumps to the tab where you
+act on it.
 
-### SU-4 · Review an operator's explanation
-1. Find an alert with an "Operator reason" line (ask an operator tester to run
-   test OP-5 first, or use one already submitted).
+### SU-4 · Work the operator board
+1. Open **Board**. 2. Tap an operator tile.
+
+**Expected:** operators are grouped by state (risky groups open first, "on
+track" collapsed), each tile showing name, plate, live status, pace pill,
+progress toward target, trips/hours/alerts and platform badges. Tapping a
+tile opens the operator detail sheet: figures vs target, platform accounts,
+a 📞 Call button when a phone number exists, any open alerts with action
+buttons, fuel/mileage rows, and **Today's timeline** — the operator's day
+as recorded events (alerts, fuel confirms, inspections, incidents).
+
+### SU-5 · Acknowledge an alert
+1. Open **Alerts** (note the red badge count on the dock icon).
+2. Open a condition group, tap **Acknowledge** on an alert, add a note,
+   confirm.
+
+**Expected:** alerts group by condition ("3 operators · behind pace") before
+individuals. The notice confirms the acknowledgement and the pill updates.
+
+### SU-6 · Review an operator's explanation
+1. Find an alert with an "Operator reason" line (ask an operator tester to
+   run test OP-5 first, or use one already submitted).
 2. Tap **Accept** (or **Reject**).
 
-**Expected:** the reason line shows the decision and the accept/reject buttons
-disappear. Both outcomes are recorded in the audit trail.
+**Expected:** the reason line shows the decision; both outcomes are audited.
 
-### SU-5 · Escalate an alert
-1. Pick an unresolved alert and tap **Escalate**, add a note, confirm.
+### SU-7 · Escalate an alert
+1. Pick an unresolved alert, tap **Escalate**, add a note, confirm.
 
-**Expected:** notice reads "Alert escalated to manager", status becomes
-"escalated". It now appears in the Manager console's escalation queue.
+**Expected:** "Alert escalated to manager" — it now appears in the Manager
+console's escalation queue.
 
-### SU-6 · Handle an incident
-1. Go to **Field ops → Incidents** (ask an operator tester to send a
-   breakdown via OP-8, or check the seeded list).
-2. Tap **Acknowledge**, then **Resolve** with a short resolution note.
+### SU-8 · Handle an incident
+1. Open **Field** (ask an operator tester to send a breakdown via OP-8, or
+   use the seeded list). 2. **Acknowledge**, then **Resolve** with a note.
 
-**Expected:** the incident moves open → acknowledged → resolved with a
-confirmation each time. High-severity incidents (accident, police) are marked
-red.
+**Expected:** the incident moves open → acknowledged → resolved.
+High-severity incidents (accident, police) are marked red.
 
-### SU-7 · Submit a vehicle inspection
-1. Go to **Field ops → Vehicle inspections**. Note the compliance line
-   ("% of vehicles inspected in the last 48h").
-2. Pick a vehicle (overdue ones are marked), enter an odometer reading and
-   fuel level, choose a condition, submit.
+### SU-9 · Submit a vehicle inspection
+1. In **Field**, note the 48-hour compliance line; overdue vehicles are
+   marked in the vehicle picker. 2. Submit an inspection (odometer, fuel
+   level, condition).
 
-**Expected:** "Inspection submitted", the inspection appears in the list
-below. A "needs repair" inspection requires notes or categories and is flagged
-for manager review.
+**Expected:** "Inspection submitted"; a "needs repair" inspection requires
+notes and is flagged for manager review.
 
-### SU-8 · Run the maintenance queue
-1. Go to **Field ops → Maintenance queue**.
-2. Report an issue with the form (category + description).
-3. On the new row, tap **Start repair**, then **Resolve** and enter a repair
-   cost when prompted.
+### SU-10 · Run the maintenance queue
+1. In **Field**, report an issue (category + description).
+2. On the new row: **Start repair**, then **Resolve** with a cost.
 
-**Expected:** the report moves open → in repair → resolved; the cost is shown
-on the row. Resolved costs feed the amoeba P&L that managers see.
+**Expected:** open → in repair → resolved; the cost feeds the amoeba P&L.
 
-### SU-9 · Check the daily performance report
-1. Go to **Performance**.
+### SU-11 · Confirm fuel or charge
+1. Open **Fuel**. 2. Pick an operator, enter a quantity, choose litres
+   (fuel) or kWh (charge), confirm.
 
-**Expected:** one row per operator/platform with trips, revenue, hours,
-acceptance and status — your amoeba only.
+**Expected:** "Fuel issue confirmed", and the reconciliation list shows
+issued quantity, expected distance, official platform distance, tracker
+distance where available (bikes typically show "Tracker unavailable" — by
+design) and variance pills.
 
-### SU-10 · Confirm fuel and check mileage
-1. Go to **Fuel & mileage**.
-2. Choose an operator with a vehicle, enter litres issued, confirm.
+### SU-12 · Submit the daily closeout
+1. Open **Close**.
 
-**Expected:** "Fuel issue confirmed", and the reconciliation list shows fuel
-issued, expected distance, official platform distance, tracker distance where
-available (bikes typically show "Tracker unavailable" — that is expected) and
-exception pills.
+**Expected:** one card per operating unit with an auto-filled checklist:
+unresolved alerts, open incidents, overdue inspections, fuel not confirmed,
+mileage exceptions, maintenance blockers — each Clear (✓) or flagged (!)
+with a Review link that jumps to the right tab. Add an optional note and
+submit ("Submit with exceptions" when blockers remain). The card flips to a
+timestamped submitted state, the closeout-readiness gauge updates, and the
+manager console stops listing your closeout as missing.
 
-### SU-11 · Review a date range
-1. Set **From** to two days ago and **To** to today (the demo seed covers the last three days).
+### SU-13 · Review a date range
+1. Set **From** to two days ago and **To** to today in the top bar.
 
-**Expected:** the board sums revenue, trips and hours across the range and
-scales targets by the number of days; alerts and performance records cover
-the whole range, and mileage rows show which day they belong to. Setting
-From = To returns to a single-day view.
+**Expected:** gauges, board groups, alerts and mileage cover the whole range
+(targets scale by day count; mileage rows show their day). From = To returns
+to a single-day view.
+
+### SU-14 · Phone check
+1. Do SU-1 through SU-5 on a phone (or a 320px-wide window).
+
+**Expected:** no sideways scrolling, the dock stays reachable at the bottom,
+and every button is comfortably tappable.
 
 ## Results
 
@@ -111,5 +137,8 @@ From = To returns to a single-day view.
 | SU-9 | | |
 | SU-10 | | |
 | SU-11 | | |
+| SU-12 | | |
+| SU-13 | | |
+| SU-14 | | |
 
 Tester: ____________  Date: ____________  Device/browser: ____________

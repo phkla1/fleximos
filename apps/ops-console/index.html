@@ -10,69 +10,125 @@
   </head>
   <body>
     <header class="app-header">
-      <a class="brand" href="#team" aria-label="Fleximotion Ops home">
+      <a class="brand" href="#cockpit" aria-label="Fleximotion Ops home">
         <span>F</span>
         <div><strong>Fleximotion Ops</strong><small>Supervisor workspace</small></div>
       </a>
       <div class="connection-status"><span></span><span id="connectionText">Connecting</span></div>
     </header>
 
-    <nav class="tabs" aria-label="Supervisor sections">
-      <a href="#team">Team</a>
-      <a href="#alerts">Alerts</a>
-      <a href="#field">Field ops</a>
-      <a href="#performance">Performance</a>
-      <a href="#fuel">Fuel & mileage</a>
+    <div class="range-bar">
+      <label>From<input id="dateFrom" type="date" /></label>
+      <label>To<input id="dateTo" type="date" /></label>
+      <button id="refreshButton" type="button">Refresh</button>
+      <span id="boardUpdated" class="subtle"></span>
+    </div>
+
+    <p id="notice" class="notice" role="status"></p>
+
+    <nav class="dock" aria-label="Supervisor sections">
+      <a href="#cockpit" data-tab-link="cockpit" class="active"><span class="dock-icon">◉</span>Cockpit</a>
+      <a href="#board" data-tab-link="board"><span class="dock-icon">👥</span>Board</a>
+      <a href="#alerts" data-tab-link="alerts"><span class="dock-icon">⚠</span>Alerts<span id="alertDockBadge" class="dock-badge" hidden></span></a>
+      <a href="#fuel" data-tab-link="fuel"><span class="dock-icon">⛽</span>Fuel</a>
+      <a href="#field" data-tab-link="field"><span class="dock-icon">🛠</span>Field</a>
+      <a href="#closeout" data-tab-link="closeout"><span class="dock-icon">✓</span>Close</a>
     </nav>
 
     <main>
-      <section id="team" class="overview-band">
-        <div>
-          <p class="eyebrow">My team</p>
-          <h1>Today’s operating picture</h1>
-          <p id="scopeLabel" class="subtle">Operators assigned to this supervisor</p>
+      <!-- ============ COCKPIT ============ -->
+      <section id="cockpit" class="tab-panel active" data-tab="cockpit">
+        <div class="cockpit-head">
+          <div><p class="eyebrow">Amoeba control room</p><h1>What needs my action now?</h1><p id="scopeLabel" class="subtle">Operators assigned to this supervisor</p></div>
         </div>
-        <div class="overview-actions">
-          <label>From<input id="dateFrom" type="date" /></label>
-          <label>To<input id="dateTo" type="date" /></label>
-          <button id="refreshButton" type="button">Refresh</button>
+
+        <div class="gauge-row" aria-label="Team gauges">
+          <figure class="gauge" id="paceGauge">
+            <svg viewBox="0 0 120 120" role="img" aria-label="Net Earnings pace">
+              <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
+              <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <figcaption><strong>0%</strong><span>Net Earnings pace</span><small></small></figcaption>
+          </figure>
+          <figure class="gauge" id="utilisationGauge">
+            <svg viewBox="0 0 120 120" role="img" aria-label="Utilisation">
+              <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
+              <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <figcaption><strong>0%</strong><span>Live now</span><small></small></figcaption>
+          </figure>
+          <figure class="gauge" id="closeoutGauge">
+            <svg viewBox="0 0 120 120" role="img" aria-label="Closeout readiness">
+              <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
+              <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <figcaption><strong>0%</strong><span>Closeout ready</span><small></small></figcaption>
+          </figure>
         </div>
+
+        <div class="split-chips">
+          <span class="car" id="carRevenueChip">Cars ₦0</span>
+          <span class="bike" id="bikeRevenueChip">Bikes ₦0</span>
+          <span id="teamCountChip">0 active · 0 live</span>
+        </div>
+
+        <div class="section-heading"><div><p class="eyebrow">Top actions</p><h2>Do these first</h2></div></div>
+        <div id="topActions" class="top-actions"></div>
+
+        <div class="section-heading"><div><p class="eyebrow">Condition scan</p><h2>Team conditions</h2></div></div>
+        <div id="conditionGrid" class="condition-grid"></div>
       </section>
 
-      <section class="metrics" aria-label="Team summary">
-        <article><span>Active operators</span><strong id="activeOperatorCount">0</strong></article>
-        <article><span>Live operators</span><strong id="liveOperatorCount">0</strong></article>
-        <article><span>Open alerts</span><strong id="openAlertCount">0</strong></article>
-        <article class="revenue-metric car"><span>Car revenue</span><strong id="carRevenueTotal">₦0</strong></article>
-        <article class="revenue-metric bike"><span>Bike revenue</span><strong id="bikeRevenueTotal">₦0</strong></article>
-      </section>
-
-      <p id="notice" class="notice" role="status"></p>
-
-      <section class="workspace-section">
+      <!-- ============ OPERATOR BOARD ============ -->
+      <section id="board" class="tab-panel" data-tab="board">
         <div class="section-heading">
-          <div><p class="eyebrow">Live operations</p><h2>Team board</h2></div>
-          <span id="boardUpdated" class="subtle"></span>
+          <div><p class="eyebrow">Live operations</p><h2>Operator board</h2></div>
+          <span class="subtle">Grouped by state — tap an operator for detail</span>
         </div>
-        <div id="teamBoard" class="team-board"></div>
+        <div id="teamBoard" class="board-groups"></div>
+
+        <details class="management-panel">
+          <summary>Platform records for this range</summary>
+          <div id="performanceList" class="performance-list"></div>
+        </details>
       </section>
 
-      <section id="alerts" class="workspace-section">
+      <!-- ============ ALERT QUEUE ============ -->
+      <section id="alerts" class="tab-panel" data-tab="alerts">
         <div class="section-heading">
-          <div><p class="eyebrow">Action queue</p><h2>Alert inbox</h2></div>
+          <div><p class="eyebrow">Action queue</p><h2>Alert queue</h2></div>
           <label class="compact-field">Status
             <select id="alertFilter">
               <option value="">All alerts</option>
-              <option value="open">Open</option>
+              <option value="open" selected>Open</option>
               <option value="acknowledged">Acknowledged</option>
+              <option value="escalated">Escalated</option>
               <option value="resolved">Resolved</option>
             </select>
           </label>
         </div>
-        <div id="alertList" class="alert-list"></div>
+        <p class="section-intro">Conditions are grouped so scale is visible first. Open a condition to work through the operators inside it.</p>
+        <div id="alertList" class="alert-groups"></div>
       </section>
 
-      <section id="field" class="workspace-section">
+      <!-- ============ FUEL & CHARGE ============ -->
+      <section id="fuel" class="tab-panel" data-tab="fuel">
+        <div class="section-heading">
+          <div><p class="eyebrow">Daily control</p><h2>Fuel &amp; charge</h2></div>
+          <span class="subtle">Confirm what was issued, watch the variance</span>
+        </div>
+        <form id="fuelIssueForm" class="fuel-form">
+          <label>Operator and vehicle<select name="operator_id" required></select></label>
+          <label>Quantity<input name="quantity" type="number" min="0" step="0.1" required /></label>
+          <label>Unit<select name="unit"><option value="litres">Litres (fuel)</option><option value="kWh">kWh (charge)</option></select></label>
+          <label>Notes<input name="notes" placeholder="Optional" /></label>
+          <button type="submit">Confirm fuel</button>
+        </form>
+        <div id="mileageList" class="mileage-list"></div>
+      </section>
+
+      <!-- ============ FIELD OPS ============ -->
+      <section id="field" class="tab-panel" data-tab="field">
         <div class="section-heading">
           <div><p class="eyebrow">Field response</p><h2>Incidents</h2></div>
           <span class="subtle">Support requests from your operators</span>
@@ -113,28 +169,24 @@
         <div id="maintenanceList" class="alert-list"></div>
       </section>
 
-      <section id="performance" class="workspace-section">
+      <!-- ============ DAILY CLOSEOUT ============ -->
+      <section id="closeout" class="tab-panel" data-tab="closeout">
         <div class="section-heading">
-          <div><p class="eyebrow">Daily report</p><h2>Operator performance</h2></div>
-          <span class="subtle">One row per platform account</span>
+          <div><p class="eyebrow">End of operating day</p><h2>Daily closeout</h2></div>
+          <span class="subtle">A checklist, not a report — the system already carries your day upward</span>
         </div>
-        <div id="performanceList" class="performance-list"></div>
-      </section>
-
-      <section id="fuel" class="workspace-section">
-        <div class="section-heading">
-          <div><p class="eyebrow">Daily control</p><h2>Fuel and mileage</h2></div>
-          <span class="subtle">Supervisor confirmation</span>
-        </div>
-        <form id="fuelIssueForm" class="fuel-form">
-          <label>Operator and vehicle<select name="operator_id" required></select></label>
-          <label>Fuel issued (litres)<input name="quantity" type="number" min="0" step="0.1" required /></label>
-          <label>Notes<input name="notes" placeholder="Optional" /></label>
-          <button type="submit">Confirm fuel</button>
-        </form>
-        <div id="mileageList" class="mileage-list"></div>
+        <p class="section-intro">Review each line, clear what you can, explain what you cannot. Submitting records a timestamped closeout for the To date; managers see missing or exception closeouts in their own console.</p>
+        <div id="closeoutList" class="closeout-list"></div>
       </section>
     </main>
+
+    <!-- Operator detail sheet -->
+    <dialog id="operatorDialog" class="operator-sheet">
+      <div class="dialog-body">
+        <div class="dialog-heading"><div><p class="eyebrow">Operator detail</p><h2 id="operatorDialogTitle">Operator</h2></div><button type="button" data-close-operator aria-label="Close">×</button></div>
+        <div id="operatorDialogBody"></div>
+      </div>
+    </dialog>
 
     <dialog id="actionDialog">
       <form method="dialog" class="dialog-body">

@@ -3,33 +3,47 @@ import { expect, test } from "@playwright/test";
 test.describe("Supervisor Ops console", () => {
   const url = "/apps/ops-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510";
 
-  test("shows only supervisor operational surfaces", async ({ page }) => {
+  test("cockpit answers what needs action now", async ({ page }) => {
     await page.goto(url);
     await expect(page).toHaveTitle("Fleximotion Ops");
     await expect(page.locator("#notice")).toContainText("Connected");
-    await expect(page.locator("#activeOperatorCount")).not.toHaveText("0");
-    await expect(page.locator("#liveOperatorCount")).toBeVisible();
-    await expect(page.locator("#carRevenueTotal")).toBeVisible();
-    await expect(page.locator("#bikeRevenueTotal")).toBeVisible();
-    await expect(page.getByText(/(Car|Bike) · (Bolt Lagos|Uber Ride-Hailing|Uber Courier)/).first()).toBeVisible();
-    await expect(page.getByText(/Expected (now|by close)/).first()).toBeVisible();
-    await expect(page.locator(".pace-status").first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Team board" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Alert inbox" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Operator performance" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Fuel and mileage" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Confirm fuel" })).toBeVisible();
-    await expect(page.locator(".mileage-row").first()).toBeVisible();
+    await expect(page.locator("#paceGauge")).toBeVisible();
+    await expect(page.locator("#utilisationGauge")).toBeVisible();
+    await expect(page.locator("#closeoutGauge")).toBeVisible();
+    await expect(page.locator("#utilisationGauge figcaption strong")).not.toHaveText("0%");
+    await expect(page.locator("#carRevenueChip")).toContainText("Cars");
+    await expect(page.locator("#bikeRevenueChip")).toContainText("Bikes");
+    await expect(page.getByRole("heading", { name: "Do these first" })).toBeVisible();
+    await expect(page.locator(".condition-card").first()).toBeVisible();
+    await expect(page.locator(".dock a")).toHaveCount(6);
     await expect(page.getByText("Daily performance ingestion")).toHaveCount(0);
     await expect(page.getByText("API connection")).toHaveCount(0);
   });
 
-  test("acknowledges an alert from the inbox", async ({ page }) => {
-    await page.goto(url);
+  test("groups the operator board by state with tap-through detail", async ({ page }) => {
+    await page.goto(`${url}#board`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    const groups = page.locator("#teamBoard .board-group");
+    expect(await groups.count()).toBeGreaterThan(0);
+    await expect(page.locator(".group-count").first()).toBeVisible();
+
+    const firstGroup = groups.first();
+    if (!(await firstGroup.evaluate((node) => node.open))) await firstGroup.locator("summary").click();
+    await firstGroup.locator(".operator-tile").first().click();
+    await expect(page.locator("#operatorDialog")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Today's timeline" })).toBeVisible();
+    await expect(page.locator("#operatorDialog .progress-track")).toBeVisible();
+    await page.locator("[data-close-operator]").click();
+    await expect(page.locator("#operatorDialog")).not.toBeVisible();
+  });
+
+  test("acknowledges an alert from the grouped queue", async ({ page }) => {
+    await page.goto(`${url}#alerts`);
     await expect(page.locator("#notice")).toContainText("Connected");
     const acknowledgeButtons = page.getByRole("button", { name: "Acknowledge" });
     const count = await acknowledgeButtons.count();
     if (count === 0) test.skip(true, "Persistent test DB already acknowledged seeded alerts.");
+    await expect(page.locator("#alertList .board-group").first()).toBeVisible();
     await acknowledgeButtons.first().click();
     await expect(page.getByRole("heading", { name: "Acknowledge alert" })).toBeVisible();
     await page.locator("#dialogNotes").fill("Checked by Playwright.");
@@ -38,7 +52,7 @@ test.describe("Supervisor Ops console", () => {
   });
 
   test("runs field operations: incidents, inspections and maintenance", async ({ page }) => {
-    await page.goto(url);
+    await page.goto(`${url}#field`);
     await expect(page.locator("#notice")).toContainText("Connected");
 
     await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible();
@@ -60,6 +74,32 @@ test.describe("Supervisor Ops console", () => {
     await maintenanceForm.getByRole("button", { name: "Report issue" }).click();
     await expect(page.locator("#notice")).toContainText("Maintenance issue reported");
     await expect(page.locator("#maintenanceList .alert-row").first()).toBeVisible();
+  });
+
+  test("confirms fuel or charge with a unit choice", async ({ page }) => {
+    await page.goto(`${url}#fuel`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await expect(page.getByRole("heading", { name: "Fuel & charge" })).toBeVisible();
+    await expect(page.locator('#fuelIssueForm select[name="unit"] option[value="kWh"]')).toHaveCount(1);
+    await expect(page.locator(".mileage-row").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm fuel" })).toBeVisible();
+  });
+
+  test("submits a structured daily closeout", async ({ page }) => {
+    await page.goto(`${url}#closeout`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    const cards = page.locator(".closeout-card");
+    expect(await cards.count()).toBeGreaterThan(0);
+    await expect(page.locator(".closeout-checklist").first()).toBeVisible();
+
+    const submitButton = page.locator("[data-submit-closeout]").first();
+    if (await submitButton.count()) {
+      await submitButton.click();
+      await expect(page.locator("#notice")).toContainText("Closeout submitted");
+      await expect(page.locator(".closeout-card.submitted").first()).toBeVisible();
+    } else {
+      await expect(page.locator(".closeout-card.submitted").first()).toBeVisible();
+    }
   });
 
   test("has no page-level horizontal overflow on mobile", async ({ page }) => {

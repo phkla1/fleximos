@@ -234,7 +234,9 @@ export class OpsController {
     @Query("amoeba_id") amoebaId?: string
   ) {
     const actor = await this.auth(req);
-    this.identity.requireBusinessOversight(actor);
+    // Supervisors submit closeouts, so they must be able to read their own
+    // back; the data scope limits what each role sees.
+    this.identity.requireSupervisor(actor);
     return {
       data: await this.ops.listDailyCloseouts(
         { record_date: recordDate, date_from: dateFrom, date_to: dateTo, amoeba_id: amoebaId },

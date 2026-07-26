@@ -11,17 +11,21 @@ const state = {
   compliance: null,
   maintenance: [],
   vehicles: [],
-  operatingDate: null
+  closeouts: [],
+  operatingDate: null,
+  dateFrom: null,
+  dateTo: null
 };
 
 const el = Object.fromEntries([
-  "notice", "connectionText", "activeOperatorCount", "liveOperatorCount",
-  "openAlertCount", "carRevenueTotal", "bikeRevenueTotal", "alertList", "alertFilter", "teamBoard",
-  "boardUpdated", "performanceList", "dateFrom", "dateTo", "actionDialog",
-  "dialogTitle", "dialogContext", "dialogNotes", "confirmActionButton",
-  "fuelIssueForm", "mileageList",
+  "notice", "connectionText", "teamBoard", "boardUpdated", "performanceList",
+  "dateFrom", "dateTo", "actionDialog", "dialogTitle", "dialogContext",
+  "dialogNotes", "confirmActionButton", "fuelIssueForm", "mileageList",
   "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
-  "maintenanceForm", "maintenanceList"
+  "maintenanceForm", "maintenanceList", "alertList", "alertFilter",
+  "topActions", "conditionGrid", "carRevenueChip", "bikeRevenueChip",
+  "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
+  "operatorDialog", "operatorDialogTitle", "operatorDialogBody"
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
@@ -29,11 +33,14 @@ const opsApiBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 403
 const foundationApiBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
 const token = window.flexiServiceToken();
 let actorPersonId = query.get("actorPersonId") || "person_founder_wole";
+let openOperatorId = null;
 const todayLagos = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
 el.dateFrom.value = todayLagos;
 el.dateTo.value = todayLagos;
+
+/* ---------- helpers ---------- */
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -76,70 +83,182 @@ async function request(base, path, options = {}) {
 const ops = (path, options) => request(opsApiBase, path, options);
 const foundation = (path) => request(foundationApiBase, path);
 const personName = (id) => state.people.find((person) => person.person_id === id)?.display_name || id;
+const personPhone = (id) => state.people.find((person) => person.person_id === id)?.phone || null;
+const money = (value) => `₦${Number(value || 0).toLocaleString()}`;
+const timeOf = (value) => new Date(value).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
 
-function render() {
-  const live = state.teamBoard.filter((item) => !["offline", "not_seen_today"].includes(item.current_status)).length;
-  const revenueByVehicleType = state.dailyPerformance.reduce((totals, record) => {
-    const vehicleType = record.platform_vehicle_type || record.vehicle_type;
-    if (vehicleType === "car") totals.car += Number(record.ride_revenue_ngn || 0);
-    if (vehicleType === "motorbike") totals.motorbike += Number(record.ride_revenue_ngn || 0);
-    return totals;
-  }, { car: 0, motorbike: 0 });
-  el.activeOperatorCount.textContent = state.teamBoard.length;
-  el.liveOperatorCount.textContent = live;
-  el.openAlertCount.textContent = state.alerts.filter((item) => item.resolution_status === "open").length;
-  el.carRevenueTotal.textContent = `₦${revenueByVehicleType.car.toLocaleString()}`;
-  el.bikeRevenueTotal.textContent = `₦${revenueByVehicleType.motorbike.toLocaleString()}`;
-  el.boardUpdated.textContent = `Updated ${new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}`;
+/* ---------- tab navigation ---------- */
 
-  el.teamBoard.innerHTML = state.teamBoard.length ? state.teamBoard.map((item) => {
-    const target = Number(item.daily_revenue_target_ngn || 0);
-    const itemRevenue = Number(item.ride_revenue_ngn || 0);
-    const progress = target ? Math.min(100, Math.round(itemRevenue / target * 100)) : 0;
-    const risk = Number(item.open_alerts) > 0 || item.pace_status === "at_risk"
-      ? "alert"
-      : ["offline", "not_seen_today"].includes(item.current_status) || item.pace_status === "behind" ? "watch" : "clear";
-    const expected = Number(item.expected_revenue_ngn || 0);
-    const paceLabel = String(item.pace_status || "not_available").replaceAll("_", " ");
-    const expectedLabel = state.operatingDate < todayLagos ? "Expected by close" : "Expected now";
-    return `
-      <article class="operator-tile risk-${risk}">
-        <div class="tile-heading">
-          <div><strong>${escapeHtml(personName(item.person_id))}</strong><small>${escapeHtml(item.vehicle_plate || "No vehicle")}</small></div>
-          <span class="risk-badge">${risk}</span>
-        </div>
-        <div class="tile-status"><span class="status-dot ${escapeHtml(item.current_status)}"></span>${escapeHtml(item.current_status.replaceAll("_", " "))}<small>${item.last_seen_at ? `Last seen ${new Date(item.last_seen_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}` : "No platform activity"}</small></div>
-        <div class="pace-line">
-          <span class="pace-status ${escapeHtml(item.pace_status)}">${escapeHtml(paceLabel)}</span>
-          <small>${expectedLabel} ₦${expected.toLocaleString()} · ${item.pace_variance_pct === null ? "No variance" : `${Number(item.pace_variance_pct) > 0 ? "+" : ""}${Number(item.pace_variance_pct).toFixed(1)}%`}</small>
-        </div>
-        <div class="progress-label"><span>Actual ₦${itemRevenue.toLocaleString()} · Target ₦${target.toLocaleString()}</span><strong>${progress}%</strong></div>
-        <div class="progress-track"><span style="width:${progress}%"></span></div>
-        <div class="tile-stats"><span><strong>${Number(item.trips_total)}</strong> trips</span><span><strong>${Number(item.hours_online).toFixed(1)}</strong> hours</span><span><strong>${Number(item.open_alerts)}</strong> alerts</span></div>
-        <div class="platform-line">${item.platforms.map((platform) => `<span class="${platform.vehicle_type === "car" ? "car" : "bike"}">${escapeHtml(platform.vehicle_type === "car" ? "Car" : "Bike")} · ${escapeHtml(platform.display_name)}</span>`).join("") || "<span>No feed</span>"}</div>
-      </article>`;
-  }).join("") : `<div class="empty">No assigned operators match this view.</div>`;
+const TABS = ["cockpit", "board", "alerts", "fuel", "field", "closeout"];
+function activateTab(name) {
+  const tab = TABS.includes(name) ? name : "cockpit";
+  document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.tab === tab));
+  document.querySelectorAll("[data-tab-link]").forEach((link) => link.classList.toggle("active", link.dataset.tabLink === tab));
+  window.scrollTo({ top: 0 });
+}
+window.addEventListener("hashchange", () => activateTab(location.hash.slice(1)));
+activateTab(location.hash.slice(1));
 
-  const filter = el.alertFilter.value;
-  const alerts = filter ? state.alerts.filter((alert) => alert.resolution_status === filter) : state.alerts;
-  el.alertList.innerHTML = alerts.length ? alerts.map((alert) => {
-    const deviation = alert.deviation_reason_code
-      ? `<div class="deviation-line ${escapeHtml(alert.deviation_review_status || "pending")}">
-          <span>Operator reason: <strong>${escapeHtml(String(alert.deviation_reason_code).replaceAll("_", " "))}</strong>${alert.deviation_reason_note ? ` — “${escapeHtml(alert.deviation_reason_note)}”` : ""}</span>
-          ${alert.deviation_review_status === "pending"
-            ? `<span class="row-actions">
-                <button type="button" data-deviation-decision="accepted" data-alert-id="${escapeHtml(alert.alert_id)}">Accept</button>
-                <button type="button" class="secondary" data-deviation-decision="rejected" data-alert-id="${escapeHtml(alert.alert_id)}">Reject</button>
-              </span>`
-            : `<span class="pill ${escapeHtml(alert.deviation_review_status)}">${escapeHtml(alert.deviation_review_status)}</span>`}
-        </div>`
-      : "";
-    return `
+/* ---------- derived team analysis ---------- */
+
+function vehicleIssueIds() {
+  const overdue = new Set((state.compliance?.vehicles || [])
+    .filter((vehicle) => vehicle.inspection_status !== "current")
+    .map((vehicle) => vehicle.vehicle_id));
+  const inRepair = new Set(state.maintenance
+    .filter((report) => report.status !== "resolved")
+    .map((report) => report.vehicle_id));
+  return { overdue, inRepair };
+}
+
+function analyseTeam() {
+  const issues = vehicleIssueIds();
+  const fuelConfirmed = new Set(state.fuelIssues.map((issue) => issue.operator_id));
+  const mileageExceptions = state.mileageReconciliations.filter((row) =>
+    ["over_variance", "under_variance", "unexplained_distance", "no_fuel_issue"].includes(row.official_distance_status)
+    || row.tracker_variance_status === "over_variance");
+  const exceptionOperatorIds = new Set(mileageExceptions.map((row) => row.operator_id));
+
+  const rows = state.teamBoard.map((item) => {
+    const operator = state.operators.find((candidate) => candidate.operator_id === item.operator_id);
+    const alerts = state.alerts.filter((alert) => alert.operator_id === item.operator_id && alert.resolution_status !== "resolved");
+    const openIncidents = state.incidents.filter((incident) => incident.operator_id === item.operator_id && incident.status !== "resolved");
+    const vehicleIssue = operator?.vehicle_id && (issues.overdue.has(operator.vehicle_id) || issues.inRepair.has(operator.vehicle_id));
+    const fuelRisk = exceptionOperatorIds.has(item.operator_id)
+      || (operator?.vehicle_id && !fuelConfirmed.has(item.operator_id) && state.dateTo === todayLagos);
+    const offlineAfterOnline = item.current_status === "offline" && Number(item.hours_online) > 0;
+    return { ...item, operator, alerts, openIncidents, vehicleIssue, fuelRisk, offlineAfterOnline };
+  });
+
+  const groups = [
+    { id: "not_seen", label: "Not seen today", tone: "red", rows: rows.filter((row) => row.current_status === "not_seen_today") },
+    { id: "offline_after_online", label: "Offline after coming online", tone: "red", rows: rows.filter((row) => row.offlineAfterOnline) },
+    { id: "open_alert", label: "Open alert", tone: "red", rows: rows.filter((row) => row.alerts.length || row.openIncidents.length) },
+    { id: "behind", label: "Behind pace", tone: "yellow", rows: rows.filter((row) => ["behind", "at_risk"].includes(row.pace_status) && row.current_status !== "not_seen_today") },
+    { id: "fuel_risk", label: "Fuel or mileage risk", tone: "yellow", rows: rows.filter((row) => row.fuelRisk) },
+    { id: "vehicle_issue", label: "Vehicle issue", tone: "yellow", rows: rows.filter((row) => row.vehicleIssue) },
+    { id: "on_track", label: "Online and on track", tone: "green", rows: rows.filter((row) => !["not_seen_today", "offline"].includes(row.current_status) && !["behind", "at_risk"].includes(row.pace_status) && !row.alerts.length) }
+  ];
+  return { rows, groups, mileageExceptions, fuelConfirmed, issues };
+}
+
+function closeoutChecklist(analysis) {
+  const openAlerts = state.alerts.filter((alert) => ["open", "escalated"].includes(alert.resolution_status));
+  const openIncidents = state.incidents.filter((incident) => incident.status !== "resolved");
+  const overdueInspections = (state.compliance?.vehicles || []).filter((vehicle) => vehicle.inspection_status !== "current");
+  const openMaintenance = state.maintenance.filter((report) => report.status !== "resolved");
+  const unconfirmedFuel = state.operators.filter((operator) =>
+    operator.vehicle_id && !analysis.fuelConfirmed.has(operator.operator_id));
+  return [
+    { id: "alerts", label: "Unresolved alerts", count: openAlerts.length, tab: "alerts" },
+    { id: "incidents", label: "Open incidents", count: openIncidents.length, tab: "field" },
+    { id: "inspections", label: "Overdue inspections", count: overdueInspections.length, tab: "field" },
+    { id: "fuel", label: "Fuel not confirmed", count: unconfirmedFuel.length, tab: "fuel" },
+    { id: "mileage", label: "Mileage exceptions", count: analysis.mileageExceptions.length, tab: "fuel" },
+    { id: "maintenance", label: "Maintenance blockers", count: openMaintenance.length, tab: "field" }
+  ];
+}
+
+function topActionCandidates(analysis) {
+  const actions = [];
+  for (const alert of state.alerts.filter((item) => item.resolution_status === "open").sort((a, b) => b.tier - a.tier).slice(0, 3)) {
+    actions.push({
+      weight: 100 + Number(alert.tier) * 10,
+      tone: "red",
+      label: `Acknowledge ${String(alert.alert_type).replaceAll("_", " ")} — ${personName(alert.person_id)}`,
+      button: `<button type="button" data-alert-action="acknowledge" data-alert-id="${escapeHtml(alert.alert_id)}">Acknowledge</button>`
+    });
+  }
+  for (const incident of state.incidents.filter((item) => item.status === "open").slice(0, 2)) {
+    actions.push({
+      weight: incident.severity === "high" ? 140 : 90,
+      tone: "red",
+      label: `Respond to ${String(incident.incident_type).replaceAll("_", " ")} — ${personName(incident.person_id)}`,
+      button: `<button type="button" data-incident-action="acknowledge" data-incident-id="${escapeHtml(incident.incident_id)}">Acknowledge</button>`
+    });
+  }
+  const pendingDeviations = state.alerts.filter((alert) => alert.deviation_reason_code && alert.deviation_review_status === "pending");
+  if (pendingDeviations.length) {
+    actions.push({
+      weight: 70,
+      tone: "yellow",
+      label: `${pendingDeviations.length} operator explanation${pendingDeviations.length === 1 ? "" : "s"} waiting for your decision`,
+      button: `<button type="button" data-goto-tab="alerts">Review</button>`
+    });
+  }
+  const checklist = closeoutChecklist(analysis);
+  const overdue = checklist.find((item) => item.id === "inspections");
+  if (overdue?.count) {
+    actions.push({
+      weight: 60,
+      tone: "yellow",
+      label: `${overdue.count} vehicle${overdue.count === 1 ? "" : "s"} overdue for 48h inspection`,
+      button: `<button type="button" data-goto-tab="field">Inspect</button>`
+    });
+  }
+  const fuel = checklist.find((item) => item.id === "fuel");
+  if (fuel?.count && state.dateTo === todayLagos) {
+    actions.push({
+      weight: 50,
+      tone: "yellow",
+      label: `Confirm fuel/charge for ${fuel.count} operator${fuel.count === 1 ? "" : "s"}`,
+      button: `<button type="button" data-goto-tab="fuel">Confirm fuel</button>`
+    });
+  }
+  return actions.sort((a, b) => b.weight - a.weight).slice(0, 3);
+}
+
+/* ---------- renderers ---------- */
+
+function renderGauge(id, pct, valueText, subText, tone) {
+  const gauge = document.getElementById(id);
+  const clamped = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  const circumference = 2 * Math.PI * 50;
+  const value = gauge.querySelector(".gauge-value");
+  value.style.strokeDasharray = `${circumference}`;
+  value.style.strokeDashoffset = `${circumference * (1 - clamped / 100)}`;
+  gauge.dataset.tone = tone;
+  gauge.querySelector("figcaption strong").textContent = valueText;
+  gauge.querySelector("figcaption small").textContent = subText;
+}
+
+function operatorTile(row, compact = false) {
+  const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
+  const revenue = Number(row.ride_revenue_ngn || 0);
+  const progress = target ? Math.min(100, Math.round(revenue / target * 100)) : 0;
+  const paceLabel = String(row.pace_status || "not_available").replaceAll("_", " ");
+  const expected = Number(row.expected_revenue_ngn || 0);
+  const expectedLabel = state.operatingDate < todayLagos ? "Expected by close" : "Expected now";
+  return `
+    <button type="button" class="operator-tile pace-${escapeHtml(row.pace_status || "none")}" data-open-operator="${escapeHtml(row.operator_id)}">
+      <div class="tile-heading">
+        <div><strong>${escapeHtml(personName(row.person_id))}</strong><small>${escapeHtml(row.vehicle_plate || "No vehicle")}</small></div>
+        <span class="pace-status ${escapeHtml(row.pace_status || "none")}">${escapeHtml(paceLabel)}</span>
+      </div>
+      <div class="tile-status"><span class="status-dot ${escapeHtml(row.current_status)}"></span>${escapeHtml(String(row.current_status).replaceAll("_", " "))}<small>${row.last_seen_at ? `Last seen ${timeOf(row.last_seen_at)}` : "No platform activity"}</small></div>
+      <div class="progress-label"><span>${money(revenue)} of ${money(target)}</span><strong>${progress}%</strong></div>
+      <div class="progress-track"><span style="width:${progress}%"></span></div>
+      <div class="tile-stats"><span><strong>${Number(row.trips_total)}</strong> trips</span><span><strong>${Number(row.hours_online).toFixed(1)}</strong> hrs</span><span><strong>${row.alerts ? row.alerts.length : Number(row.open_alerts)}</strong> alerts</span></div>
+      <div class="platform-line">${(row.platforms || []).map((platform) => `<span class="${platform.vehicle_type === "car" ? "car" : "bike"}">${escapeHtml(platform.vehicle_type === "car" ? "Car" : "Bike")} · ${escapeHtml(platform.display_name)}</span>`).join("") || "<span>No feed</span>"}${compact ? "" : `<small>${escapeHtml(expectedLabel)} ${money(expected)}</small>`}</div>
+    </button>`;
+}
+
+function alertRow(alert) {
+  const deviation = alert.deviation_reason_code
+    ? `<div class="deviation-line ${escapeHtml(alert.deviation_review_status || "pending")}">
+        <span>Operator reason: <strong>${escapeHtml(String(alert.deviation_reason_code).replaceAll("_", " "))}</strong>${alert.deviation_reason_note ? ` — “${escapeHtml(alert.deviation_reason_note)}”` : ""}</span>
+        ${alert.deviation_review_status === "pending"
+          ? `<span class="row-actions">
+              <button type="button" data-deviation-decision="accepted" data-alert-id="${escapeHtml(alert.alert_id)}">Accept</button>
+              <button type="button" class="secondary" data-deviation-decision="rejected" data-alert-id="${escapeHtml(alert.alert_id)}">Reject</button>
+            </span>`
+          : `<span class="pill ${escapeHtml(alert.deviation_review_status)}">${escapeHtml(alert.deviation_review_status)}</span>`}
+      </div>`
+    : "";
+  return `
     <article class="alert-row tier-${escapeHtml(alert.tier)}">
-      <div><strong>${escapeHtml(alert.alert_type.replaceAll("_", " "))}</strong><small>${escapeHtml(personName(alert.person_id))}</small></div>
-      <div><span class="row-label">Platform</span><strong>${escapeHtml(alert.platform_display_name || "General")}</strong><small>Tier ${escapeHtml(alert.tier)}</small></div>
-      <div><span class="row-label">Fired</span><strong>${new Date(alert.fired_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</strong></div>
-      <div><span class="pill ${escapeHtml(alert.resolution_status)}">${escapeHtml(alert.resolution_status.replaceAll("_", " "))}</span></div>
+      <div><strong>${escapeHtml(String(alert.alert_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(alert.person_id))} · ${escapeHtml(alert.platform_display_name || "General")} · Tier ${escapeHtml(alert.tier)} · ${timeOf(alert.fired_at)}</small></div>
+      <div><span class="pill ${escapeHtml(alert.resolution_status)}">${escapeHtml(String(alert.resolution_status).replaceAll("_", " "))}</span></div>
       <div class="row-actions">
         ${alert.resolution_status === "open" ? `<button type="button" data-alert-action="acknowledge" data-alert-id="${escapeHtml(alert.alert_id)}">Acknowledge</button>` : ""}
         ${alert.resolution_status !== "resolved" ? `<button type="button" class="secondary" data-alert-action="resolve" data-alert-id="${escapeHtml(alert.alert_id)}">Resolve</button>` : ""}
@@ -147,13 +266,115 @@ function render() {
       </div>
       ${deviation}
     </article>`;
-  }).join("") : `<div class="empty">No alerts match this view.</div>`;
+}
 
+function renderCockpit(analysis) {
+  const live = analysis.rows.filter((row) => !["offline", "not_seen_today"].includes(row.current_status)).length;
+  const totals = analysis.rows.reduce((sum, row) => {
+    sum.revenue += Number(row.ride_revenue_ngn || 0);
+    sum.expected += Number(row.expected_revenue_ngn || 0);
+    return sum;
+  }, { revenue: 0, expected: 0 });
+  const revenueByType = state.dailyPerformance.reduce((sum, record) => {
+    const type = record.platform_vehicle_type || record.vehicle_type;
+    if (type === "car") sum.car += Number(record.ride_revenue_ngn || 0);
+    if (type === "motorbike") sum.bike += Number(record.ride_revenue_ngn || 0);
+    return sum;
+  }, { car: 0, bike: 0 });
+
+  const pacePct = totals.expected ? totals.revenue / totals.expected * 100 : 0;
+  renderGauge("paceGauge", pacePct, `${Math.round(pacePct)}%`,
+    `${money(totals.revenue)} of ${money(totals.expected)} expected`,
+    pacePct >= 95 ? "green" : pacePct >= 75 ? "yellow" : "red");
+
+  const utilisationPct = analysis.rows.length ? live / analysis.rows.length * 100 : 0;
+  renderGauge("utilisationGauge", utilisationPct, `${live}/${analysis.rows.length}`,
+    "operators live now", utilisationPct >= 80 ? "green" : utilisationPct >= 60 ? "yellow" : "red");
+
+  const checklist = closeoutChecklist(analysis);
+  const clearItems = checklist.filter((item) => !item.count).length;
+  const readinessPct = checklist.length ? clearItems / checklist.length * 100 : 100;
+  renderGauge("closeoutGauge", readinessPct, `${clearItems}/${checklist.length}`,
+    "checklist lines clear", readinessPct === 100 ? "green" : readinessPct >= 60 ? "yellow" : "red");
+
+  el.carRevenueChip.textContent = `Cars ${money(revenueByType.car)}`;
+  el.bikeRevenueChip.textContent = `Bikes ${money(revenueByType.bike)}`;
+  el.teamCountChip.textContent = `${analysis.rows.length} active · ${live} live`;
+
+  const actions = topActionCandidates(analysis);
+  el.topActions.innerHTML = actions.length ? actions.map((action) => `
+    <article class="top-action tone-${action.tone}">
+      <span>${escapeHtml(action.label)}</span>
+      <span class="row-actions">${action.button}</span>
+    </article>`).join("") : `<div class="empty all-clear">All clear — nothing needs your action right now. 🏁</div>`;
+
+  const conditions = [
+    ...analysis.groups.filter((group) => group.id !== "on_track").map((group) => ({
+      label: group.label, count: group.rows.length, tone: group.rows.length ? group.tone : "green", tab: "board"
+    })),
+    { label: "Open alerts", count: state.alerts.filter((alert) => alert.resolution_status === "open").length, tone: state.alerts.some((alert) => alert.resolution_status === "open") ? "red" : "green", tab: "alerts" },
+    { label: "Closeout blockers", count: checklist.reduce((sum, item) => sum + (item.count ? 1 : 0), 0), tone: checklist.some((item) => item.count) ? "yellow" : "green", tab: "closeout" }
+  ];
+  el.conditionGrid.innerHTML = conditions.map((condition) => `
+    <button type="button" class="condition-card tone-${condition.tone}" data-goto-tab="${escapeHtml(condition.tab)}">
+      <strong>${condition.count}</strong><span>${escapeHtml(condition.label)}</span>
+    </button>`).join("");
+
+  const openAlertCount = state.alerts.filter((alert) => alert.resolution_status === "open").length;
+  el.alertDockBadge.hidden = !openAlertCount;
+  el.alertDockBadge.textContent = openAlertCount;
+}
+
+function renderBoard(analysis) {
+  el.teamBoard.innerHTML = analysis.rows.length ? analysis.groups
+    .filter((group) => group.rows.length)
+    .map((group) => `
+      <details class="board-group tone-${group.tone}" ${group.tone === "red" ? "open" : ""}>
+        <summary><span class="group-count">${group.rows.length}</span>${escapeHtml(group.label)}</summary>
+        <div class="team-board">${group.rows.map((row) => operatorTile(row)).join("")}</div>
+      </details>`).join("")
+    : `<div class="empty">No assigned operators match this view.</div>`;
+
+  el.performanceList.innerHTML = state.dailyPerformance.length ? state.dailyPerformance.map((record) => `
+    <article class="performance-row">
+      <div class="performance-person"><strong>${escapeHtml(personName(record.person_id))}</strong><small>${escapeHtml(record.platform_vehicle_type === "car" ? "Car" : "Bike")} · ${escapeHtml(record.platform_display_name)}${state.dateFrom !== state.dateTo ? ` · ${escapeHtml(String(record.record_date).slice(0, 10))}` : ""}</small></div>
+      <dl>
+        <div><dt>Trips</dt><dd>${escapeHtml(record.trips_total)}</dd></div>
+        <div><dt>Revenue</dt><dd>${money(record.ride_revenue_ngn)}</dd></div>
+        <div><dt>Hours</dt><dd>${Number(record.hours_online).toFixed(1)}</dd></div>
+        <div><dt>Acceptance</dt><dd>${Number(record.acceptance_pct || 0).toFixed(0)}%</dd></div>
+      </dl>
+      <span class="pill">${escapeHtml(String(record.current_status).replaceAll("_", " "))}</span>
+    </article>
+  `).join("") : `<div class="empty">No performance records for this range.</div>`;
+}
+
+function renderAlerts() {
+  const filter = el.alertFilter.value;
+  const alerts = filter ? state.alerts.filter((alert) => alert.resolution_status === filter) : state.alerts;
+  const groups = [...alerts.reduce((map, alert) => {
+    const groupKey = alert.alert_type;
+    if (!map.has(groupKey)) map.set(groupKey, []);
+    map.get(groupKey).push(alert);
+    return map;
+  }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length);
+
+  el.alertList.innerHTML = groups.length ? groups.map(([type, groupAlerts]) => {
+    const people = new Set(groupAlerts.map((alert) => alert.person_id));
+    const maxTier = Math.max(...groupAlerts.map((alert) => Number(alert.tier)));
+    return `
+      <details class="board-group tone-${maxTier >= 2 ? "red" : "yellow"}" open>
+        <summary><span class="group-count">${people.size}</span>${escapeHtml(String(type).replaceAll("_", " "))}<small>${groupAlerts.length} alert${groupAlerts.length === 1 ? "" : "s"} · highest tier ${maxTier}</small></summary>
+        <div class="alert-list">${groupAlerts.map((alert) => alertRow(alert)).join("")}</div>
+      </details>`;
+  }).join("") : `<div class="empty">No alerts match this view.</div>`;
+}
+
+function renderField() {
   el.incidentList.innerHTML = state.incidents.length ? state.incidents.map((incident) => `
     <article class="alert-row ${incident.severity === "high" ? "tier-3" : "tier-1"}">
-      <div><strong>${escapeHtml(String(incident.incident_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(incident.person_id))}${incident.vehicle_plate ? ` · ${escapeHtml(incident.vehicle_plate)}` : ""}</small></div>
+      <div><strong>${escapeHtml(String(incident.incident_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(incident.person_id))}${incident.vehicle_plate ? ` · ${escapeHtml(incident.vehicle_plate)}` : ""} · ${timeOf(incident.occurred_at)}</small></div>
       <div><span class="row-label">Details</span><strong>${escapeHtml(incident.description || "No notes")}</strong><small>${incident.gps_lat ? `GPS ${Number(incident.gps_lat).toFixed(3)}, ${Number(incident.gps_lng).toFixed(3)}` : "No GPS"}</small></div>
-      <div><span class="row-label">Reported</span><strong>${new Date(incident.occurred_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</strong></div>
       <div><span class="pill ${escapeHtml(incident.status)}">${escapeHtml(incident.status)}</span></div>
       <div class="row-actions">
         ${incident.status === "open" ? `<button type="button" data-incident-action="acknowledge" data-incident-id="${escapeHtml(incident.incident_id)}">Acknowledge</button>` : ""}
@@ -195,7 +416,7 @@ function render() {
     <article class="alert-row ${report.status === "open" ? "tier-2" : "tier-0"}">
       <div><strong>${escapeHtml(report.vehicle_plate)} · ${escapeHtml(String(report.category).replaceAll("_", " "))}</strong><small>${escapeHtml(report.description || "No description")}</small></div>
       <div><span class="row-label">Reported</span><strong>${new Date(report.created_at).toLocaleDateString("en-NG")}</strong></div>
-      <div><span class="row-label">Cost</span><strong>${report.cost_ngn === null ? "—" : `₦${Number(report.cost_ngn).toLocaleString()}`}</strong></div>
+      <div><span class="row-label">Cost</span><strong>${report.cost_ngn === null ? "—" : money(report.cost_ngn)}</strong></div>
       <div><span class="pill ${escapeHtml(report.status)}">${escapeHtml(String(report.status).replaceAll("_", " "))}</span></div>
       <div class="row-actions">
         ${report.status === "open" ? `<button type="button" data-maintenance-status="in_repair" data-maintenance-id="${escapeHtml(report.maintenance_id)}">Start repair</button>` : ""}
@@ -203,20 +424,9 @@ function render() {
       </div>
     </article>
   `).join("") : `<div class="empty">No maintenance reports for your fleet.</div>`;
+}
 
-  el.performanceList.innerHTML = state.dailyPerformance.length ? state.dailyPerformance.map((record) => `
-    <article class="performance-row">
-      <div class="performance-person"><strong>${escapeHtml(personName(record.person_id))}</strong><small>${escapeHtml(record.platform_vehicle_type === "car" ? "Car" : "Bike")} · ${escapeHtml(record.platform_display_name)}</small></div>
-      <dl>
-        <div><dt>Trips</dt><dd>${escapeHtml(record.trips_total)}</dd></div>
-        <div><dt>Revenue</dt><dd>₦${Number(record.ride_revenue_ngn).toLocaleString()}</dd></div>
-        <div><dt>Hours</dt><dd>${Number(record.hours_online).toFixed(1)}</dd></div>
-        <div><dt>Acceptance</dt><dd>${Number(record.acceptance_pct || 0).toFixed(0)}%</dd></div>
-      </dl>
-      <span class="pill">${escapeHtml(record.current_status.replaceAll("_", " "))}</span>
-    </article>
-  `).join("") : `<div class="empty">No performance records for this date.</div>`;
-
+function renderFuel() {
   const fuelOperators = state.operators.filter((operator) => operator.vehicle_id);
   el.fuelIssueForm.elements.operator_id.innerHTML = fuelOperators.map((operator) =>
     `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))} · ${escapeHtml(operator.vehicle_plate)}</option>`
@@ -238,13 +448,155 @@ function render() {
   `).join("") : `<div class="empty">No assigned vehicles available for reconciliation.</div>`;
 }
 
+function renderCloseout(analysis) {
+  const checklist = closeoutChecklist(analysis);
+  const amoebaIds = [...new Set(state.operators.map((operator) => operator.amoeba_id))];
+  const closeoutFor = (amoebaId) => state.closeouts.find((closeout) =>
+    closeout.amoeba_id === amoebaId && String(closeout.record_date).slice(0, 10) === state.dateTo);
+
+  el.closeoutList.innerHTML = amoebaIds.length ? amoebaIds.map((amoebaId) => {
+    const operatorIds = new Set(state.operators.filter((operator) => operator.amoeba_id === amoebaId).map((operator) => operator.operator_id));
+    const scopedChecklist = checklist.map((item) => ({ ...item }));
+    // Scope operator-linked counts to the amoeba where the data allows it.
+    scopedChecklist.find((item) => item.id === "alerts").count =
+      state.alerts.filter((alert) => ["open", "escalated"].includes(alert.resolution_status) && operatorIds.has(alert.operator_id)).length;
+    scopedChecklist.find((item) => item.id === "incidents").count =
+      state.incidents.filter((incident) => incident.status !== "resolved" && operatorIds.has(incident.operator_id)).length;
+    const existing = closeoutFor(amoebaId);
+    const blockers = scopedChecklist.filter((item) => item.count);
+    return `
+      <article class="closeout-card ${existing ? "submitted" : blockers.length ? "blocked" : "ready"}">
+        <div class="closeout-head">
+          <div><strong>${escapeHtml(amoebaId.replace("amoeba_", "").replace(/^\w/, (char) => char.toUpperCase()))}</strong><small>Closeout for ${escapeHtml(state.dateTo)}</small></div>
+          ${existing
+            ? `<span class="pill ${existing.status === "submitted" ? "resolved" : "open"}">${escapeHtml(String(existing.status).replaceAll("_", " "))} · ${timeOf(existing.submitted_at)}</span>`
+            : `<span class="pill ${blockers.length ? "open" : "resolved"}">${blockers.length ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}` : "Ready"}</span>`}
+        </div>
+        <ul class="closeout-checklist">
+          ${scopedChecklist.map((item) => `
+            <li class="${item.count ? "flagged" : "clear"}">
+              <span class="check-mark">${item.count ? "!" : "✓"}</span>
+              <span>${escapeHtml(item.label)}</span>
+              <span class="check-count">${item.count || "Clear"}</span>
+              ${item.count ? `<button type="button" class="linklike" data-goto-tab="${escapeHtml(item.tab)}">Review</button>` : ""}
+            </li>`).join("")}
+        </ul>
+        ${existing ? existing.notes ? `<p class="subtle">Note: ${escapeHtml(existing.notes)}</p>` : "" : `
+          <label class="closeout-note">Supervisor note (optional — explain anything still open)
+            <textarea rows="2" data-closeout-note="${escapeHtml(amoebaId)}"></textarea>
+          </label>
+          <button type="button" data-submit-closeout="${escapeHtml(amoebaId)}">${blockers.length ? "Submit with exceptions" : "Submit closeout"}</button>`}
+      </article>`;
+  }).join("") : `<div class="empty">No operating units in scope.</div>`;
+}
+
+let latestAnalysis = null;
+function render() {
+  latestAnalysis = analyseTeam();
+  el.boardUpdated.textContent = `Updated ${timeOf(new Date())}`;
+  renderCockpit(latestAnalysis);
+  renderBoard(latestAnalysis);
+  renderAlerts();
+  renderField();
+  renderFuel();
+  renderCloseout(latestAnalysis);
+  if (openOperatorId) renderOperatorDialog(openOperatorId);
+}
+
+/* ---------- operator detail sheet ---------- */
+
+function operatorTimeline(operatorId, vehicleId) {
+  const events = [];
+  for (const alert of state.alerts.filter((item) => item.operator_id === operatorId)) {
+    events.push({ at: alert.fired_at, label: `${String(alert.alert_type).replaceAll("_", " ")} alert fired (tier ${alert.tier})`, tone: "red" });
+    if (alert.acknowledged_at) events.push({ at: alert.acknowledged_at, label: "Alert acknowledged", tone: "yellow" });
+    if (alert.resolved_at) events.push({ at: alert.resolved_at, label: "Alert resolved", tone: "green" });
+  }
+  for (const incident of state.incidents.filter((item) => item.operator_id === operatorId)) {
+    events.push({ at: incident.occurred_at, label: `${String(incident.incident_type).replaceAll("_", " ")} incident reported`, tone: incident.severity === "high" ? "red" : "yellow" });
+  }
+  for (const issue of state.fuelIssues.filter((item) => item.operator_id === operatorId)) {
+    events.push({ at: issue.issued_at, label: `Fuel/charge confirmed: ${Number(issue.quantity)} ${issue.unit}`, tone: "green" });
+  }
+  for (const inspection of state.inspections.filter((item) => item.vehicle_id === vehicleId)) {
+    events.push({ at: inspection.inspected_at, label: `Vehicle inspected — ${String(inspection.condition).replaceAll("_", " ")}`, tone: inspection.condition === "ok" ? "green" : "yellow" });
+  }
+  for (const report of state.maintenance.filter((item) => item.vehicle_id === vehicleId)) {
+    events.push({ at: report.created_at, label: `Maintenance: ${String(report.category).replaceAll("_", " ")} (${String(report.status).replaceAll("_", " ")})`, tone: report.status === "resolved" ? "green" : "yellow" });
+  }
+  return events
+    .filter((event) => event.at)
+    .sort((a, b) => new Date(b.at) - new Date(a.at))
+    .slice(0, 12);
+}
+
+function renderOperatorDialog(operatorId) {
+  const row = latestAnalysis?.rows.find((item) => item.operator_id === operatorId);
+  if (!row) { el.operatorDialog.close(); openOperatorId = null; return; }
+  const operator = row.operator;
+  const phone = personPhone(row.person_id);
+  const performance = state.dailyPerformance.filter((record) => record.operator_id === operatorId);
+  const acceptance = performance.length
+    ? performance.reduce((sum, record) => sum + Number(record.acceptance_pct || 0), 0) / performance.length
+    : null;
+  const mileage = state.mileageReconciliations.filter((record) => record.operator_id === operatorId);
+  const timeline = operatorTimeline(operatorId, operator?.vehicle_id);
+  const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
+  const revenue = Number(row.ride_revenue_ngn || 0);
+  const progress = target ? Math.min(100, Math.round(revenue / target * 100)) : 0;
+
+  el.operatorDialogTitle.textContent = personName(row.person_id);
+  el.operatorDialogBody.innerHTML = `
+    <div class="sheet-status">
+      <span class="status-dot ${escapeHtml(row.current_status)}"></span>${escapeHtml(String(row.current_status).replaceAll("_", " "))}
+      <span class="pace-status ${escapeHtml(row.pace_status || "none")}">${escapeHtml(String(row.pace_status || "not available").replaceAll("_", " "))}</span>
+      <small>${escapeHtml(row.vehicle_plate || "No vehicle")} · ${escapeHtml(row.vehicle_type || "unassigned")}</small>
+    </div>
+    <div class="progress-label"><span>${money(revenue)} of ${money(target)} target</span><strong>${progress}%</strong></div>
+    <div class="progress-track"><span style="width:${progress}%"></span></div>
+    <dl class="sheet-stats">
+      <div><dt>Trips</dt><dd>${Number(row.trips_total)}</dd></div>
+      <div><dt>Hours</dt><dd>${Number(row.hours_online).toFixed(1)}</dd></div>
+      <div><dt>Acceptance</dt><dd>${acceptance === null ? "—" : `${acceptance.toFixed(0)}%`}</dd></div>
+      <div><dt>Net Earnings</dt><dd>${money(row.net_earnings_ngn)}</dd></div>
+    </dl>
+    <div class="platform-line">${(row.platforms || []).map((platform) => `<span class="${platform.vehicle_type === "car" ? "car" : "bike"}">${escapeHtml(platform.display_name)}</span>`).join("") || "<span>No platform feed</span>"}</div>
+    <div class="sheet-actions row-actions">
+      ${phone ? `<a class="call-button" href="tel:${escapeHtml(phone)}">📞 Call</a>` : ""}
+      ${row.alerts.filter((alert) => alert.resolution_status !== "resolved").length ? "" : `<span class="pill resolved">No open alerts</span>`}
+    </div>
+    ${row.alerts.length ? `<h3>Alerts</h3><div class="alert-list">${row.alerts.map((alert) => alertRow(alert)).join("")}</div>` : ""}
+    ${row.openIncidents.length ? `<h3>Open incidents</h3><div class="alert-list">${row.openIncidents.map((incident) => `
+      <article class="alert-row tier-2">
+        <div><strong>${escapeHtml(String(incident.incident_type).replaceAll("_", " "))}</strong><small>${timeOf(incident.occurred_at)}</small></div>
+        <div><span class="pill ${escapeHtml(incident.status)}">${escapeHtml(incident.status)}</span></div>
+      </article>`).join("")}</div>` : ""}
+    ${mileage.length ? `<h3>Fuel &amp; mileage</h3><div class="mileage-list">${mileage.map((record) => `
+      <article class="mileage-row">
+        <div><strong>${escapeHtml(record.operating_date || state.dateTo)}</strong></div>
+        <dl>
+          <div><dt>Issued</dt><dd>${record.fuel_quantity === null ? "Not confirmed" : `${Number(record.fuel_quantity)} ${escapeHtml(record.fuel_unit)}`}</dd></div>
+          <div><dt>Expected</dt><dd>${record.expected_distance_km === null ? "—" : `${Number(record.expected_distance_km)} km`}</dd></div>
+          <div><dt>Official</dt><dd>${record.official_distance_km === null ? "—" : `${Number(record.official_distance_km)} km`}</dd></div>
+        </dl>
+      </article>`).join("")}</div>` : ""}
+    <h3>Today's timeline</h3>
+    <ol class="timeline">
+      ${timeline.length ? timeline.map((event) => `
+        <li class="tone-${event.tone}"><span>${timeOf(event.at)}</span>${escapeHtml(event.label)}</li>`).join("")
+        : `<li class="tone-green"><span>—</span>No recorded events in this range yet.</li>`}
+    </ol>`;
+  if (!el.operatorDialog.open) el.operatorDialog.showModal();
+}
+
+/* ---------- data refresh ---------- */
+
 async function refresh(message = "Connected to Fleximotion Ops.") {
   setConnection("", "Connecting");
   setNotice("Loading team data...");
-  const [people, operators, alerts, allPerformance] = await Promise.all([
+  const [people, operators, allPerformance] = await Promise.all([
     foundation("/identity/v1/people"),
     ops("/ops/v1/operators"),
-    ops(`/ops/v1/alerts?date_from=${el.dateFrom.value || todayLagos}&date_to=${el.dateTo.value || todayLagos}`),
     ops("/ops/v1/daily-performance")
   ]);
   if (!query.get("actorPersonId")) {
@@ -269,15 +621,17 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles] = await Promise.all([
+  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
+    ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
     ops(`/ops/v1/mileage-reconciliations?${range}`),
     ops("/ops/v1/incidents"),
     ops("/ops/v1/inspections"),
     ops("/ops/v1/inspections/compliance"),
     ops("/ops/v1/maintenance-reports"),
-    ops("/ops/v1/vehicles")
+    ops("/ops/v1/vehicles"),
+    ops(`/ops/v1/daily-closeouts?record_date=${dateTo}`).catch(() => ({ data: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -301,6 +655,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     },
     maintenance: maintenance.data.filter((report) => scopedVehicleIds.has(report.vehicle_id)),
     vehicles: scopedVehicles,
+    closeouts: closeouts.data.filter((closeout) => closeout.supervisor_person_id === actorPersonId || assignedAmoebas.has(closeout.amoeba_id)),
     operatingDate,
     dateFrom,
     dateTo
@@ -310,7 +665,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   setNotice(message);
 }
 
-el.alertFilter.addEventListener("change", render);
+/* ---------- events ---------- */
+
+el.alertFilter.addEventListener("change", renderAlerts);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 const describeRange = () => el.dateFrom.value === el.dateTo.value
   ? `Showing team activity for ${el.dateTo.value}.`
@@ -332,7 +689,7 @@ el.fuelIssueForm.addEventListener("submit", async (event) => {
         vehicle_id: operator.vehicle_id,
         operating_date: state.operatingDate,
         quantity: Number(values.quantity),
-        unit: "litres",
+        unit: values.unit || "litres",
         notes: values.notes || null
       })
     });
@@ -348,6 +705,24 @@ const dialogTitles = {
   escalate: "Escalate to manager"
 };
 document.addEventListener("click", async (event) => {
+  const tabButton = event.target.closest("[data-goto-tab]");
+  if (tabButton) {
+    if (el.operatorDialog.open) { el.operatorDialog.close(); openOperatorId = null; }
+    location.hash = `#${tabButton.dataset.gotoTab}`;
+    return;
+  }
+  const operatorButton = event.target.closest("[data-open-operator]");
+  if (operatorButton) {
+    openOperatorId = operatorButton.dataset.openOperator;
+    renderOperatorDialog(openOperatorId);
+    return;
+  }
+  const closeOperator = event.target.closest("[data-close-operator]");
+  if (closeOperator) {
+    el.operatorDialog.close();
+    openOperatorId = null;
+    return;
+  }
   const alertButton = event.target.closest("[data-alert-action]");
   if (alertButton) {
     const alert = state.alerts.find((item) => item.alert_id === alertButton.dataset.alertId);
@@ -396,6 +771,33 @@ document.addEventListener("click", async (event) => {
       });
       await refresh(status === "resolved" ? "Maintenance resolved." : "Repair started.");
     } catch (error) { showError(error); }
+    return;
+  }
+  const closeoutButton = event.target.closest("[data-submit-closeout]");
+  if (closeoutButton) {
+    const amoebaId = closeoutButton.dataset.submitCloseout;
+    const note = document.querySelector(`[data-closeout-note="${amoebaId}"]`)?.value.trim() || null;
+    closeoutButton.disabled = true;
+    closeoutButton.textContent = "Submitting…";
+    try {
+      const openCount = state.alerts.filter((alert) =>
+        ["open", "escalated"].includes(alert.resolution_status)).length;
+      await ops("/ops/v1/daily-closeouts", {
+        method: "POST",
+        headers: { "Idempotency-Key": key("closeout") },
+        body: JSON.stringify({
+          record_date: state.dateTo,
+          amoeba_id: amoebaId,
+          unresolved_alert_count: openCount,
+          notes: note
+        })
+      });
+      await refresh("Closeout submitted.");
+    } catch (error) {
+      closeoutButton.disabled = false;
+      closeoutButton.textContent = "Submit closeout";
+      showError(error);
+    }
   }
 });
 
