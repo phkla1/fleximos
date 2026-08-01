@@ -3,129 +3,170 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#163b32" />
+    <meta name="theme-color" content="#12362f" />
     <title>Fleximotion Driver</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./assets/styles.css" />
   </head>
   <body>
-    <main>
-      <section id="loginView" class="login-view">
+    <!-- ============ LOGIN ============ -->
+    <section id="loginView" class="login-view">
+      <div class="login-card">
         <div class="brand-mark">F</div>
-        <p class="eyebrow">Fleximotion Ops</p>
-        <h1>Driver workspace</h1>
-        <p class="intro">Sign in to see today’s activity, revenue pace, vehicle and alerts.</p>
+        <h1>Fleximotion Driver</h1>
+        <p class="subtle">Sign in with your registered phone number.</p>
         <form id="loginForm">
-          <label>Phone or email<input name="phone_or_email" autocomplete="username" required /></label>
+          <label>Phone or email<input name="phone_or_email" type="text" autocomplete="username" placeholder="+234..." required /></label>
           <label>PIN<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" required /></label>
           <button type="submit">Sign in</button>
         </form>
         <p id="loginNotice" class="notice" role="status"></p>
-      </section>
+      </div>
+    </section>
 
-      <section id="appView" class="app-view" hidden>
-        <header>
-          <div><p class="eyebrow">My workday</p><h1 id="operatorName">Driver</h1></div>
-          <button id="logoutButton" class="icon-button" type="button" title="Sign out" aria-label="Sign out">↪</button>
-        </header>
+    <!-- ============ APP ============ -->
+    <section id="appView" hidden>
+      <header class="app-header">
+        <div class="brand"><span>F</span><div><strong id="operatorName">Driver</strong><small>My cockpit</small></div></div>
+        <div class="header-side">
+          <span id="connectionStatus" class="subtle">Connecting</span>
+          <button id="logoutButton" type="button" aria-label="Sign out">⎋</button>
+        </div>
+      </header>
 
-        <section class="date-row">
-          <label>From<input id="dateFrom" type="date" /></label>
-          <label>To<input id="dateTo" type="date" /></label>
-          <span id="connectionStatus">Loading</span>
-        </section>
+      <div class="range-bar">
+        <label>From<input id="dateFrom" type="date" /></label>
+        <label>To<input id="dateTo" type="date" /></label>
+      </div>
+      <p id="appNotice" class="notice" role="status"></p>
 
-        <section class="hero-status">
-          <div>
-            <span id="liveStatus" class="status-pill">Not seen today</span>
-            <h2 id="revenueTotal">₦0</h2>
-            <p>Revenue today</p>
+      <nav class="dock" aria-label="Driver sections">
+        <a href="#today" data-tab-link="today" class="active"><span class="dock-icon">◉</span>Today</a>
+        <a href="#alerts" data-tab-link="alerts"><span class="dock-icon">⚠</span>Alerts<span id="alertDockBadge" class="dock-badge" hidden></span></a>
+        <a href="#rank" data-tab-link="rank"><span class="dock-icon">🏆</span>Rank</a>
+        <a href="#report" data-tab-link="report"><span class="dock-icon">🛠</span>Report</a>
+      </nav>
+
+      <main>
+        <!-- ============ TODAY ============ -->
+        <section id="today" class="tab-panel active" data-tab="today">
+          <figure class="gauge hero-gauge" id="earningsGauge">
+            <svg viewBox="0 0 120 120" role="img" aria-label="Net Earnings against target">
+              <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
+              <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <figcaption>
+              <strong id="revenueTotal">₦0</strong>
+              <span id="paceLabel" class="pace-status">not available</span>
+              <small id="paceContext"></small>
+              <small class="gauge-source">Platform earnings (Uber/Bolt) — scheduled-delivery work is tracked separately</small>
+            </figcaption>
+          </figure>
+
+          <div class="status-strip"><span id="liveDot" class="status-dot"></span><span id="liveStatus">not seen today</span><small id="lastSeen"></small></div>
+
+          <div class="stat-chips">
+            <span><strong id="tripCount">0</strong>trips</span>
+            <span><strong id="hoursOnline">0h</strong>online</span>
+            <span><strong id="acceptancePct">—</strong>acceptance</span>
+            <span><strong id="targetTotal">₦0</strong>target</span>
           </div>
-          <div class="pace">
-            <strong id="paceLabel">No pace data</strong>
-            <span id="paceContext">Waiting for platform activity</span>
+
+          <div class="section-heading"><h2>Vehicle and platform</h2></div>
+          <div id="assignment" class="card-list"></div>
+
+          <div class="section-heading"><h2>Fuel &amp; mileage</h2></div>
+          <div id="mileage" class="card-list"></div>
+
+          <div class="section-heading"><h2>My day</h2></div>
+          <ol id="timeline" class="timeline"></ol>
+        </section>
+
+        <!-- ============ ALERTS ============ -->
+        <section id="alerts" class="tab-panel" data-tab="alerts">
+          <div class="section-heading"><h2>My alerts</h2><span id="alertCount" class="pill open">0</span></div>
+          <p class="section-intro">Your supervisor sees these too. If something outside your control happened, explain it — your supervisor reviews every reason.</p>
+          <div id="alertList" class="card-list"></div>
+        </section>
+
+        <!-- ============ RANK ============ -->
+        <section id="rank" class="tab-panel" data-tab="rank">
+          <div class="rank-hero">
+            <figure class="gauge" id="rankGauge">
+              <svg viewBox="0 0 120 120" role="img" aria-label="My performance score">
+                <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
+                <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
+              </svg>
+              <figcaption><strong id="myRank">—</strong><span>my rank</span><small id="myScore"></small></figcaption>
+            </figure>
+            <p class="subtle">Last 7 days across your team. Score blends acceptance, time online and cash discipline.</p>
           </div>
+          <div class="section-heading"><h2>Leaderboard</h2></div>
+          <div id="leaderboard" class="card-list"></div>
         </section>
 
-        <section class="metrics">
-          <article><span>Trips</span><strong id="tripCount">0</strong></article>
-          <article><span>Online</span><strong id="hoursOnline">0h</strong></article>
-          <article><span>Target</span><strong id="targetTotal">₦0</strong></article>
-        </section>
+        <!-- ============ REPORT ============ -->
+        <section id="report" class="tab-panel" data-tab="report">
+          <div class="section-heading"><h2>Get support</h2></div>
+          <p class="section-intro">Tell your supervisor immediately when something happens in the field. Add a photo where it helps — the camera opens directly so the picture is time-stamped and credible.</p>
+          <button id="supportButton" type="button" class="sos-button">🆘 Get support now</button>
 
-        <section class="panel">
-          <div class="section-heading"><div><p class="eyebrow">Assignment</p><h2>Vehicle and platform</h2></div></div>
-          <div id="assignment"></div>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <div><p class="eyebrow">Attention</p><h2>My alerts</h2></div>
-            <span id="alertCount" class="count">0</span>
-          </div>
-          <div id="alerts"></div>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading"><div><p class="eyebrow">Fuel control</p><h2>Mileage check</h2></div></div>
-          <div id="mileage"></div>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <div><p class="eyebrow">This week</p><h2>Leaderboard</h2></div>
-            <span id="myRank" class="count">—</span>
-          </div>
-          <div id="leaderboard"></div>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading"><div><p class="eyebrow">Vehicle issue?</p><h2>Report maintenance</h2></div></div>
-          <form id="maintenanceForm" class="inline-form">
-            <label>Category<select name="category">
-              <option value="tyres">Tyres</option><option value="brakes">Brakes</option><option value="engine">Engine</option>
-              <option value="electrical">Electrical</option><option value="body_damage">Body damage</option><option value="other">Other</option>
-            </select></label>
-            <label>What is wrong?<input name="description" maxlength="200" placeholder="Short description" /></label>
-            <button type="submit" class="secondary-button">Send to supervisor</button>
+          <div class="section-heading"><h2>Report a vehicle problem</h2></div>
+          <form id="maintenanceForm" class="report-form">
+            <label>Category
+              <select name="category">
+                <option value="tyres">Tyres</option><option value="brakes">Brakes</option>
+                <option value="engine">Engine</option><option value="electrical">Electrical</option>
+                <option value="body_damage">Body damage</option><option value="other">Other</option>
+              </select>
+            </label>
+            <label>What is wrong?<input name="description" maxlength="200" required /></label>
+            <label class="photo-field">Photo (optional, camera only)
+              <input type="file" accept="image/*" capture="environment" data-photo-input="maintenance" />
+              <span class="photo-status" data-photo-status="maintenance"></span>
+            </label>
+            <button type="submit">Send to supervisor</button>
           </form>
         </section>
-        <p id="appNotice" class="notice" role="status"></p>
+      </main>
+    </section>
 
-        <button id="supportButton" class="support-button" type="button">🆘 Get support</button>
-      </section>
-    </main>
-
+    <!-- support dialog -->
     <dialog id="supportDialog">
       <form method="dialog" class="dialog-body">
         <div class="dialog-heading"><h2>What happened?</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
-        <p class="intro">Your supervisor is notified immediately. For accidents and police issues the manager is alerted too.</p>
-        <div class="incident-grid">
-          <button value="accident" type="submit">⚠️ Accident</button>
-          <button value="breakdown" type="submit">🔧 Breakdown</button>
-          <button value="police" type="submit">🚨 Police issue</button>
-          <button value="fuel_funds" type="submit">⛽ Waiting for petrol funds</button>
-          <button value="low_battery" type="submit">🔋 Low battery</button>
-          <button value="other" type="submit">💬 Something else</button>
+        <div class="incident-types">
+          <button value="breakdown">🔧 Breakdown</button>
+          <button value="accident">🚨 Accident</button>
+          <button value="police">👮 Police</button>
+          <button value="fuel">⛽ Fuel</button>
+          <button value="battery">🔋 Battery</button>
         </div>
-        <label>Add a short note (optional)<input id="incidentNote" maxlength="200" /></label>
+        <label>Notes<textarea id="incidentNote" rows="2" placeholder="Optional details"></textarea></label>
+        <label class="photo-field">Photo (optional, camera only)
+          <input type="file" accept="image/*" capture="environment" data-photo-input="incident" />
+          <span class="photo-status" data-photo-status="incident"></span>
+        </label>
       </form>
     </dialog>
 
+    <!-- explain dialog -->
     <dialog id="explainDialog">
       <form method="dialog" class="dialog-body">
-        <div class="dialog-heading"><h2>Explain this alert</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
-        <p id="explainContext" class="intro"></p>
-        <label>Reason<select id="explainReason">
-          <option value="network_app_issue">Network / app issue</option>
-          <option value="vehicle_fault">Vehicle fault</option>
-          <option value="fuel_charging_problem">Fuel / charging problem</option>
-          <option value="platform_account_blocked">Platform account blocked</option>
-          <option value="personal_emergency">Personal emergency</option>
-          <option value="other">Other</option>
-        </select></label>
-        <label>Short note<input id="explainNote" maxlength="140" placeholder="Required for “Other”" /></label>
-        <div class="dialog-actions"><button value="cancel" class="secondary-button" type="submit">Cancel</button><button value="send" type="submit">Send to supervisor</button></div>
+        <div class="dialog-heading"><h2>Explain what happened</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
+        <p id="explainContext" class="subtle"></p>
+        <label>Reason
+          <select id="explainReason">
+            <option value="vehicle_issue">Vehicle problem</option>
+            <option value="network_issue">Network / app issue</option>
+            <option value="personal_emergency">Personal emergency</option>
+            <option value="platform_issue">Platform issue</option>
+            <option value="traffic_or_weather">Traffic or weather</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Note<textarea id="explainNote" rows="2" placeholder="Required when choosing Other"></textarea></label>
+        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="send">Send to supervisor</button></div>
       </form>
     </dialog>
 

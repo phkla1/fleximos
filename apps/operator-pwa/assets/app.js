@@ -4,16 +4,19 @@ const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const storageKey = "fleximotion_operator_access_token";
 const ids = [
   "loginView", "appView", "loginForm", "loginNotice", "appNotice", "operatorName",
-  "logoutButton", "dateFrom", "dateTo", "connectionStatus", "liveStatus", "revenueTotal",
-  "paceLabel", "paceContext", "tripCount", "hoursOnline", "targetTotal", "assignment",
-  "alertCount", "alerts", "mileage", "leaderboard", "myRank", "maintenanceForm",
-  "supportButton", "supportDialog", "incidentNote", "explainDialog", "explainContext",
-  "explainReason", "explainNote"
+  "logoutButton", "dateFrom", "dateTo", "connectionStatus", "liveStatus", "liveDot",
+  "lastSeen", "revenueTotal", "paceLabel", "paceContext", "tripCount", "hoursOnline",
+  "acceptancePct", "targetTotal", "assignment", "alertCount", "alertList", "mileage",
+  "timeline", "leaderboard", "myRank", "myScore", "maintenanceForm", "supportButton",
+  "supportDialog", "incidentNote", "explainDialog", "explainContext", "explainReason",
+  "explainNote", "alertDockBadge"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 let token = localStorage.getItem(storageKey);
 let currentOperator = null;
 let currentAlerts = [];
+let currentIncidents = [];
+let currentFuel = [];
 
 const today = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
@@ -40,8 +43,16 @@ async function api(base, path, options = {}) {
   return body;
 }
 
-function money(value) {
-  return `₦${Number(value || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+const money = (value) => `₦${Number(value || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+const timeOf = (value) => new Date(value).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
+
+function idempotencyKey(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function appMessage(message, error = false) {
+  el.appNotice.textContent = message;
+  el.appNotice.classList.toggle("error", error);
 }
 
 function showLogin(message = "") {
@@ -51,6 +62,131 @@ function showLogin(message = "") {
   el.loginView.hidden = false;
   el.loginNotice.textContent = message;
 }
+
+/* ---------- tabs ---------- */
+
+const TABS = ["today", "alerts", "rank", "report"];
+function activateTab(name) {
+  const tab = TABS.includes(name) ? name : "today";
+  document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.tab === tab));
+  document.querySelectorAll("[data-tab-link]").forEach((link) => link.classList.toggle("active", link.dataset.tabLink === tab));
+  window.scrollTo({ top: 0 });
+}
+window.addEventListener("hashchange", () => activateTab(location.hash.slice(1)));
+activateTab(location.hash.slice(1));
+
+/* ---------- gauges ---------- */
+
+function renderGauge(id, pct, valueText, labelText, subText, tone) {
+  const gauge = document.getElementById(id);
+  const clamped = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  const circumference = 2 * Math.PI * 50;
+  const value = gauge.querySelector(".gauge-value");
+  value.style.strokeDasharray = `${circumference}`;
+  value.style.strokeDashoffset = `${circumference * (1 - clamped / 100)}`;
+  gauge.dataset.tone = tone;
+  gauge.querySelector("figcaption strong").textContent = valueText;
+  if (labelText !== null) gauge.querySelector("figcaption span").textContent = labelText;
+  gauge.querySelector("figcaption small").textContent = subText;
+}
+
+/* ---------- camera photo evidence (mirrors the supervisor app) ---------- */
+
+const stagedPhotos = { incident: null, maintenance: null };
+
+function compressPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const maxEdge = 1280;
+      const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(image.src);
+      resolve(canvas.toDataURL("image/jpeg", 0.8).split(",")[1]);
+    };
+    image.onerror = () => reject(new Error("Could not read the captured photo."));
+    image.src = URL.createObjectURL(file);
+  });
+}
+
+function currentPosition() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      () => resolve(null),
+      { timeout: 4000, maximumAge: 60000 }
+    );
+  });
+}
+
+async function stagePhoto(kind, file) {
+  const statusEl = document.querySelector(`[data-photo-status="${kind}"]`);
+  statusEl.textContent = "Processing…";
+  try {
+    const base64 = await compressPhoto(file);
+    stagedPhotos[kind] = { base64, capturedAt: new Date().toISOString() };
+    statusEl.textContent = `Photo attached ${timeOf(stagedPhotos[kind].capturedAt)} ✓`;
+  } catch (error) {
+    stagedPhotos[kind] = null;
+    statusEl.textContent = error.message;
+  }
+}
+
+async function uploadStagedPhoto(kind, mediaKind) {
+  const staged = stagedPhotos[kind];
+  if (!staged) return [];
+  const gps = await currentPosition();
+  const media = await api(opsBase, "/ops/v1/media", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey("pwa-media") },
+    body: JSON.stringify({
+      kind: mediaKind,
+      content_type: "image/jpeg",
+      content_base64: staged.base64,
+      captured_at: staged.capturedAt,
+      gps_lat: gps?.lat ?? null,
+      gps_lng: gps?.lng ?? null
+    })
+  });
+  stagedPhotos[kind] = null;
+  const statusEl = document.querySelector(`[data-photo-status="${kind}"]`);
+  if (statusEl) statusEl.textContent = "";
+  return [media.media_id];
+}
+
+document.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-photo-input]");
+  if (input?.files?.[0]) stagePhoto(input.dataset.photoInput, input.files[0]);
+});
+
+/* ---------- derived timeline ---------- */
+
+function renderTimeline() {
+  const events = [];
+  for (const alert of currentAlerts) {
+    events.push({ at: alert.fired_at, label: `${String(alert.alert_type).replaceAll("_", " ")} alert`, tone: "red" });
+    if (alert.deviation_submitted_at) events.push({ at: alert.deviation_submitted_at, label: "You sent an explanation", tone: "yellow" });
+    if (alert.resolved_at) events.push({ at: alert.resolved_at, label: "Alert resolved", tone: "green" });
+  }
+  for (const incident of currentIncidents) {
+    events.push({ at: incident.occurred_at, label: `You reported ${String(incident.incident_type).replaceAll("_", " ")}`, tone: incident.severity === "high" ? "red" : "yellow" });
+  }
+  for (const issue of currentFuel) {
+    events.push({ at: issue.issued_at, label: `Fuel/charge confirmed: ${Number(issue.quantity)} ${issue.unit}`, tone: "green" });
+  }
+  const rows = events.filter((event) => event.at)
+    .sort((a, b) => new Date(b.at) - new Date(a.at))
+    .slice(0, 10);
+  el.timeline.innerHTML = rows.length ? rows.map((event) => `
+    <li class="tone-${event.tone}"><span>${timeOf(event.at)}</span>${escapeHtml(event.label)}</li>`).join("")
+    : `<li class="tone-green"><span>—</span>Nothing recorded yet today. Stay safe out there.</li>`;
+}
+
+/* ---------- main load ---------- */
 
 async function load() {
   if (!token) return showLogin();
@@ -69,50 +205,76 @@ async function load() {
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const date = dateTo;
   const weekStart = new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
-  const [boardPage, performancePage, alertPage, mileagePage, leaderboardPage] = await Promise.all([
+  const [boardPage, performancePage, alertPage, mileagePage, fuelPage, incidentPage, leaderboardPage] = await Promise.all([
     api(opsBase, `/ops/v1/team-board?${range}`),
     api(opsBase, `/ops/v1/daily-performance?${range}`),
-    api(opsBase, `/ops/v1/alerts?operator_id=${encodeURIComponent(operator.operator_id)}`),
+    api(opsBase, `/ops/v1/alerts?operator_id=${encodeURIComponent(operator.operator_id)}&${range}`),
     api(opsBase, `/ops/v1/mileage-reconciliations?${range}`),
+    api(opsBase, `/ops/v1/fuel-issues?${range}`).catch(() => ({ data: [] })),
+    api(opsBase, "/ops/v1/incidents").catch(() => ({ data: [] })),
     api(opsBase, `/ops/v1/leaderboard?period_start=${weekStart}&period_end=${date}&amoeba_id=${encodeURIComponent(operator.amoeba_id)}`).catch(() => null)
   ]);
   const board = boardPage.data[0] || {};
   const performance = performancePage.data;
-  const alerts = alertPage.data.filter((alert) => alert.resolution_status !== "resolved");
-  currentAlerts = alerts;
-  const mileage = mileagePage.data[0];
+  currentAlerts = alertPage.data.filter((alert) => alert.resolution_status !== "resolved");
+  currentIncidents = incidentPage.data.filter((incident) => incident.operator_id === operator.operator_id);
+  currentFuel = fuelPage.data.filter((issue) => issue.operator_id === operator.operator_id);
+  const mileage = mileagePage.data.find((row) => row.operator_id === operator.operator_id);
   const revenue = performance.reduce((sum, row) => sum + Number(row.ride_revenue_ngn || 0), 0);
   const trips = performance.reduce((sum, row) => sum + Number(row.trips_total || 0), 0);
   const hours = performance.reduce((sum, row) => sum + Number(row.hours_online || 0), 0);
-  const pace = String(board.pace_status || "not_available").replaceAll("_", " ");
+  const acceptanceRows = performance.filter((row) => Number(row.acceptance_pct));
+  const acceptance = acceptanceRows.length
+    ? acceptanceRows.reduce((sum, row) => sum + Number(row.acceptance_pct), 0) / acceptanceRows.length
+    : null;
+  const paceStatus = String(board.pace_status || "not_available");
+  const target = Number(board.range_revenue_target_ngn ?? board.daily_revenue_target_ngn ?? 0);
+  const pacePct = target ? revenue / target * 100 : 0;
 
   el.operatorName.textContent = profile.person?.display_name || "Driver";
-  el.liveStatus.textContent = String(board.current_status || "not_seen_today").replaceAll("_", " ");
-  el.revenueTotal.textContent = money(revenue);
+  renderGauge("earningsGauge", pacePct, money(revenue), null,
+    target ? `${Math.round(pacePct)}% of ${money(target)} target` : "No target configured",
+    ["ahead", "on_track"].includes(paceStatus) ? "green" : paceStatus === "behind" ? "yellow" : paceStatus === "at_risk" ? "red" : "green");
+  el.paceLabel.textContent = paceStatus.replaceAll("_", " ");
+  el.paceLabel.className = `pace-status ${paceStatus}`;
+  el.paceContext.textContent = board.expected_revenue_ngn
+    ? `${money(board.expected_revenue_ngn)} expected by now`
+    : "Waiting for platform activity";
+
+  const status = String(board.current_status || "not_seen_today");
+  el.liveStatus.textContent = status.replaceAll("_", " ");
+  el.liveDot.className = `status-dot ${status}`;
+  el.lastSeen.textContent = board.last_seen_at ? `Last seen ${timeOf(board.last_seen_at)}` : "";
+
   el.tripCount.textContent = trips;
   el.hoursOnline.textContent = `${hours.toFixed(1)}h`;
-  el.targetTotal.textContent = money(board.daily_revenue_target_ngn);
-  el.paceLabel.textContent = pace;
-  el.paceContext.textContent = board.expected_revenue_ngn
-    ? `${money(board.expected_revenue_ngn)} expected by now · ${Number(board.pace_variance_pct || 0).toFixed(1)}% variance`
-    : "Waiting for a configured target and platform activity";
+  el.acceptancePct.textContent = acceptance === null ? "—" : `${acceptance.toFixed(0)}%`;
+  el.targetTotal.textContent = money(target);
+
   el.assignment.innerHTML = `
-    <div class="assignment-row"><strong>${escapeHtml(operator.vehicle_plate || "No vehicle assigned")}</strong>
+    <div class="card-row"><strong>${escapeHtml(operator.vehicle_plate || "No vehicle assigned")}</strong>
     <span>${escapeHtml(operator.site_id)} · ${escapeHtml(operator.amoeba_id)}</span></div>
-    ${(operator.platform_registrations || []).map((item) => `<div class="assignment-row"><strong>${escapeHtml(item.platform_display_name)}</strong><span>${escapeHtml(item.registration_status)} · ${escapeHtml(item.platform_operator_id)}</span></div>`).join("")}`;
-  el.alertCount.textContent = alerts.length;
-  el.alerts.innerHTML = alerts.length ? alerts.map((alert) => `
-    <div class="alert-row"><strong>${escapeHtml(alert.alert_type.replaceAll("_", " "))}</strong>
+    ${(operator.platform_registrations || []).map((item) => `<div class="card-row"><strong>${escapeHtml(item.platform_display_name)}</strong><span>${escapeHtml(item.registration_status)}</span></div>`).join("")}`;
+
+  el.alertCount.textContent = currentAlerts.length;
+  el.alertDockBadge.hidden = !currentAlerts.length;
+  el.alertDockBadge.textContent = currentAlerts.length;
+  el.alertList.innerHTML = currentAlerts.length ? currentAlerts.map((alert) => `
+    <div class="card-row alert-card tier-${escapeHtml(alert.tier)}"><strong>${escapeHtml(alert.alert_type.replaceAll("_", " "))}</strong>
     <span>${escapeHtml(alert.platform_display_name || "General")} · Tier ${escapeHtml(alert.tier)} · ${escapeHtml(alert.resolution_status.replaceAll("_", " "))}</span>
     ${alert.deviation_reason_code
       ? `<span class="explain-status">Reason sent: ${escapeHtml(String(alert.deviation_reason_code).replaceAll("_", " "))} (${escapeHtml(alert.deviation_review_status || "pending")})</span>`
       : `<button type="button" class="explain-button" data-explain-alert="${escapeHtml(alert.alert_id)}">Explain what happened</button>`}
     </div>
-  `).join("") : `<div class="empty">No open alerts.</div>`;
+  `).join("") : `<div class="empty all-clear">No open alerts. Clean sheet. ✅</div>`;
 
   const leaderboard = leaderboardPage?.entries || [];
   const mine = leaderboard.find((entry) => entry.operator_id === operator.operator_id);
-  el.myRank.textContent = mine ? `#${mine.rank}` : "—";
+  renderGauge("rankGauge", mine ? mine.performance_score : 0,
+    mine ? `#${mine.rank}` : "—", null,
+    mine ? `Score ${Math.round(mine.performance_score)}/100` : "No activity yet this week",
+    mine ? (mine.performance_score >= 75 ? "green" : mine.performance_score >= 50 ? "yellow" : "red") : "green");
+  el.myScore.textContent = mine ? `Score ${Math.round(mine.performance_score)}/100` : "";
   const medals = { gold: "🥇", silver: "🥈", bronze: "🥉" };
   el.leaderboard.innerHTML = leaderboard.length ? leaderboard.slice(0, 5).map((entry) => `
     <div class="leader-row ${entry.operator_id === operator.operator_id ? "me" : ""}">
@@ -127,20 +289,27 @@ async function load() {
       <div><strong>You</strong><span>Acceptance ${mine.components.acceptance_score} · Online ${mine.components.time_online_score} · Cash ${mine.components.cash_receipt_score}</span></div>
       <strong class="leader-score">${Math.round(mine.performance_score)}</strong>
     </div>` : "") : `<div class="empty">No team activity in the last 7 days.</div>`;
+
   el.mileage.innerHTML = mileage ? `
-    <div class="mileage-row"><strong>${mileage.fuel_quantity === null ? "Fuel not yet confirmed" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} issued`}</strong>
+    <div class="card-row"><strong>${mileage.fuel_quantity === null ? "Fuel not yet confirmed" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} issued`}</strong>
     <span>Official: ${mileage.official_distance_km === null ? "awaiting data" : `${Number(mileage.official_distance_km)} km`} · Tracker: ${mileage.tracker_distance_km === null ? "unavailable" : `${Number(mileage.tracker_distance_km)} km`}</span></div>
   ` : `<div class="empty">No mileage record is available.</div>`;
 
+  renderTimeline();
+
   el.loginView.hidden = true;
+  el.loginNotice.textContent = "";
   el.appView.hidden = false;
   el.connectionStatus.textContent = "Connected";
-  el.appNotice.textContent = `Updated ${new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}`;
+  appMessage(`Updated ${timeOf(new Date())}`);
 }
+
+/* ---------- auth ---------- */
 
 el.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   el.loginNotice.textContent = "Signing in...";
+  el.loginNotice.classList.remove("error");
   try {
     const values = Object.fromEntries(new FormData(el.loginForm));
     const session = await api(foundationBase, "/identity/v1/auth/login", {
@@ -155,36 +324,16 @@ el.loginForm.addEventListener("submit", async (event) => {
   }
 });
 el.logoutButton.addEventListener("click", () => showLogin("Signed out."));
-el.dateFrom.addEventListener("change", () => load().catch((error) => {
-  setNotice(error.message, true);
-}));
-el.dateTo.addEventListener("change", () => load().catch((error) => {
-  el.appNotice.textContent = error.message;
-  el.appNotice.classList.add("error");
-}));
+el.dateFrom.addEventListener("change", () => load().catch((error) => appMessage(error.message, true)));
+el.dateTo.addEventListener("change", () => load().catch((error) => appMessage(error.message, true)));
 
-function idempotencyKey(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function appMessage(message, error = false) {
-  el.appNotice.textContent = message;
-  el.appNotice.classList.toggle("error", error);
-}
-
-function currentPosition() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve({});
-    navigator.geolocation.getCurrentPosition(
-      (position) => resolve({ gps_lat: position.coords.latitude, gps_lng: position.coords.longitude }),
-      () => resolve({}),
-      { timeout: 4000, maximumAge: 60000 }
-    );
-  });
-}
+/* ---------- support (incidents, with optional photo) ---------- */
 
 el.supportButton.addEventListener("click", () => {
   el.incidentNote.value = "";
+  stagedPhotos.incident = null;
+  const statusEl = document.querySelector('[data-photo-status="incident"]');
+  if (statusEl) statusEl.textContent = "";
   el.supportDialog.showModal();
 });
 
@@ -194,6 +343,7 @@ el.supportDialog.addEventListener("close", async () => {
   appMessage("Sending support request...");
   try {
     const gps = await currentPosition();
+    const mediaIds = await uploadStagedPhoto("incident", "incident_evidence");
     await api(opsBase, "/ops/v1/incidents", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("pwa-incident") },
@@ -201,14 +351,19 @@ el.supportDialog.addEventListener("close", async () => {
         operator_id: currentOperator.operator_id,
         incident_type: incidentType,
         description: el.incidentNote.value.trim() || null,
-        ...gps
+        media_ids: mediaIds,
+        gps_lat: gps?.lat ?? null,
+        gps_lng: gps?.lng ?? null
       })
     });
-    appMessage("Your supervisor has been notified.");
+    appMessage(mediaIds.length ? "Your supervisor has been notified — photo attached." : "Your supervisor has been notified.");
+    await load();
   } catch (error) {
     appMessage(error.message, true);
   }
 });
+
+/* ---------- explain (deviation reasons) ---------- */
 
 let explainingAlertId = null;
 document.addEventListener("click", (event) => {
@@ -241,12 +396,15 @@ el.explainDialog.addEventListener("close", async () => {
   }
 });
 
+/* ---------- maintenance (with optional photo) ---------- */
+
 el.maintenanceForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentOperator?.vehicle_id) return appMessage("No vehicle is assigned to your account.", true);
   const values = Object.fromEntries(new FormData(el.maintenanceForm));
   appMessage("Reporting the issue...");
   try {
+    const mediaIds = await uploadStagedPhoto("maintenance", "maintenance_evidence");
     await api(opsBase, "/ops/v1/maintenance-reports", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("pwa-maintenance") },
@@ -254,11 +412,12 @@ el.maintenanceForm.addEventListener("submit", async (event) => {
         vehicle_id: currentOperator.vehicle_id,
         operator_id: currentOperator.operator_id,
         category: values.category,
-        description: values.description || null
+        description: values.description || null,
+        media_ids: mediaIds
       })
     });
     el.maintenanceForm.reset();
-    appMessage("Maintenance issue sent to your supervisor.");
+    appMessage(mediaIds.length ? "Maintenance issue sent — photo attached." : "Maintenance issue sent to your supervisor.");
   } catch (error) {
     appMessage(error.message, true);
   }

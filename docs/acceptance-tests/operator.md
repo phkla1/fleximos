@@ -18,17 +18,21 @@ help or report a vehicle problem.
 shows a clear error and does not sign you in.
 
 ### OP-2 · Read today's picture
-1. Look at the dark panel at the top.
+1. Look at the earnings gauge on the Today tab.
 
-**Expected:** it shows your live status (e.g. "online", "checked out"),
-today's revenue figure, and a pace label (Ahead / On track / Behind / At risk)
-with the amount expected by now.
+**Expected:** the big ring gauge shows today's earnings with a pace label
+(Ahead / On track / Behind / At risk) and the amount expected by now; the
+ring is green/amber/red to match. A caption notes these are platform
+earnings (Uber/Bolt) — scheduled-delivery work is tracked separately. Below
+it, your live status strip shows e.g. "online" or "checked out".
 
-### OP-3 · Trips, hours, target
-1. Check the three tiles below the dark panel.
+### OP-3 · Trips, hours, acceptance, target
+1. Check the four chips below the status strip.
 
-**Expected:** trips today, hours online, and your daily target. They match
-what you know about your day (for seeded data, they match the demo records).
+**Expected:** trips, hours online, acceptance % and your daily target. They
+match what you know about your day (for seeded data, the demo records). The
+bottom dock has four tabs — Today, Alerts (with a count badge when any are
+open), Rank, Report.
 
 ### OP-4 · Vehicle and platform assignment
 1. Scroll to **Vehicle and platform**.
@@ -37,7 +41,7 @@ what you know about your day (for seeded data, they match the demo records).
 account you are registered on, with its status.
 
 ### OP-5 · See and explain an alert
-1. Scroll to **My alerts**.
+1. Open the **Alerts** tab.
 2. If an alert is listed, tap **Explain what happened**.
 3. Choose a reason (e.g. "Network / app issue"), add a short note, tap
    **Send to supervisor**.
@@ -47,22 +51,27 @@ shows "Reason sent: … (pending)". Your supervisor sees the same reason in
 their inbox. Choosing "Other" without a note is rejected with a clear message.
 
 ### OP-6 · Check the leaderboard
-1. Scroll to **Leaderboard**.
+1. Open the **Rank** tab.
 
-**Expected:** the top of your amoeba's board for the last 7 days, with gold /
-silver / bronze badges for the top three and your own rank chip at the top
-right. Your row is highlighted. You see your acceptance, online and cash
-scores — but no revenue score (that is by design).
+**Expected:** your rank ring (score out of 100, coloured by how well you're
+doing) above the last-7-days team board with gold/silver/bronze for the top
+three; your row is highlighted. You see acceptance, online and cash scores —
+but no revenue score (that is by design).
 
-### OP-7 · Report a vehicle problem
-1. Scroll to **Report maintenance**.
-2. Pick a category (e.g. Brakes), describe the issue, tap **Send to supervisor**.
+### OP-7 · Report a vehicle problem with photo
+1. Open the **Report** tab.
+2. Pick a category (e.g. Brakes), describe the issue.
+3. Tap the photo field — your camera should open **directly** (no gallery
+   picker); take a picture, then **Send to supervisor**.
 
-**Expected:** a confirmation message. The report appears in your supervisor's
-maintenance queue.
+**Expected:** the photo shows "attached" with a timestamp before sending, a
+confirmation follows, and the report (with the 📷 photo) appears in your
+supervisor's maintenance queue. Photos can only come from the camera so
+they are credible and time-stamped.
 
 ### OP-8 · Get support in the field
-1. Tap the red **🆘 Get support** button.
+1. On the **Report** tab, tap the red **🆘 Get support now** button (a photo
+   can be attached here too, camera-only).
 2. Pick **Breakdown** (add a note if you like).
 
 **Expected:** confirmation that your supervisor has been notified. If your

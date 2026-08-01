@@ -1,11 +1,11 @@
-const cacheName = "fleximotion-driver-v1";
+const cacheName = "fleximotion-driver-v2";
 const assets = ["./", "./index.html", "./assets/styles.css", "./assets/app.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)));
+  event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)).then(() => self.skipWaiting()).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== cacheName).map((key) => caches.delete(key)))));
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== cacheName).map((key) => caches.delete(key)))).then(() => self.clients.claim()).then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
