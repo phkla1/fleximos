@@ -1,6 +1,6 @@
-# Scheduled Deliveries — Spec v0.1 (batch-level v1)
+# Scheduled Deliveries — Spec v0.2 (batch-level v1)
 
-**Status:** Draft for product-owner review — nothing built yet
+**Status:** Approved model (owner decisions 2 Aug 2026 folded in); build pending final go
 **Derived from:** `docs/Supervisor-App-Frontend-Brief.md` §7 + owner
 clarifications (2 Aug 2026): supervisors manually scan/record and assign
 daily targets today; customers (Speedaf, Konga, …) have no API yet but are
@@ -21,7 +21,16 @@ appears: `customer_app_manual` (typed by supervisor), `customer_app_import`
 
 ## 2. Domain model (Ops API owns it)
 
-- **delivery_customer** — customer_id, name, contact, notes, status.
+- **delivery_customer** — customer_id, name, contact, notes, status,
+  **contract_price_ngn** (per delivered package; differs per contract, e.g.
+  Speedaf ₦1,400 — finance/manager visibility only, never shown to
+  operators). Defined alongside the Uber/Bolt platform definitions in the
+  admin surface, because a prescheduled customer is a revenue source of the
+  same rank as a platform.
+- **delivery allocated price** — a single **global** ₦ value (e.g. ₦1,000
+  per delivered package) used for performance calculations and operator
+  fees, versioned like the economics policies (effective-dated, admin
+  Controls). This is the only delivery price operators ever see.
 - **delivery_batch** — batch_id, customer_id, amoeba_id, batch_date,
   manifest_ref (free text), status `open → in_progress → closed`,
   batch-stage counts: `expected`, `received`, `sorted` (pre-assignment
@@ -77,29 +86,48 @@ ingestion-run pattern; the manual path must not depend on it.
 
 ### Operator app (Today tab addition)
 - A **Deliveries today** card when the operator has an assignment:
-  "31 of 40 delivered · 2 failed" with a progress bar, batch/customer name,
-  and the supervisor's target — sitting beside the platform-earnings gauge,
-  each mode labelled. No self-entry in v1 (see ⚑ D1).
+  "31 of 40 delivered · 2 failed · ₦31,000 earned" (allocated price ×
+  delivered) with a progress bar and the day's delivery target value
+  (allocated × assigned). Mixed days show both cards; the gauge and the
+  delivery card each carry their own mode label. No self-entry in v1 (D1).
 
 ### Manager console
 - Portfolio cards show a delivery line (batches open, packages left,
   exceptions) per team; escalation queue picks up delivery exceptions open
   past end-of-day.
 
-## 5. Flagged decisions
+### Admin + Finance surfaces
+- **Admin (Controls / platform definitions):** delivery customers are
+  created and maintained here — beside Uber/Bolt platform accounts — with
+  their contract price; the global allocated price is an effective-dated
+  policy under Controls, like pace/economics policies.
+- **Finance console + P&L:** delivery revenue at contract price per
+  customer, allocated cost line, and the contract-vs-allocated margin per
+  customer; delivery revenue joins amoeba P&L.
 
-- **⚑ D1 — who updates driver progress in v1?** Recommendation: supervisor
-  only (matches "supervisor will have to manually enter"); operators view.
-  Alternative: let operators submit their own delivered/failed counts
-  (labelled `operator_manual`) with supervisor confirmation at closeout —
-  faster data, small inflation risk until scanning exists.
-- **⚑ D2 — leaderboard treatment of delivery days.** v1 recommendation:
-  delivery assignments mark the day "on delivery" (no on-demand pace
-  penalty) but delivery counts do **not** enter the Performance Score yet —
-  scoring rules for mixed days deserve real data first.
-- **⚑ D3 — payment linkage.** v1 records counts only; delivery earnings /
-  per-package rates are out of scope until the commercial model with each
-  customer is confirmed.
+## 5. Pricing and performance model (owner decisions, 2 Aug 2026)
+
+- **D1 (decided):** where no customer API exists, the **supervisor** enters
+  all progress counts; operators view only. When APIs land, `customer_api`
+  supersedes manual entry for those customers.
+- **Two prices per delivery:**
+  - **Contract price** (per customer, e.g. Speedaf ₦1,400/package): company
+    revenue = contract price × delivered. Lives on the customer record;
+    finance and manager surfaces only; feeds P&L and analytics revenue.
+  - **Allocated price** (global, e.g. ₦1,000/package): operator-facing
+    value = allocated × delivered. Feeds the operator's earnings gauge,
+    daily target (assigned × allocated), the leaderboard earnings
+    component, and operator fee calculations. Operators never see contract
+    prices; the spread is company margin and is visible in P&L as
+    contract-vs-allocated variance.
+- **D2 (resolved by the allocated price):** delivery days score like
+  on-demand days — earnings (allocated × delivered) vs target
+  (allocated × assigned). No leaderboard special-casing; the "on delivery"
+  board state only suspends *intraday on-demand pace* judgement, not
+  scoring.
+- **Fee payout mechanics** (how much of the allocated value the operator is
+  actually paid, payroll timing) remain out of scope for this slice — the
+  slice exposes the allocated earnings figures those calculations will use.
 
 ## 6. Future integration (Speedaf, Konga, …)
 
