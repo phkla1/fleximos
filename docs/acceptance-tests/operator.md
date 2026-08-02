@@ -12,7 +12,8 @@ help or report a vehicle problem.
 
 ### OP-1 · Sign in
 1. Open the app URL on your phone.
-2. Enter your phone number and PIN, tap **Sign in**.
+2. Enter your phone number in the everyday format (e.g. `0816 540 7221` —
+   spaces and the leading 0 both work) and your PIN, tap **Sign in**.
 
 **Expected:** you land on "My workday" with your name at the top. A wrong PIN
 shows a clear error and does not sign you in.

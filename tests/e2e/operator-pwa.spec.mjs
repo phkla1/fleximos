@@ -5,7 +5,7 @@ const url = "/apps/operator-pwa/?opsApiBase=http://127.0.0.1:4530&foundationApiB
 async function signIn(page) {
   await page.goto(url);
   if (await page.locator("#loginView").isVisible()) {
-    await page.locator('input[name="phone_or_email"]').fill("+2347050599554");
+    await page.locator('input[name="phone_or_email"]').fill("0705 059 9554");
     await page.locator('input[name="pin"]').fill("000000");
     await page.locator("#loginForm button[type=submit]").click();
   }
@@ -19,7 +19,7 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator("#operatorName")).not.toHaveText("Driver");
     await expect(page.locator("#earningsGauge")).toBeVisible();
     await expect(page.locator("#revenueTotal")).not.toHaveText("₦0");
-    await expect(page.locator(".gauge-source")).toContainText("Platform earnings");
+    await expect(page.locator(".gauge-source")).toContainText("Uber/Bolt platform accounts");
     await expect(page.locator(".stat-chips span")).toHaveCount(4);
     await expect(page.locator("#assignment .card-row").first()).toBeVisible();
     await expect(page.locator("#timeline li").first()).toBeVisible();

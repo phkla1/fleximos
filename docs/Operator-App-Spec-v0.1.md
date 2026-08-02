@@ -45,8 +45,11 @@ Operators work in two modes, sometimes within one day:
    → deliver → PoD/exceptions → returns). No platform feed; progress is
    package counts and stop completion (Supervisor spec 2.7).
 
-O1 rule: the Today gauge is explicitly labelled as **platform earnings** so
-it never silently misreads a scheduled-delivery day. O2 rule: when the
+O1 rule: the Today gauge is labelled "Earnings from your Uber/Bolt platform
+accounts" — plain words, no forward references. Scheduled-delivery targets
+(a daily assignment from the supervisor; manual scan/record today because
+customers like Speedaf and Konga have no API yet) get their own card when
+the delivery domain lands. O2 rule: when the
 delivery APIs land, an operator assigned to a batch gets (a) an "on
 delivery" work state that suspends on-demand pace judgement for that
 window, (b) a delivery progress card (stops done / packages left), and

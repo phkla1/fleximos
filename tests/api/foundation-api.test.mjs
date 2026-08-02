@@ -217,6 +217,22 @@ test("stores, validates, and deduplicates the national ID number (NIN)", async (
   assert.equal(updated.body.nin, "10987654321");
 });
 
+test("accepts everyday phone formats at login", async () => {
+  for (const identifier of ["0703 355 0173", "+234 703-355-0173", "07033550173"]) {
+    const session = await request("/identity/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ phone_or_email: identifier, pin: "000000" })
+    });
+    assert.equal(session.response.status, 200, `login should accept "${identifier}"`);
+    assert.ok(session.body.access_token);
+  }
+  const rejected = await request("/identity/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ phone_or_email: "0703 355 0173", pin: "999999" })
+  });
+  assert.equal(rejected.response.status, 401);
+});
+
 test("rejects duplicate person contact details", async () => {
   const duplicate = await request("/identity/v1/people", {
     method: "POST",

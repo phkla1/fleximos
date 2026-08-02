@@ -569,13 +569,23 @@ async function handleIdentity(req, res, parts) {
 
   if (resource === "auth" && id === "login" && req.method === "POST") {
     const body = await readBody(req);
+    // Accept the formats people actually type: spaces/dashes anywhere, and
+    // Nigerian local format (08165407221) alongside +2348165407221.
+    const rawIdentifier = String(body.phone_or_email || "").trim();
+    const digits = rawIdentifier.replace(/[\s\-().]/g, "");
+    const candidates = new Set([rawIdentifier, digits]);
+    if (/^0\d{10}$/.test(digits)) candidates.add(`+234${digits.slice(1)}`);
+    if (/^234\d{10}$/.test(digits)) candidates.add(`+${digits}`);
+    if (rawIdentifier.includes("@")) candidates.add(rawIdentifier.toLowerCase());
+    const candidateList = [...candidates];
+    const placeholders = candidateList.map((_, index) => `$${index + 1}`).join(", ");
     const user = await one(
       `SELECT u.*
        FROM users u
        JOIN people p ON p.person_id = u.person_id
-       WHERE p.phone = $1 OR p.email = $1
+       WHERE p.phone IN (${placeholders}) OR p.email IN (${placeholders})
        LIMIT 1`,
-      [body.phone_or_email]
+      candidateList
     );
     if (!user || body.pin !== "000000") return error(res, 401, "invalid_login", "Invalid login credentials.");
     return json(res, 200, {

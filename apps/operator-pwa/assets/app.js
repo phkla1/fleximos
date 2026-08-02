@@ -312,6 +312,8 @@ el.loginForm.addEventListener("submit", async (event) => {
   el.loginNotice.classList.remove("error");
   try {
     const values = Object.fromEntries(new FormData(el.loginForm));
+    values.phone_or_email = String(values.phone_or_email || "").replace(/[\s\-()]/g, "");
+    values.pin = String(values.pin || "").trim();
     const session = await api(foundationBase, "/identity/v1/auth/login", {
       method: "POST", body: JSON.stringify(values)
     });
