@@ -664,14 +664,22 @@ function renderDeliveries() {
             </div>`).join("")}
         </div>
 
-        ${!closed && assignableOperators.length ? `
-        <div class="delivery-actions">
-          <select data-assign-operator-select="${escapeHtml(batch.batch_id)}">
-            ${assignableOperators.map((operator) => `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))}</option>`).join("")}
-          </select>
-          <input type="number" min="1" value="20" data-assign-count="${escapeHtml(batch.batch_id)}" style="width:70px" />
-          <button type="button" data-assign-driver="${escapeHtml(batch.batch_id)}">Assign driver</button>
-        </div>` : ""}
+        ${closed ? "" : `
+        <div class="assign-panel">
+          <strong class="assign-title">➕ Assign a driver</strong>
+          ${assignableOperators.length ? `
+          <div class="delivery-actions">
+            <label class="assign-field">Driver
+              <select data-assign-operator-select="${escapeHtml(batch.batch_id)}">
+                ${assignableOperators.map((operator) => `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))}</option>`).join("")}
+              </select>
+            </label>
+            <label class="assign-field">Packages
+              <input type="number" min="1" value="20" data-assign-count="${escapeHtml(batch.batch_id)}" />
+            </label>
+            <button type="button" data-assign-driver="${escapeHtml(batch.batch_id)}">Assign driver</button>
+          </div>` : `<small>Every driver in this unit is already on the batch — adjust their targets on the rows above.</small>`}
+        </div>`}
 
         ${exceptions.length ? `<div class="card-list" style="margin-top:8px">${exceptions.map((exception) => `
           <div class="assignment-row">

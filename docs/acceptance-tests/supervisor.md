@@ -130,8 +130,9 @@ and every button is comfortably tappable.
 1. Open the **Deliver** tab. Review the seeded Konga batch: count ladder
    (expected → received → sorted → assigned → delivered / failed / returned /
    left), the source chip ("customer app manual") and the allocated value.
-2. Create a batch for a customer, assign a driver a target count, then save
-   progress numbers for that driver.
+2. Create a batch for a customer. In the green **➕ Assign a driver** panel
+   inside the batch card, pick a driver and a package target; then save
+   progress numbers on the driver's row.
 3. Record an exception (category + note; camera-only photo optional), then
    resolve it. Finally close a finished batch.
 
