@@ -64,5 +64,9 @@ to take with real batch data.
 - Delivery work: assigned batch/stops, delivery/exception/PoD capture with
   `fleximos_scan` events (Supervisor spec 2.7 v2).
 - Supervisor nudges surfacing as in-app notifications.
+- **Blocking assignment acknowledgements:** when a supervisor assigns or
+  de-assigns you (vehicle, platform, delivery work), the app shows a
+  full-screen notice you must Confirm before continuing; the confirmation
+  is recorded with a timestamp (Supervisor spec 3.7).
 - Offline write queue for explain/report actions.
 - Streaks and richer gamification once the leaderboard has production data.

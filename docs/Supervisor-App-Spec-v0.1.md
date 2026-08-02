@@ -171,6 +171,31 @@ Manager console already surfaces missing closeouts.
 - **3.4 Resumption config (NEW):** "late resumption" needs an expected
   resumption time (per amoeba or per operator). Add to pace-profile or a
   small shift-config; until configured the group is hidden.
+- **3.6 Supervisor assignment controls (S2, owner-directed 2 Aug 2026):**
+  supervisors can change their own team's working assignments **at any
+  time** — this is event-driven, not a daily ritual; reassignments happen
+  over hours or weeks as circumstances demand. In scope: assign/return a
+  vehicle, activate/deactivate a platform registration, delivery targets
+  (already live), mark-unavailable (3.1). Every change is audited (actor,
+  reason, timestamp) and scoped to the supervisor's team; the admin roster
+  keeps full powers.
+- **3.7 Blocking assignment acknowledgement (S2):** every
+  supervisor-initiated assignment or de-assignment creates an
+  acknowledgement requirement for the affected operator. The operator app
+  presents it as a **blocking, full-screen notice — the app is unusable
+  until the operator taps Confirm** — and the confirmation is recorded
+  (timestamp, optionally GPS) so nobody can later claim ignorance.
+  Unacknowledged changes stay visible to the supervisor with elapsed time.
+  Delivery: assignment-change record + notification outbox; the ack state
+  lives on the record.
+- **3.8 Ghost-activity reconciliation flag (S2):** when platform records
+  keep arriving for a registration that has been deactivated (or an
+  operator who was de-assigned), raise a high-tier
+  `deactivated_platform_activity` alert visible to the **supervisor,
+  manager and finance** — someone is earning on an account we think is
+  closed, which is both an operational and a cash-integrity problem. It
+  surfaces in the supervisor alert queue, the manager escalation queue and
+  the finance exceptions list until resolved.
 - **3.5 Offline-safe writes (EXTEND, phased):** the PWA shell exists;
   add a queued-mutation layer (idempotency keys make replays safe) for
   ack/resolve, readiness, fuel confirms, delivery counts. Phase after the
