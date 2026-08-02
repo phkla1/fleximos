@@ -24,7 +24,7 @@ export default defineConfig({
       timeout: 15000
     },
     {
-      command: "PORT=4530 FLEXI_OPS_DB_DIR=.data/e2e-ops-pglite npx tsx apps/ops-api/src/main.ts",
+      command: "PORT=4530 FLEXI_OPS_DB_DIR=.data/e2e-ops-pglite FOUNDATION_API_BASE=http://127.0.0.1:4510 npx tsx apps/ops-api/src/main.ts",
       url: "http://127.0.0.1:4530/health",
       reuseExistingServer: true,
       timeout: 20000

@@ -70,11 +70,13 @@ supervisor's maintenance queue. Photos can only come from the camera so
 they are credible and time-stamped.
 
 ### OP-8 · Get support in the field
-1. On the **Report** tab, tap the red **🆘 Get support now** button (a photo
-   can be attached here too, camera-only).
+1. From ANY tab, tap the floating red **🆘** button (it is always visible,
+   riding above the bottom tab bar; the Report tab also has a full-width
+   version). A photo can be attached, camera-only.
 2. Pick **Breakdown** (add a note if you like).
 
-**Expected:** confirmation that your supervisor has been notified. If your
+**Expected:** the support dialog opens instantly from every screen;
+confirmation that your supervisor has been notified. If your
 phone asks for location permission, granting it attaches your GPS position.
 Accident and police reports also escalate to the manager if not acknowledged
 within 30 minutes.

@@ -22,6 +22,8 @@ single person's day.
 - **Rank** — weekly amoeba leaderboard: my-rank hero ring, medal rows,
   score components (acceptance/online/cash — revenue never shown to
   operators, per policy).
+- **Persistent 🆘** — a floating support button rides above the dock on
+  every screen; one tap opens the support flow without navigating anywhere.
 - **Report** — 🆘 support requests (breakdown/accident/police/fuel/battery)
   and maintenance reports, both with **optional camera-only photo
   evidence**: `capture=environment` (camera opens directly, no gallery),

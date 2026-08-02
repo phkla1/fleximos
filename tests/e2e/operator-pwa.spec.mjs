@@ -49,6 +49,18 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator("#appNotice")).toContainText("Maintenance issue sent");
   });
 
+  test("keeps the SOS button visible on every tab", async ({ page }) => {
+    await signIn(page);
+    for (const tab of ["today", "alerts", "rank", "report"]) {
+      await page.locator(`[data-tab-link='${tab}']`).click();
+      await expect(page.locator("#sosFab")).toBeVisible();
+    }
+    await page.locator("[data-tab-link='today']").click();
+    await page.locator("#sosFab").click();
+    await expect(page.locator("#supportDialog")).toBeVisible();
+    await page.locator("#supportDialog button[value='cancel']").click();
+  });
+
   test("sends a support request", async ({ page }) => {
     await signIn(page);
     await page.locator("[data-tab-link='report']").click();

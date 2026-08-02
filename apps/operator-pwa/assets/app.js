@@ -329,13 +329,15 @@ el.dateTo.addEventListener("change", () => load().catch((error) => appMessage(er
 
 /* ---------- support (incidents, with optional photo) ---------- */
 
-el.supportButton.addEventListener("click", () => {
+function openSupportDialog() {
   el.incidentNote.value = "";
   stagedPhotos.incident = null;
   const statusEl = document.querySelector('[data-photo-status="incident"]');
   if (statusEl) statusEl.textContent = "";
   el.supportDialog.showModal();
-});
+}
+el.supportButton.addEventListener("click", openSupportDialog);
+document.getElementById("sosFab").addEventListener("click", openSupportDialog);
 
 el.supportDialog.addEventListener("close", async () => {
   const incidentType = el.supportDialog.returnValue;
@@ -356,8 +358,8 @@ el.supportDialog.addEventListener("close", async () => {
         gps_lng: gps?.lng ?? null
       })
     });
-    appMessage(mediaIds.length ? "Your supervisor has been notified — photo attached." : "Your supervisor has been notified.");
     await load();
+    appMessage(mediaIds.length ? "Your supervisor has been notified — photo attached." : "Your supervisor has been notified.");
   } catch (error) {
     appMessage(error.message, true);
   }
