@@ -22,8 +22,9 @@ and jumps to its section (leaderboard, portfolio, P&L, escalations).
 1. Review the **Team portfolio** cards.
 
 **Expected:** one card per supervisor/amoeba with live count, car vs bike Net
-Earnings, alerts, an at-risk pill and a progress bar against target. Cards
-needing attention sort first.
+Earnings, alerts, an at-risk pill and a progress bar against target. Teams
+running scheduled deliveries also show a 📦 line (batches, delivered, left,
+exceptions). Cards needing attention sort first.
 
 ### MA-3 · Understand the escalation queue
 1. Go to **Escalations**.
@@ -52,7 +53,8 @@ counts change on refresh.
    page — set it to cover the last few days.
 
 **Expected:** company totals (Net Earnings, direct expenses, maintenance,
-central costs, hourly P&L) and one card per amoeba showing Net Earnings,
+central costs, delivery revenue at contract price with its margin over the
+allocated value, hourly P&L) and one card per amoeba showing Net Earnings,
 direct costs, its share of central costs, gross P&L, per-hour P&L and target
 attainment. Loss-making amoebas are marked red.
 

@@ -77,6 +77,14 @@ compliance summary immediately reads against the new cadence (e.g. "…on the
 overdue escalations follow the same policy. The preventive service interval
 is recorded for the upcoming scheduling slice.
 
+### AD-7b · Delivery customers and pricing
+1. Under **Controls → Delivery customers & pricing**, add a customer with a
+   contract price, then set a new global allocated price effective today.
+
+**Expected:** the customer lists with its contract price (marked
+finance-facing); allocated price versions show active/superseded pills like
+other policies. Operators and supervisors never see contract prices.
+
 ### AD-8 · Leaderboard weights
 1. Go to **Controls → Leaderboard weights → Adjust Performance Score weights**.
 2. First try weights that do not sum to 1.0 (e.g. all 0.9) and save.

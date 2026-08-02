@@ -8,7 +8,7 @@ The supervisor app is a field-operations cockpit. It opens on "What needs my
 action now?" and moves with your operating rhythm: readiness → live pace →
 alerts → fuel → field issues → closeout. You only see operators assigned to
 you. Navigation is the six-tab dock at the bottom (phone) or top (desktop):
-Cockpit · Board · Alerts · Fuel · Field · Close.
+Cockpit · Board · Alerts · Deliver · Fuel · Field · Close.
 
 ## Tests
 
@@ -126,6 +126,21 @@ to a single-day view.
 **Expected:** no sideways scrolling, the dock stays reachable at the bottom,
 and every button is comfortably tappable.
 
+### SU-15 · Run a scheduled-delivery batch
+1. Open the **Deliver** tab. Review the seeded Konga batch: count ladder
+   (expected → received → sorted → assigned → delivered / failed / returned /
+   left), the source chip ("customer app manual") and the allocated value.
+2. Create a batch for a customer, assign a driver a target count, then save
+   progress numbers for that driver.
+3. Record an exception (category + note; camera-only photo optional), then
+   resolve it. Finally close a finished batch.
+
+**Expected:** batch totals always equal the sum of the driver rows; progress
+saves reject delivered+failed above the assigned target; closing locks the
+batch (further count edits are refused); the closeout checklist's delivery
+line reflects open exceptions and unclosed batches; contract prices are
+nowhere visible — supervisors see allocated values only.
+
 ## Results
 
 | Test | Pass/Fail | Notes |
@@ -144,5 +159,6 @@ and every button is comfortably tappable.
 | SU-12 | | |
 | SU-13 | | |
 | SU-14 | | |
+| SU-15 | | |
 
 Tester: ____________  Date: ____________  Device/browser: ____________

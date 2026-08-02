@@ -68,7 +68,7 @@ small { color: var(--muted); }
 /* ---------- dock navigation ---------- */
 .dock {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(7, 1fr);
   background: var(--surface); border-top: 1px solid var(--line);
   box-shadow: 0 -6px 18px rgba(18, 54, 47, .08);
   padding-bottom: env(safe-area-inset-bottom);
@@ -339,7 +339,7 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
   body { padding-bottom: 24px; }
   .dock {
     position: sticky; top: 58px; bottom: auto; z-index: 25;
-    grid-template-columns: repeat(6, max-content); gap: 4px;
+    grid-template-columns: repeat(7, max-content); gap: 4px;
     padding: 6px 16px; box-shadow: none; border-bottom: 1px solid var(--line);
   }
   .dock a { grid-auto-flow: column; gap: 7px; align-items: center; padding: 9px 14px; font-size: 13px; border-radius: 9px; }
@@ -368,3 +368,15 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
   background: var(--surface); font-size: 11.5px; font-weight: 800; color: var(--green-dark);
 }
 .evidence-chip:hover { border-color: var(--green); }
+
+/* ---------- deliveries ---------- */
+.count-ladder { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.count-ladder span { display: grid; gap: 0; justify-items: center; padding: 6px 10px; border-radius: 9px; background: #f6f8f7; font-size: 10.5px; font-weight: 750; color: var(--muted); }
+.count-ladder strong { font-size: 15px; color: var(--ink); }
+.count-ladder .flag strong { color: var(--amber); }
+.source-chip { padding: 2px 8px; border-radius: 999px; background: #eceff1; color: var(--muted); font-size: 10.5px; font-weight: 800; }
+.assignment-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 13px; }
+.assignment-row .progress-inputs { display: flex; gap: 5px; margin-left: auto; align-items: center; }
+.assignment-row .progress-inputs input { width: 58px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.assignment-row .progress-inputs label { display: grid; gap: 1px; font-size: 9.5px; font-weight: 800; color: var(--muted); text-align: center; }
+.delivery-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

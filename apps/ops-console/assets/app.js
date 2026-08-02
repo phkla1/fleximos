@@ -12,6 +12,11 @@ const state = {
   maintenance: [],
   vehicles: [],
   closeouts: [],
+  deliveryBatches: [],
+  deliveryAssignments: [],
+  deliveryExceptions: [],
+  deliveryCustomers: [],
+  deliverySummary: null,
   operatingDate: null,
   dateFrom: null,
   dateTo: null
@@ -24,6 +29,7 @@ const el = Object.fromEntries([
   "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
   "maintenanceForm", "maintenanceList", "alertList", "alertFilter",
   "topActions", "conditionGrid", "carRevenueChip", "bikeRevenueChip",
+  "deliveryList", "deliveryBatchForm", "deliverySummaryLabel",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody"
 ].map((id) => [id, document.getElementById(id)]));
@@ -93,7 +99,7 @@ const timeOf = (value) => new Date(value).toLocaleTimeString("en-NG", { hour: "2
 // capture="environment" so phones open the camera directly (not the
 // gallery); captured_at is stamped at capture time and the server can
 // enforce a freshness window via MEDIA_STRICT_CAPTURE.
-const stagedPhotos = { inspection: null, maintenance: null };
+const stagedPhotos = { inspection: null, maintenance: null, dexception: null };
 
 function compressPhoto(file) {
   return new Promise((resolve, reject) => {
@@ -181,7 +187,7 @@ function evidenceChips(mediaIds) {
 
 /* ---------- tab navigation ---------- */
 
-const TABS = ["cockpit", "board", "alerts", "fuel", "field", "closeout"];
+const TABS = ["cockpit", "board", "alerts", "deliveries", "fuel", "field", "closeout"];
 function activateTab(name) {
   const tab = TABS.includes(name) ? name : "cockpit";
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.tab === tab));
@@ -222,8 +228,12 @@ function analyseTeam() {
     return { ...item, operator, alerts, openIncidents, vehicleIssue, fuelRisk, offlineAfterOnline };
   });
 
+  const onDeliveryIds = new Set(state.deliveryAssignments
+    .filter((assignment) => assignment.batch_status !== "closed" && assignment.status !== "completed")
+    .map((assignment) => assignment.operator_id));
   const groups = [
-    { id: "not_seen", label: "Not seen today", tone: "red", rows: rows.filter((row) => row.current_status === "not_seen_today") },
+    { id: "on_delivery", label: "On delivery", tone: "green", rows: rows.filter((row) => onDeliveryIds.has(row.operator_id)) },
+    { id: "not_seen", label: "Not seen today", tone: "red", rows: rows.filter((row) => row.current_status === "not_seen_today" && !onDeliveryIds.has(row.operator_id)) },
     { id: "offline_after_online", label: "Offline after coming online", tone: "red", rows: rows.filter((row) => row.offlineAfterOnline) },
     { id: "open_alert", label: "Open alert", tone: "red", rows: rows.filter((row) => row.alerts.length || row.openIncidents.length) },
     { id: "behind", label: "Behind pace", tone: "yellow", rows: rows.filter((row) => ["behind", "at_risk"].includes(row.pace_status) && row.current_status !== "not_seen_today") },
@@ -231,6 +241,7 @@ function analyseTeam() {
     { id: "vehicle_issue", label: "Vehicle issue", tone: "yellow", rows: rows.filter((row) => row.vehicleIssue) },
     { id: "on_track", label: "Online and on track", tone: "green", rows: rows.filter((row) => !["not_seen_today", "offline"].includes(row.current_status) && !["behind", "at_risk"].includes(row.pace_status) && !row.alerts.length) }
   ];
+  
   return { rows, groups, mileageExceptions, fuelConfirmed, issues };
 }
 
@@ -241,8 +252,11 @@ function closeoutChecklist(analysis) {
   const openMaintenance = state.maintenance.filter((report) => report.status !== "resolved");
   const unconfirmedFuel = state.operators.filter((operator) =>
     operator.vehicle_id && !analysis.fuelConfirmed.has(operator.operator_id));
+  const openDeliveryExceptions = state.deliveryExceptions.filter((exception) => exception.status === "open").length;
+  const unclosedBatches = state.deliveryBatches.filter((batch) => batch.status !== "closed").length;
   return [
     { id: "alerts", label: "Unresolved alerts", count: openAlerts.length, tab: "alerts" },
+    { id: "deliveries", label: "Delivery exceptions / open batches", count: openDeliveryExceptions + unclosedBatches, tab: "deliveries" },
     { id: "incidents", label: "Open incidents", count: openIncidents.length, tab: "field" },
     { id: "inspections", label: "Overdue inspections", count: overdueInspections.length, tab: "field" },
     { id: "fuel", label: "Fuel not confirmed", count: unconfirmedFuel.length, tab: "fuel" },
@@ -405,6 +419,7 @@ function renderCockpit(analysis) {
       label: group.label, count: group.rows.length, tone: group.rows.length ? group.tone : "green", tab: "board"
     })),
     { label: "Open alerts", count: state.alerts.filter((alert) => alert.resolution_status === "open").length, tone: state.alerts.some((alert) => alert.resolution_status === "open") ? "red" : "green", tab: "alerts" },
+    { label: "Packages left", count: Number(state.deliverySummary?.packages_outstanding || 0), tone: Number(state.deliverySummary?.packages_outstanding) ? "yellow" : "green", tab: "deliveries" },
     { label: "Closeout blockers", count: checklist.reduce((sum, item) => sum + (item.count ? 1 : 0), 0), tone: checklist.some((item) => item.count) ? "yellow" : "green", tab: "closeout" }
   ];
   el.conditionGrid.innerHTML = conditions.map((condition) => `
@@ -583,6 +598,104 @@ function renderCloseout(analysis) {
   }).join("") : `<div class="empty">No operating units in scope.</div>`;
 }
 
+function renderDeliveries() {
+  const summary = state.deliverySummary;
+  el.deliverySummaryLabel.textContent = summary
+    ? `${summary.batches} batch${summary.batches === 1 ? "" : "es"} · ${summary.delivered} delivered · ${summary.packages_outstanding} left · ${summary.open_exceptions} exception${summary.open_exceptions === 1 ? "" : "s"}`
+    : "";
+
+  const customerOptions = state.deliveryCustomers.filter((customer) => customer.status === "active");
+  el.deliveryBatchForm.elements.delivery_customer_id.innerHTML = customerOptions.map((customer) =>
+    `<option value="${escapeHtml(customer.delivery_customer_id)}">${escapeHtml(customer.name)}</option>`).join("");
+  const amoebas = [...new Set(state.operators.map((operator) => operator.amoeba_id))];
+  el.deliveryBatchForm.elements.amoeba_id.innerHTML = amoebas.map((amoebaId) =>
+    `<option value="${escapeHtml(amoebaId)}">${escapeHtml(amoebaId.replace("amoeba_", ""))}</option>`).join("");
+
+  const exceptionsByBatch = new Map();
+  for (const exception of state.deliveryExceptions) {
+    if (!exceptionsByBatch.has(exception.batch_id)) exceptionsByBatch.set(exception.batch_id, []);
+    exceptionsByBatch.get(exception.batch_id).push(exception);
+  }
+  const assignmentsByBatch = new Map();
+  for (const assignment of state.deliveryAssignments) {
+    if (!assignmentsByBatch.has(assignment.batch_id)) assignmentsByBatch.set(assignment.batch_id, []);
+    assignmentsByBatch.get(assignment.batch_id).push(assignment);
+  }
+
+  el.deliveryList.innerHTML = state.deliveryBatches.length ? state.deliveryBatches.map((batch) => {
+    const closed = batch.status === "closed";
+    const assignments = assignmentsByBatch.get(batch.batch_id) || [];
+    const exceptions = exceptionsByBatch.get(batch.batch_id) || [];
+    const assignableOperators = state.operators.filter((operator) =>
+      operator.amoeba_id === batch.amoeba_id && !assignments.some((assignment) => assignment.operator_id === operator.operator_id));
+    return `
+    <details class="board-group tone-${closed ? "green" : Number(batch.open_exceptions) ? "red" : "yellow"}" ${closed ? "" : "open"}>
+      <summary><span class="group-count">${Number(batch.delivered_count)}/${Number(batch.received_count)}</span>
+        ${escapeHtml(batch.customer_name)} · ${escapeHtml(String(batch.batch_date).slice(0, 10))}
+        <small>${escapeHtml(batch.manifest_ref || "No manifest ref")} · <span class="pill ${closed ? "resolved" : "pending"}">${escapeHtml(batch.status.replaceAll("_", " "))}</span></small>
+      </summary>
+      <div>
+        <div class="count-ladder">
+          <span>expected<strong>${Number(batch.expected_count)}</strong></span>
+          <span>received<strong>${Number(batch.received_count)}</strong></span>
+          <span>sorted<strong>${Number(batch.sorted_count)}</strong></span>
+          <span>assigned<strong>${Number(batch.assigned_count)}</strong></span>
+          <span>delivered<strong>${Number(batch.delivered_count)}</strong></span>
+          <span class="${Number(batch.failed_count) ? "flag" : ""}">failed<strong>${Number(batch.failed_count)}</strong></span>
+          <span>returned<strong>${Number(batch.returned_count)}</strong></span>
+          <span class="${Number(batch.packages_outstanding) ? "flag" : ""}">left<strong>${Number(batch.packages_outstanding)}</strong></span>
+        </div>
+        <div class="split-chips"><span class="source-chip">${escapeHtml(String(batch.counts_source).replaceAll("_", " "))}</span>
+          <span>₦${Number(batch.delivered_value_allocated_ngn || 0).toLocaleString()} allocated value</span></div>
+
+        <div class="card-list" style="margin-top:8px">
+          ${assignments.map((assignment) => `
+            <div class="assignment-row">
+              <strong>${escapeHtml(personName(assignment.person_id))}</strong>
+              <span class="pill ${escapeHtml(assignment.status)}">${escapeHtml(assignment.status.replaceAll("_", " "))}</span>
+              <small>target ${Number(assignment.assigned_count)} · ₦${Number(assignment.earned_value_allocated_ngn).toLocaleString()} earned</small>
+              ${closed ? `<small>${Number(assignment.delivered_count)} delivered · ${Number(assignment.failed_count)} failed · ${Number(assignment.returned_count)} returned</small>` : `
+              <span class="progress-inputs" data-assignment-inputs="${escapeHtml(assignment.assignment_id)}">
+                <label>del.<input type="number" min="0" value="${Number(assignment.delivered_count)}" data-field="delivered_count" /></label>
+                <label>fail<input type="number" min="0" value="${Number(assignment.failed_count)}" data-field="failed_count" /></label>
+                <label>ret.<input type="number" min="0" value="${Number(assignment.returned_count)}" data-field="returned_count" /></label>
+                <button type="button" data-save-assignment="${escapeHtml(assignment.assignment_id)}">Save</button>
+              </span>`}
+            </div>`).join("")}
+        </div>
+
+        ${!closed && assignableOperators.length ? `
+        <div class="delivery-actions">
+          <select data-assign-operator-select="${escapeHtml(batch.batch_id)}">
+            ${assignableOperators.map((operator) => `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))}</option>`).join("")}
+          </select>
+          <input type="number" min="1" value="20" data-assign-count="${escapeHtml(batch.batch_id)}" style="width:70px" />
+          <button type="button" data-assign-driver="${escapeHtml(batch.batch_id)}">Assign driver</button>
+        </div>` : ""}
+
+        ${exceptions.length ? `<div class="card-list" style="margin-top:8px">${exceptions.map((exception) => `
+          <div class="assignment-row">
+            <span class="pill ${exception.status === "open" ? "open" : "resolved"}">${escapeHtml(exception.category.replaceAll("_", " "))}</span>
+            <small>${escapeHtml(exception.note || "No note")}</small>
+            ${(exception.media_ids || []).length ? evidenceChips(exception.media_ids) : ""}
+            ${exception.status === "open" ? `<button type="button" class="linklike" data-resolve-dexception="${escapeHtml(exception.exception_id)}">Resolve</button>` : ""}
+          </div>`).join("")}</div>` : ""}
+
+        ${closed ? "" : `
+        <div class="delivery-actions">
+          <select data-exception-category="${escapeHtml(batch.batch_id)}">
+            ${["shortage", "damaged", "customer_dispute", "failed_delivery", "return_pending", "other"].map((category) => `<option value="${category}">${category.replaceAll("_", " ")}</option>`).join("")}
+          </select>
+          <input data-exception-note="${escapeHtml(batch.batch_id)}" placeholder="Exception note" />
+          <label class="photo-field" style="margin:0"><input type="file" accept="image/*" capture="environment" data-photo-input="dexception" /><span class="photo-status" data-photo-status="dexception"></span></label>
+          <button type="button" data-add-dexception="${escapeHtml(batch.batch_id)}">Record exception</button>
+          <button type="button" data-close-batch="${escapeHtml(batch.batch_id)}">Close batch</button>
+        </div>`}
+      </div>
+    </details>`;
+  }).join("") : `<div class="empty">No delivery batches in this range. Create one when a customer drop-off arrives.</div>`;
+}
+
 let latestAnalysis = null;
 function render() {
   latestAnalysis = analyseTeam();
@@ -593,6 +706,7 @@ function render() {
   renderField();
   renderFuel();
   renderCloseout(latestAnalysis);
+  renderDeliveries();
   if (openOperatorId) renderOperatorDialog(openOperatorId);
 }
 
@@ -714,7 +828,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts] = await Promise.all([
+  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliverySummary] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
@@ -724,7 +838,12 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/inspections/compliance"),
     ops("/ops/v1/maintenance-reports"),
     ops("/ops/v1/vehicles"),
-    ops(`/ops/v1/daily-closeouts?record_date=${dateTo}`).catch(() => ({ data: [] }))
+    ops(`/ops/v1/daily-closeouts?record_date=${dateTo}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/delivery-batches?${range}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/delivery-assignments?${range}`).catch(() => ({ data: [] })),
+    ops("/ops/v1/delivery-exceptions").catch(() => ({ data: [] })),
+    ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
+    ops(`/ops/v1/delivery-summary?${range}`).catch(() => null)
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -749,6 +868,11 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     maintenance: maintenance.data.filter((report) => scopedVehicleIds.has(report.vehicle_id)),
     vehicles: scopedVehicles,
     closeouts: closeouts.data.filter((closeout) => closeout.supervisor_person_id === actorPersonId || assignedAmoebas.has(closeout.amoeba_id)),
+    deliveryBatches: deliveryBatches.data.filter((batch) => assignedAmoebas.has(batch.amoeba_id)),
+    deliveryAssignments: deliveryAssignments.data.filter((assignment) => assignedIds.has(assignment.operator_id)),
+    deliveryExceptions: deliveryExceptions.data.filter((exception) => assignedAmoebas.has(exception.amoeba_id)),
+    deliveryCustomers: deliveryCustomers.data,
+    deliverySummary,
     operatingDate,
     dateFrom,
     dateTo
@@ -795,6 +919,28 @@ el.fuelIssueForm.addEventListener("submit", async (event) => {
     });
     el.fuelIssueForm.reset();
     await refresh("Fuel issue confirmed.");
+  } catch (error) { showError(error); }
+});
+
+el.deliveryBatchForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.deliveryBatchForm));
+  try {
+    await ops("/ops/v1/delivery-batches", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("dbatch") },
+      body: JSON.stringify({
+        delivery_customer_id: values.delivery_customer_id,
+        amoeba_id: values.amoeba_id,
+        batch_date: state.dateTo,
+        manifest_ref: values.manifest_ref || null,
+        expected_count: Number(values.expected_count || 0),
+        received_count: Number(values.received_count || 0),
+        sorted_count: Number(values.sorted_count || 0)
+      })
+    });
+    el.deliveryBatchForm.reset();
+    await refresh("Delivery batch created.");
   } catch (error) { showError(error); }
 });
 
@@ -875,6 +1021,80 @@ document.addEventListener("click", async (event) => {
         })
       });
       await refresh(status === "resolved" ? "Maintenance resolved." : "Repair started.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const assignDriver = event.target.closest("[data-assign-driver]");
+  if (assignDriver) {
+    const batchId = assignDriver.dataset.assignDriver;
+    const operatorId = document.querySelector(`[data-assign-operator-select="${batchId}"]`)?.value;
+    const count = Number(document.querySelector(`[data-assign-count="${batchId}"]`)?.value || 0);
+    try {
+      await ops(`/ops/v1/delivery-batches/${batchId}/assignments`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dassign") },
+        body: JSON.stringify({ operator_id: operatorId, assigned_count: count })
+      });
+      await refresh("Driver assigned.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const saveAssignment = event.target.closest("[data-save-assignment]");
+  if (saveAssignment) {
+    const assignmentId = saveAssignment.dataset.saveAssignment;
+    const wrap = document.querySelector(`[data-assignment-inputs="${assignmentId}"]`);
+    const payload = {};
+    for (const input of wrap.querySelectorAll("input[data-field]")) payload[input.dataset.field] = Number(input.value || 0);
+    try {
+      await ops(`/ops/v1/delivery-assignments/${assignmentId}`, {
+        method: "PATCH",
+        headers: { "Idempotency-Key": key("dprogress") },
+        body: JSON.stringify({ ...payload, status: "out_for_delivery" })
+      });
+      await refresh("Delivery progress saved.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const addException = event.target.closest("[data-add-dexception]");
+  if (addException) {
+    const batchId = addException.dataset.addDexception;
+    try {
+      const mediaIds = await uploadStagedPhoto("dexception", "delivery_exception_evidence");
+      await ops(`/ops/v1/delivery-batches/${batchId}/exceptions`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dexception") },
+        body: JSON.stringify({
+          category: document.querySelector(`[data-exception-category="${batchId}"]`)?.value,
+          note: document.querySelector(`[data-exception-note="${batchId}"]`)?.value || null,
+          media_ids: mediaIds
+        })
+      });
+      await refresh("Delivery exception recorded.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const resolveDexception = event.target.closest("[data-resolve-dexception]");
+  if (resolveDexception) {
+    try {
+      await ops(`/ops/v1/delivery-exceptions/${resolveDexception.dataset.resolveDexception}/resolve`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dresolve") },
+        body: JSON.stringify({ resolution_notes: "Resolved from supervisor console." })
+      });
+      await refresh("Delivery exception resolved.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const closeBatch = event.target.closest("[data-close-batch]");
+  if (closeBatch) {
+    if (!window.confirm("Close this batch? Its counts will be locked.")) return;
+    try {
+      await ops(`/ops/v1/delivery-batches/${closeBatch.dataset.closeBatch}/close`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dclose") },
+        body: JSON.stringify({})
+      });
+      await refresh("Batch closed and locked.");
     } catch (error) { showError(error); }
     return;
   }

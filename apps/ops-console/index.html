@@ -30,6 +30,7 @@
       <a href="#cockpit" data-tab-link="cockpit" class="active"><span class="dock-icon">◉</span>Cockpit</a>
       <a href="#board" data-tab-link="board"><span class="dock-icon">👥</span>Board</a>
       <a href="#alerts" data-tab-link="alerts"><span class="dock-icon">⚠</span>Alerts<span id="alertDockBadge" class="dock-badge" hidden></span></a>
+      <a href="#deliveries" data-tab-link="deliveries"><span class="dock-icon">📦</span>Deliver</a>
       <a href="#fuel" data-tab-link="fuel"><span class="dock-icon">⛽</span>Fuel</a>
       <a href="#field" data-tab-link="field"><span class="dock-icon">🛠</span>Field</a>
       <a href="#closeout" data-tab-link="closeout"><span class="dock-icon">✓</span>Close</a>
@@ -109,6 +110,30 @@
         </div>
         <p class="section-intro">Conditions are grouped so scale is visible first. Open a condition to work through the operators inside it.</p>
         <div id="alertList" class="alert-groups"></div>
+      </section>
+
+      <!-- ============ SCHEDULED DELIVERIES ============ -->
+      <section id="deliveries" class="tab-panel" data-tab="deliveries">
+        <div class="section-heading">
+          <div><p class="eyebrow">Prescheduled work</p><h2>Scheduled deliveries</h2></div>
+          <span id="deliverySummaryLabel" class="subtle"></span>
+        </div>
+        <p class="section-intro">Batch-level control: record what arrived, assign daily targets to drivers, keep progress and exceptions current. Every figure carries its source until customer APIs land.</p>
+
+        <details class="management-panel">
+          <summary>Create a delivery batch</summary>
+          <form id="deliveryBatchForm" class="fuel-form">
+            <label>Customer<select name="delivery_customer_id" required></select></label>
+            <label>Operating unit<select name="amoeba_id" required></select></label>
+            <label>Manifest ref<input name="manifest_ref" placeholder="e.g. KONGA-2026-08-02" /></label>
+            <label>Expected<input name="expected_count" type="number" min="0" value="0" /></label>
+            <label>Received<input name="received_count" type="number" min="0" value="0" /></label>
+            <label>Sorted<input name="sorted_count" type="number" min="0" value="0" /></label>
+            <button type="submit">Create batch</button>
+          </form>
+        </details>
+
+        <div id="deliveryList" class="board-groups"></div>
       </section>
 
       <!-- ============ FUEL & CHARGE ============ -->

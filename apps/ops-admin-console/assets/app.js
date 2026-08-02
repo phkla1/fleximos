@@ -19,6 +19,8 @@ const state = {
   teams: [],
   alertGroups: [],
   serviceHealth: null,
+  deliveryCustomers: [],
+  allocatedPrices: [],
   operatingDate: null,
   jobFilter: ""
 };
@@ -34,6 +36,7 @@ const el = Object.fromEntries(
     "paceProfileForm", "paceProfileList", "efficiencyPolicyForm", "efficiencyPolicyList",
     "economicsPolicyForm", "economicsPolicyList",
     "leaderboardConfigForm", "leaderboardConfigSummary",
+    "deliveryCustomerList", "deliveryCustomerForm", "allocatedPriceList", "allocatedPriceForm",
     "fleetPolicyForm", "fleetPolicySummary",
     "inspectionComplianceSummary", "inspectionComplianceList",
     "jobHealthSummary", "jobHealthMetrics", "scheduledJobList", "scheduledJobRuns",
@@ -68,6 +71,7 @@ el.dateTo.value = todayLagos;
 el.paceProfileForm.elements.effective_from.value = todayLagos;
 el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
 el.economicsPolicyForm.elements.effective_from.value = todayLagos;
+el.allocatedPriceForm.elements.effective_from.value = todayLagos;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -498,6 +502,21 @@ function render() {
     </article>`;
   }).join("") || `<div class="empty">No economics policies configured.</div>`;
 
+  el.deliveryCustomerList.innerHTML = state.deliveryCustomers.length ? state.deliveryCustomers.map((customer) => `
+    <article class="policy-row ${customer.status === "active" ? "" : "superseded"}">
+      <div><strong>${escapeHtml(customer.name)}</strong><small>${escapeHtml(customer.contact || "No contact")}</small><span class="pill ${customer.status === "active" ? "" : "superseded"}">${escapeHtml(customer.status)}</span></div>
+      <div><strong>₦${Number(customer.contract_price_ngn).toLocaleString()}/package contract</strong><small>Finance-facing; operators see the allocated price only</small></div>
+    </article>`).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
+
+  el.allocatedPriceList.innerHTML = state.allocatedPrices.map((price) => {
+    const status = policyStatus({ effective_from: price.effective_from, effective_to: price.effective_to }, state.allocatedPrices);
+    return `
+    <article class="policy-row ${status}">
+      <div><strong>₦${Number(price.price_ngn).toLocaleString()}/package allocated</strong><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
+      <div><small>Effective ${escapeHtml(effectiveWindow(price))}</small></div>
+    </article>`;
+  }).join("") || `<div class="empty">No allocated price configured.</div>`;
+
   const config = state.leaderboardConfig;
   el.leaderboardConfigSummary.innerHTML = config ? `
     <article class="policy-row">
@@ -606,10 +625,12 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/notification-deliveries"),
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
   ]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
-    ops("/ops/v1/fleet-policy").catch(() => null)
+    ops("/ops/v1/fleet-policy").catch(() => null),
+    ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
+    ops("/ops/v1/delivery-allocated-prices").catch(() => ({ data: [] }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
@@ -655,6 +676,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     serviceHealth,
     leaderboardConfig,
     inspectionCompliance,
+    deliveryCustomers: deliveryCustomers.data,
+    allocatedPrices: allocatedPrices.data,
     fleetPolicy,
     operatingDate,
     dateFrom,
@@ -885,6 +908,35 @@ el.leaderboardConfigForm.addEventListener("submit", async (event) => {
       })
     });
     await refresh("Leaderboard weights saved.");
+  } catch (error) { showError(error); }
+});
+
+el.deliveryCustomerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.deliveryCustomerForm));
+  try {
+    await ops("/ops/v1/delivery-customers", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("dcustomer") },
+      body: JSON.stringify({ name: values.name, contract_price_ngn: Number(values.contract_price_ngn), contact: values.contact || null })
+    });
+    el.deliveryCustomerForm.reset();
+    await refresh("Delivery customer added.");
+  } catch (error) { showError(error); }
+});
+
+el.allocatedPriceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.allocatedPriceForm));
+  try {
+    await ops("/ops/v1/delivery-allocated-prices", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("allocated") },
+      body: JSON.stringify({ price_ngn: Number(values.price_ngn), effective_from: values.effective_from })
+    });
+    el.allocatedPriceForm.reset();
+    el.allocatedPriceForm.elements.effective_from.value = todayLagos;
+    await refresh("Allocated price saved.");
   } catch (error) { showError(error); }
 });
 

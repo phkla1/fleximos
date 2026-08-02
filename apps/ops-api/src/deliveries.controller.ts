@@ -35,6 +35,17 @@ export class DeliveriesController {
     return value;
   }
 
+  // Contract prices are finance/manager-facing (spec v0.2): strip them for
+  // actors without business oversight (supervisors still see allocated).
+  private canSeeContract(actor: any) {
+    try {
+      this.identity.requireBusinessOversight(actor);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async mutate(key: string, status: number, factory: () => Promise<any>) {
     const cached = await this.ops.cached(key);
     if (cached) return cached.body;
@@ -51,7 +62,11 @@ export class DeliveriesController {
   async listCustomers(@Req() req: Request) {
     const actor = await this.auth(req);
     this.identity.requireSupervisor(actor);
-    return { data: await this.deliveries.listCustomers(), next_cursor: null };
+    const customers = await this.deliveries.listCustomers();
+    return {
+      data: this.canSeeContract(actor) ? customers : customers.map(({ contract_price_ngn, ...row }: any) => row),
+      next_cursor: null
+    };
   }
 
   @ApiTags("Deliveries")
@@ -120,11 +135,13 @@ export class DeliveriesController {
   ) {
     const actor = await this.auth(req);
     this.identity.requireSupervisor(actor);
+    const rows = await this.deliveries.listBatches(
+      { date_from: dateFrom, date_to: dateTo, record_date: recordDate, customer_id: customerId, status },
+      this.identity.dataScope(actor)
+    );
+    const showContract = this.canSeeContract(actor);
     return {
-      data: await this.deliveries.listBatches(
-        { date_from: dateFrom, date_to: dateTo, record_date: recordDate, customer_id: customerId, status },
-        this.identity.dataScope(actor)
-      ),
+      data: showContract ? rows : rows.map(({ contract_price_ngn, delivered_value_contract_ngn, ...row }: any) => row),
       next_cursor: null
     };
   }
@@ -277,6 +294,11 @@ export class DeliveriesController {
   ) {
     const actor = await this.auth(req);
     this.identity.requireSupervisor(actor);
-    return this.deliveries.deliverySummary({ date_from: dateFrom, date_to: dateTo }, this.identity.dataScope(actor));
+    const summary: any = await this.deliveries.deliverySummary({ date_from: dateFrom, date_to: dateTo }, this.identity.dataScope(actor));
+    if (!this.canSeeContract(actor)) {
+      delete summary.delivered_value_contract_ngn;
+      delete summary.margin_ngn;
+    }
+    return summary;
   }
 }

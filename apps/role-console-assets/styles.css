@@ -382,3 +382,5 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
   background: #fff; font-size: 11.5px; font-weight: 800; color: var(--green-dark, #14523f); cursor: pointer;
 }
 .evidence-chip:hover { border-color: var(--green, #1d7a5f); }
+
+.risk-text { color: var(--red, #b3392b); }

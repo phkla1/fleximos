@@ -90,7 +90,14 @@ within 30 minutes.
 wider range, revenue, trips and hours sum across the days and the target
 scales to match.
 
-### OP-10 · Sign out and back in
+### OP-10 · Deliveries today (couriers)
+1. Sign in as a courier with a delivery assignment (e.g. `0707 377 2773`).
+
+**Expected:** a "Deliveries today" card on the Today tab: customer name,
+delivered-of-assigned progress bar, failed count, and ₦ earned of ₦ target —
+both at the allocated price. You never see the customer's contract price.
+
+### OP-11 · Sign out and back in
 1. Tap the sign-out button (top right), then sign in again.
 
 **Expected:** clean sign-out, clean sign-in, data intact.
@@ -109,5 +116,6 @@ scales to match.
 | OP-8 | | |
 | OP-9 | | |
 | OP-10 | | |
+| OP-11 | | |
 
 Tester: ____________  Date: ____________  Device/browser: ____________

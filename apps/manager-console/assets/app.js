@@ -97,6 +97,14 @@ function renderPortfolio() {
       <div class="card-kpis"><span><strong>${team.live}/${team.rows.length}</strong> live</span><span><strong>${money(team.cars)}</strong> cars</span><span><strong>${money(team.bikes)}</strong> bikes</span><span><strong>${team.alerts}</strong> alerts</span></div>
       <div class="progress-label"><span>${money(team.revenue)} vs ${money(team.expected)} target</span><strong>${progress}%</strong></div>
       <div class="progress-track"><span style="width:${Math.min(100, progress)}%"></span></div>
+      ${(() => {
+        const batches = (state.deliveryBatches || []).filter((batch) => batch.amoeba_id === team.amoeba);
+        if (!batches.length) return "";
+        const delivered = batches.reduce((sum, batch) => sum + Number(batch.delivered_count), 0);
+        const left = batches.reduce((sum, batch) => sum + Number(batch.packages_outstanding), 0);
+        const exceptions = batches.reduce((sum, batch) => sum + Number(batch.open_exceptions), 0);
+        return `<div class="progress-label"><span>📦 ${batches.length} batch${batches.length === 1 ? "" : "es"} · ${delivered} delivered · ${left} left</span><strong class="${exceptions ? "risk-text" : ""}">${exceptions ? `${exceptions} exception${exceptions === 1 ? "" : "s"}` : "No exceptions"}</strong></div>`;
+      })()}
     </article>`;
   }).join("") : '<div class="empty">No teams are visible in this Manager scope.</div>';
 }
@@ -114,7 +122,8 @@ function renderEscalations() {
     ["Open incidents", queue.counts.open_incidents, queue.counts.high_severity_incidents_unacknowledged ? "metric-risk" : queue.counts.open_incidents ? "metric-unconfigured" : "metric-good"],
     ["Overdue inspections", queue.counts.overdue_inspections, queue.counts.overdue_inspections ? "metric-unconfigured" : "metric-good"],
     ["Missing closeouts", queue.counts.missing_closeouts_today, queue.counts.missing_closeouts_today ? "metric-unconfigured" : "metric-good"],
-    ["Open maintenance", queue.counts.open_maintenance_reports, queue.counts.open_maintenance_reports ? "metric-unconfigured" : "metric-good"]
+    ["Open maintenance", queue.counts.open_maintenance_reports, queue.counts.open_maintenance_reports ? "metric-unconfigured" : "metric-good"],
+    ["Delivery exceptions", (state.deliveryExceptions || []).length, (state.deliveryExceptions || []).length ? "metric-unconfigured" : "metric-good"]
   ];
   el.escalationSummary.innerHTML = summaryTiles.map(([name, value, cls]) =>
     `<article class="${cls}"><span>${name}</span><strong>${value}</strong></article>`).join("");
@@ -162,6 +171,13 @@ function renderEscalations() {
       context: `${row.active_operators} active operators`,
       when: "Due 19:00 WAT",
       pill: "pending", pillText: "Closeout"
+    })),
+    ...(state.deliveryExceptions || []).map((exception) => ({
+      title: `${exception.customer_name} delivery ${label(exception.category)}`,
+      context: `${amoebaName(exception.amoeba_id)} · ${String(exception.batch_date).slice(0, 10)}`,
+      when: exception.note || "No note",
+      pill: "open", pillText: "Delivery",
+      media: exception.media_ids
     })),
     ...queue.open_maintenance_reports.map((report) => ({
       title: `${report.vehicle_plate} · ${label(report.category)}`,
@@ -213,6 +229,8 @@ function renderPnl() {
     ["Direct expenses", money(pnl.totals.direct_expenses_ngn), ""],
     ["Maintenance", money(pnl.totals.maintenance_costs_ngn), ""],
     ["Central costs", money(pnl.central_expenses_ngn), ""],
+    ["Delivery revenue", money(pnl.totals.delivery_contract_revenue_ngn || 0), ""],
+    ["Delivery margin", money(pnl.totals.delivery_margin_ngn || 0), Number(pnl.totals.delivery_margin_ngn) > 0 ? "metric-good" : ""],
     ["Hourly P&L", pnl.totals.hourly_pnl_ngn === null ? "—" : `${money(pnl.totals.hourly_pnl_ngn)}/h`, Number(pnl.totals.hourly_pnl_ngn) < 0 ? "metric-risk" : "metric-good"]
   ].map(([name, value, cls]) => `<article class="${cls}"><span>${name}</span><strong>${value}</strong></article>`).join("");
 
@@ -225,6 +243,7 @@ function renderPnl() {
         <span><strong>${money(row.net_earnings_ngn)}</strong> Net Earnings</span>
         <span><strong>${money(row.direct_expenses_ngn + row.maintenance_costs_ngn)}</strong> direct costs</span>
         <span><strong>${money(row.central_allocation_ngn)}</strong> central share</span>
+        ${Number(row.delivery_contract_revenue_ngn) ? `<span><strong>${money(row.delivery_contract_revenue_ngn)}</strong> delivery revenue (${row.packages_delivered} pkgs, ${money(row.delivery_margin_ngn)} margin)</span>` : ""}
         <span><strong>${money(row.gross_pnl_ngn)}</strong> gross P&L</span>
       </div>
       <div class="progress-label"><span>${row.hourly_pnl_ngn === null ? "No hours recorded" : `${money(row.hourly_pnl_ngn)}/hour over ${row.hours_online}h`}</span><strong>${row.target_attainment_pct === null ? "—" : `${row.target_attainment_pct}% of target`}</strong></div>
@@ -350,11 +369,16 @@ async function refresh() {
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
-  const [board, alerts, reports, escalations] = await Promise.all([
+  const [board, alerts, reports, escalations, deliveryBatches, deliveryExceptions] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`), ops(`/ops/v1/alerts?${range}`),
-    ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations")
+    ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations"),
+    ops(`/ops/v1/delivery-batches?${range}`).catch(() => ({ data: [] })),
+    ops("/ops/v1/delivery-exceptions?status=open").catch(() => ({ data: [] }))
   ]);
-  Object.assign(state, { board: board.data, alerts: alerts.data, reports: reports.data, escalations });
+  Object.assign(state, {
+    board: board.data, alerts: alerts.data, reports: reports.data, escalations,
+    deliveryBatches: deliveryBatches.data, deliveryExceptions: deliveryExceptions.data
+  });
   await loadPnlAndLeaderboard();
   render();
   connection("connected", "Scoped APIs connected");

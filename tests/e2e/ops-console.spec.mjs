@@ -15,7 +15,7 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#bikeRevenueChip")).toContainText("Bikes");
     await expect(page.getByRole("heading", { name: "Do these first" })).toBeVisible();
     await expect(page.locator(".condition-card").first()).toBeVisible();
-    await expect(page.locator(".dock a")).toHaveCount(6);
+    await expect(page.locator(".dock a")).toHaveCount(7);
     await expect(page.getByText("Daily performance ingestion")).toHaveCount(0);
     await expect(page.getByText("API connection")).toHaveCount(0);
   });
@@ -100,6 +100,19 @@ test.describe("Supervisor Ops console", () => {
     } else {
       await expect(page.locator(".closeout-card.submitted").first()).toBeVisible();
     }
+  });
+
+  test("runs the scheduled-delivery board", async ({ page }) => {
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.locator("[data-tab-link='deliveries']").click();
+    await expect(page.getByRole("heading", { name: "Scheduled deliveries" })).toBeVisible();
+    const batchGroups = page.locator("#deliveryList .board-group");
+    expect(await batchGroups.count()).toBeGreaterThan(0);
+    await expect(batchGroups.first()).toContainText("Konga");
+    await expect(page.locator(".count-ladder").first()).toBeVisible();
+    await expect(page.locator(".source-chip").first()).toContainText("customer app manual");
+    await expect(page.locator(".assignment-row").first()).toBeVisible();
   });
 
   test("has no page-level horizontal overflow on mobile", async ({ page }) => {

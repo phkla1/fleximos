@@ -322,6 +322,30 @@
             </details>
           </div>
           <div class="control-panel">
+            <h3>Delivery customers &amp; pricing</h3>
+            <p class="form-hint">Prescheduled-delivery customers sit beside the ride platforms as revenue sources. The <strong>contract price</strong> is what the customer pays per delivered package (finance-facing); the <strong>allocated price</strong> is one global figure used for operator performance and fees — operators only ever see the allocated value.</p>
+            <div id="deliveryCustomerList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Add a delivery customer</summary>
+              <form id="deliveryCustomerForm" class="entry-form compact-form">
+                <label>Name<input name="name" required placeholder="e.g. Speedaf" /></label>
+                <label>Contract price ₦/package<input name="contract_price_ngn" type="number" min="1" step="10" required /></label>
+                <label>Contact<input name="contact" placeholder="Optional" /></label>
+                <button type="submit">Add customer</button>
+              </form>
+            </details>
+            <div id="allocatedPriceList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Set the global allocated price</summary>
+              <form id="allocatedPriceForm" class="entry-form compact-form">
+                <label>Price ₦/package<input name="price_ngn" type="number" min="1" step="10" required /></label>
+                <label>Effective from<input name="effective_from" type="date" required /></label>
+                <p class="form-hint">One global value across all customers, versioned by date like other policies.</p>
+                <button type="submit">Save allocated price</button>
+              </form>
+            </details>
+          </div>
+          <div class="control-panel">
             <h3>Finance economics policy</h3>
             <div id="economicsPolicyList" class="data-list compact-list"></div>
             <details class="management-panel">

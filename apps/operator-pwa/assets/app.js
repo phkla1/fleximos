@@ -9,7 +9,7 @@ const ids = [
   "acceptancePct", "targetTotal", "assignment", "alertCount", "alertList", "mileage",
   "timeline", "leaderboard", "myRank", "myScore", "maintenanceForm", "supportButton",
   "supportDialog", "incidentNote", "explainDialog", "explainContext", "explainReason",
-  "explainNote", "alertDockBadge"
+  "explainNote", "alertDockBadge", "deliveryCard"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 let token = localStorage.getItem(storageKey);
@@ -205,14 +205,15 @@ async function load() {
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const date = dateTo;
   const weekStart = new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
-  const [boardPage, performancePage, alertPage, mileagePage, fuelPage, incidentPage, leaderboardPage] = await Promise.all([
+  const [boardPage, performancePage, alertPage, mileagePage, fuelPage, incidentPage, leaderboardPage, deliveryPage] = await Promise.all([
     api(opsBase, `/ops/v1/team-board?${range}`),
     api(opsBase, `/ops/v1/daily-performance?${range}`),
     api(opsBase, `/ops/v1/alerts?operator_id=${encodeURIComponent(operator.operator_id)}&${range}`),
     api(opsBase, `/ops/v1/mileage-reconciliations?${range}`),
     api(opsBase, `/ops/v1/fuel-issues?${range}`).catch(() => ({ data: [] })),
     api(opsBase, "/ops/v1/incidents").catch(() => ({ data: [] })),
-    api(opsBase, `/ops/v1/leaderboard?period_start=${weekStart}&period_end=${date}&amoeba_id=${encodeURIComponent(operator.amoeba_id)}`).catch(() => null)
+    api(opsBase, `/ops/v1/leaderboard?period_start=${weekStart}&period_end=${date}&amoeba_id=${encodeURIComponent(operator.amoeba_id)}`).catch(() => null),
+    api(opsBase, `/ops/v1/delivery-assignments?${range}`).catch(() => ({ data: [] }))
   ]);
   const board = boardPage.data[0] || {};
   const performance = performancePage.data;
@@ -294,6 +295,19 @@ async function load() {
     <div class="card-row"><strong>${mileage.fuel_quantity === null ? "Fuel not yet confirmed" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} issued`}</strong>
     <span>Official: ${mileage.official_distance_km === null ? "awaiting data" : `${Number(mileage.official_distance_km)} km`} · Tracker: ${mileage.tracker_distance_km === null ? "unavailable" : `${Number(mileage.tracker_distance_km)} km`}</span></div>
   ` : `<div class="empty">No mileage record is available.</div>`;
+
+  const myDeliveries = deliveryPage.data.filter((assignment) => assignment.operator_id === operator.operator_id);
+  el.deliveryCard.innerHTML = myDeliveries.length ? `
+    <div class="section-heading"><h2>Deliveries today</h2></div>
+    <div class="card-list">${myDeliveries.map((assignment) => {
+      const progress = Number(assignment.assigned_count) ? Math.min(100, Math.round(Number(assignment.delivered_count) / Number(assignment.assigned_count) * 100)) : 0;
+      return `
+      <div class="card-row">
+        <strong>${escapeHtml(assignment.customer_name)} · ${Number(assignment.delivered_count)} of ${Number(assignment.assigned_count)} delivered</strong>
+        <span>${Number(assignment.failed_count)} failed · ${money(assignment.earned_value_allocated_ngn)} earned of ${money(assignment.target_value_allocated_ngn)} target</span>
+        <div class="progress-track" style="height:8px;border-radius:999px;background:#e6ede9;overflow:hidden"><span style="display:block;height:100%;width:${progress}%;background:linear-gradient(90deg,#157a5c,#2c9e6f)"></span></div>
+      </div>`;
+    }).join("")}</div>` : "";
 
   renderTimeline();
 

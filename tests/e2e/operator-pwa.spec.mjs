@@ -71,6 +71,20 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator("#appNotice")).toContainText("supervisor has been notified");
   });
 
+  test("shows the deliveries-today card for an assigned courier", async ({ page }) => {
+    await page.goto(url);
+    if (await page.locator("#loginView").isVisible()) {
+      await page.locator('input[name="phone_or_email"]').fill("0707 377 2773");
+      await page.locator('input[name="pin"]').fill("000000");
+      await page.locator("#loginForm button[type=submit]").click();
+    }
+    await expect(page.locator("#appView")).toBeVisible();
+    await expect(page.locator("#connectionStatus")).toHaveText("Connected");
+    await expect(page.locator("#deliveryCard")).toContainText("Konga");
+    await expect(page.locator("#deliveryCard")).toContainText("delivered");
+    await expect(page.locator("#deliveryCard")).toContainText("earned");
+  });
+
   test("has no horizontal overflow on mobile", async ({ page }) => {
     await signIn(page);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
