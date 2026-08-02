@@ -525,6 +525,77 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at TIMESTAMPTZ NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS ops_delivery_customers (
+        delivery_customer_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        contact TEXT,
+        notes TEXT,
+        contract_price_ngn NUMERIC(12, 2) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS ops_delivery_allocated_prices (
+        allocated_price_id TEXT PRIMARY KEY,
+        price_ngn NUMERIC(12, 2) NOT NULL,
+        effective_from DATE NOT NULL,
+        effective_to DATE,
+        created_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS ops_delivery_batches (
+        batch_id TEXT PRIMARY KEY,
+        delivery_customer_id TEXT NOT NULL REFERENCES ops_delivery_customers(delivery_customer_id),
+        amoeba_id TEXT NOT NULL,
+        batch_date DATE NOT NULL,
+        manifest_ref TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        expected_count INTEGER NOT NULL DEFAULT 0,
+        received_count INTEGER NOT NULL DEFAULT 0,
+        sorted_count INTEGER NOT NULL DEFAULT 0,
+        counts_source TEXT NOT NULL DEFAULT 'customer_app_manual',
+        notes TEXT,
+        created_by_person_id TEXT,
+        closed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_delivery_batches_date ON ops_delivery_batches(batch_date DESC, amoeba_id);
+
+      CREATE TABLE IF NOT EXISTS ops_delivery_assignments (
+        assignment_id TEXT PRIMARY KEY,
+        batch_id TEXT NOT NULL REFERENCES ops_delivery_batches(batch_id),
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        assigned_count INTEGER NOT NULL,
+        delivered_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        returned_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'assigned',
+        counts_source TEXT NOT NULL DEFAULT 'customer_app_manual',
+        updated_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(batch_id, operator_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS ops_delivery_exceptions (
+        exception_id TEXT PRIMARY KEY,
+        batch_id TEXT NOT NULL REFERENCES ops_delivery_batches(batch_id),
+        assignment_id TEXT REFERENCES ops_delivery_assignments(assignment_id),
+        category TEXT NOT NULL,
+        note TEXT,
+        media_ids JSONB NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution_notes TEXT,
+        resolved_at TIMESTAMPTZ,
+        created_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS ops_leaderboard_config (
         config_id TEXT PRIMARY KEY,
         acceptance_weight NUMERIC(4, 2) NOT NULL DEFAULT 0.30,
@@ -542,6 +613,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     await this.seedScheduledJobs();
     await this.seedLeaderboardConfig();
     await this.seedFleetPolicy();
+    await this.seedAllocatedPrice();
   }
 
   async onModuleDestroy() {
@@ -685,6 +757,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         [timestamp]
       );
     }
+  }
+
+  private async seedAllocatedPrice() {
+    const existing = await this.one("SELECT allocated_price_id FROM ops_delivery_allocated_prices LIMIT 1");
+    if (existing) return;
+    await this.exec(
+      `INSERT INTO ops_delivery_allocated_prices
+        (allocated_price_id, price_ngn, effective_from, created_by_person_id, created_at)
+       VALUES ('allocated_default', 1000, '2026-01-01', 'person_founder_wole', $1)`,
+      [new Date().toISOString()]
+    );
   }
 
   private async seedFleetPolicy() {

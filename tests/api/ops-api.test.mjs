@@ -720,6 +720,110 @@ test("aggregates team board and performance over an operating-date range", async
   assert.equal(tooWide.response.status, 400);
 });
 
+test("runs the scheduled-delivery batch lifecycle with two-price economics", async () => {
+  const customer = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "dlv-customer-001" },
+    body: JSON.stringify({ name: "Speedaf Test", contract_price_ngn: 1400 })
+  });
+  assert.equal(customer.response.status, 201);
+
+  const priceList = await request("/ops/v1/delivery-allocated-prices");
+  assert.ok(priceList.body.data.length >= 1, "baseline allocated price is seeded");
+
+  const batch = await request("/ops/v1/delivery-batches", {
+    method: "POST",
+    headers: { "Idempotency-Key": "dlv-batch-001" },
+    body: JSON.stringify({
+      delivery_customer_id: customer.body.delivery_customer_id,
+      amoeba_id: "amoeba_mainland",
+      batch_date: "2026-06-10",
+      manifest_ref: "SPD-0610",
+      expected_count: 100,
+      received_count: 98
+    })
+  });
+  assert.equal(batch.response.status, 201);
+  const batchId = batch.body.batch_id;
+
+  await request(`/ops/v1/delivery-batches/${batchId}/counts`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "dlv-counts-001" },
+    body: JSON.stringify({ sorted_count: 95, counts_source: "customer_app_manual" })
+  });
+
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) => row.operator_status === "active");
+  const assignment = await request(`/ops/v1/delivery-batches/${batchId}/assignments`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "dlv-assign-001" },
+    body: JSON.stringify({ operator_id: operator.operator_id, assigned_count: 40 })
+  });
+  assert.equal(assignment.response.status, 201);
+
+  const overdelivered = await request(`/ops/v1/delivery-assignments/${assignment.body.assignment_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "dlv-progress-bad" },
+    body: JSON.stringify({ delivered_count: 39, failed_count: 5 })
+  });
+  assert.equal(overdelivered.response.status, 400, "delivered + failed cannot exceed assigned");
+
+  await request(`/ops/v1/delivery-assignments/${assignment.body.assignment_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "dlv-progress-001" },
+    body: JSON.stringify({ delivered_count: 30, failed_count: 2, status: "out_for_delivery" })
+  });
+
+  const batches = await request("/ops/v1/delivery-batches?date_from=2026-06-10&date_to=2026-06-10");
+  const listed = batches.body.data.find((row) => row.batch_id === batchId);
+  assert.equal(Number(listed.assigned_count), 40, "batch totals derive from assignments");
+  assert.equal(Number(listed.delivered_count), 30);
+  assert.equal(Number(listed.delivered_value_allocated_ngn), 30 * 1000, "allocated value at the seeded global price");
+  assert.equal(Number(listed.delivered_value_contract_ngn), 30 * 1400, "contract value at the customer price");
+  assert.equal(listed.counts_source, "customer_app_manual");
+
+  const exception = await request(`/ops/v1/delivery-batches/${batchId}/exceptions`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "dlv-exception-001" },
+    body: JSON.stringify({ category: "damaged", note: "Two cartons crushed." })
+  });
+  assert.equal(exception.response.status, 201);
+
+  const summary = await request("/ops/v1/delivery-summary?date_from=2026-06-10&date_to=2026-06-10");
+  assert.equal(summary.body.open_exceptions, 1);
+  assert.equal(summary.body.margin_ngn, 30 * 400, "margin = contract minus allocated");
+
+  await request(`/ops/v1/delivery-exceptions/${exception.body.exception_id}/resolve`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "dlv-resolve-001" },
+    body: JSON.stringify({ resolution_notes: "Claim accepted by customer." })
+  });
+
+  await request(`/ops/v1/delivery-batches/${batchId}/close`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "dlv-close-001" },
+    body: JSON.stringify({})
+  });
+  const lockedCounts = await request(`/ops/v1/delivery-batches/${batchId}/counts`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "dlv-counts-late" },
+    body: JSON.stringify({ received_count: 99 })
+  });
+  assert.equal(lockedCounts.response.status, 409, "closed batches lock their counts");
+
+  // Delivery earnings join the leaderboard revenue component at allocated value.
+  const leaderboard = await request("/ops/v1/leaderboard?period_start=2026-06-10&period_end=2026-06-10");
+  const entry = leaderboard.body.entries.find((row) => row.operator_id === operator.operator_id);
+  assert.ok(entry, "delivery-only day still appears on the leaderboard");
+  assert.equal(Number(entry.delivery_earnings_allocated_ngn), 30 * 1000);
+
+  // Contract revenue and margin join the amoeba P&L.
+  const pnl = await request("/ops/v1/pnl?period_start=2026-06-10&period_end=2026-06-10");
+  const amoeba = pnl.body.amoebas.find((row) => row.amoeba_id === "amoeba_mainland");
+  assert.equal(Number(amoeba.delivery_contract_revenue_ngn), 30 * 1400);
+  assert.equal(Number(amoeba.delivery_margin_ngn), 30 * 400);
+});
+
 test("generates immutable daily report revisions", async () => {
   const first = await request("/ops/v1/daily-reports", {
     method: "POST",

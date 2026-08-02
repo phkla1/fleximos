@@ -310,6 +310,49 @@ for (const [recordDate, rows] of Object.entries(generatedDays)) {
   }
 }
 
+// Delivery customers and a live demo batch so the scheduled-delivery
+// surfaces open with data (contract prices per spec v0.2; global allocated
+// price is seeded by the Ops API itself).
+const deliveryCustomers = (await get(opsBase, "/ops/v1/delivery-customers")).data;
+const customerByName = new Map(deliveryCustomers.map((customer) => [customer.name, customer]));
+for (const [name, price] of [["Speedaf", 1400], ["Konga", 1300]]) {
+  if (!customerByName.has(name)) {
+    const created = await post(opsBase, "/ops/v1/delivery-customers", `realistic-seed-dcustomer-${name.toLowerCase()}`, {
+      name, contract_price_ngn: price, contact: `${name.toLowerCase()}@fleximotion.test`
+    });
+    customerByName.set(name, created);
+  }
+}
+const seedBatches = (await get(opsBase, `/ops/v1/delivery-batches?date_from=${dayAt(-1)}&date_to=${dayAt(0)}`)).data;
+if (!seedBatches.length) {
+  const konga = customerByName.get("Konga");
+  const batch = await post(opsBase, "/ops/v1/delivery-batches", `realistic-seed-dbatch-${dayAt(0)}`, {
+    delivery_customer_id: konga.delivery_customer_id,
+    amoeba_id: "amoeba_island",
+    batch_date: dayAt(0),
+    manifest_ref: `KONGA-${dayAt(0)}`,
+    expected_count: 120,
+    received_count: 118,
+    sorted_count: 115
+  });
+  const couriers = operators.filter((item) => item.account === "platform_uber_courier").slice(0, 2);
+  let assigned = 0;
+  for (const [index, courier] of couriers.entries()) {
+    const target = index === 0 ? 60 : 55;
+    const assignment = await post(opsBase, `/ops/v1/delivery-batches/${batch.batch_id}/assignments`,
+      `realistic-seed-dassign-${courier.externalId}-${dayAt(0)}`,
+      { operator_id: courier.operatorId, assigned_count: target });
+    await patch(opsBase, `/ops/v1/delivery-assignments/${assignment.assignment_id}`,
+      `realistic-seed-dprogress-${courier.externalId}-${dayAt(0)}`,
+      { delivered_count: index === 0 ? 41 : 30, failed_count: index === 0 ? 2 : 1, status: "out_for_delivery" });
+    assigned += target;
+  }
+  await post(opsBase, `/ops/v1/delivery-batches/${batch.batch_id}/exceptions`, `realistic-seed-dexception-${dayAt(0)}`, {
+    category: "damaged", note: "One carton crushed in transit — customer to confirm claim."
+  });
+  console.log(`Seeded a Konga delivery batch (${assigned} packages assigned) with live progress.`);
+}
+
 // A default Finance economics policy so breakeven/labour analytics have
 // real assumptions from day one (admins refine it under Controls).
 const economicsPolicies = (await get(opsBase, "/ops/v1/economics-policies")).data;

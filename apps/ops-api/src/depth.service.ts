@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { OpsDataScope } from "./auth.service.js";
 import { DatabaseService } from "./database.service.js";
+import { DeliveriesService } from "./deliveries.service.js";
 import { OpsService } from "./ops.service.js";
 
 type RecordBody = Record<string, unknown>;
@@ -37,7 +38,8 @@ export class DepthService {
 
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
-    @Inject(OpsService) private readonly ops: OpsService
+    @Inject(OpsService) private readonly ops: OpsService,
+    @Inject(DeliveriesService) private readonly deliveries: DeliveriesService
   ) {}
 
   private id(prefix: string) {
@@ -797,6 +799,11 @@ export class DepthService {
 
     const dayCount = Math.round((Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86400000) + 1;
 
+    const deliveryByAmoeba = await this.deliveries.amoebaDeliveryTotals(periodStart, periodEnd);
+    for (const amoebaId of deliveryByAmoeba.keys()) {
+      if (!filters.amoeba_id || amoebaId === filters.amoeba_id) amoebaIds.add(amoebaId);
+    }
+
     const rows = [...amoebaIds].sort().map((amoebaId) => {
       const perf = performance.find((row) => row.amoeba_id === amoebaId);
       const operators = Number(headcount.find((row) => row.amoeba_id === amoebaId)?.active_operators || 0);
@@ -814,7 +821,10 @@ export class DepthService {
       const transferCharges = transferEvents
         .filter((row) => row.to_amoeba_id === amoebaId)
         .reduce((sum, row) => sum + Number(row.amount_ngn), 0);
-      const grossPnl = netEarnings - directTotal - maintenance - centralAllocation + transferCredits - transferCharges;
+      const delivery = deliveryByAmoeba.get(amoebaId) || { contract: 0, allocated: 0, delivered: 0 };
+      // Delivery revenue enters P&L at contract price; the allocated value is
+      // the operator-facing figure, and the spread is company margin.
+      const grossPnl = netEarnings + delivery.contract - directTotal - maintenance - centralAllocation + transferCredits - transferCharges;
       const dailyTarget = Number(targetRows.find((row) => row.amoeba_id === amoebaId)?.daily_target_ngn || 0);
       const periodTarget = dailyTarget * dayCount;
       return {
@@ -827,6 +837,10 @@ export class DepthService {
         hours_online: Math.round(hours * 100) / 100,
         ride_revenue_ngn: Math.round(Number(perf?.ride_revenue_ngn || 0) * 100) / 100,
         net_earnings_ngn: Math.round(netEarnings * 100) / 100,
+        delivery_contract_revenue_ngn: Math.round(delivery.contract * 100) / 100,
+        delivery_allocated_value_ngn: Math.round(delivery.allocated * 100) / 100,
+        delivery_margin_ngn: Math.round((delivery.contract - delivery.allocated) * 100) / 100,
+        packages_delivered: delivery.delivered,
         direct_expenses_ngn: Math.round(directTotal * 100) / 100,
         expense_breakdown: expenseBreakdown,
         maintenance_costs_ngn: Math.round(maintenance * 100) / 100,
@@ -843,13 +857,15 @@ export class DepthService {
     const totals = rows.reduce(
       (accumulator, row) => ({
         net_earnings_ngn: accumulator.net_earnings_ngn + row.net_earnings_ngn,
+        delivery_contract_revenue_ngn: accumulator.delivery_contract_revenue_ngn + row.delivery_contract_revenue_ngn,
+        delivery_margin_ngn: accumulator.delivery_margin_ngn + row.delivery_margin_ngn,
         direct_expenses_ngn: accumulator.direct_expenses_ngn + row.direct_expenses_ngn,
         maintenance_costs_ngn: accumulator.maintenance_costs_ngn + row.maintenance_costs_ngn,
         central_allocation_ngn: accumulator.central_allocation_ngn + row.central_allocation_ngn,
         gross_pnl_ngn: accumulator.gross_pnl_ngn + row.gross_pnl_ngn,
         hours_online: accumulator.hours_online + row.hours_online
       }),
-      { net_earnings_ngn: 0, direct_expenses_ngn: 0, maintenance_costs_ngn: 0, central_allocation_ngn: 0, gross_pnl_ngn: 0, hours_online: 0 }
+      { net_earnings_ngn: 0, delivery_contract_revenue_ngn: 0, delivery_margin_ngn: 0, direct_expenses_ngn: 0, maintenance_costs_ngn: 0, central_allocation_ngn: 0, gross_pnl_ngn: 0, hours_online: 0 }
     );
 
     return {
@@ -991,6 +1007,27 @@ export class DepthService {
       [periodStart, periodEnd]
     );
 
+    const deliveryTotals = await this.deliveries.operatorAllocatedTotals(periodStart, periodEnd);
+    // Delivery-only operators (no platform rows in the window) still belong
+    // on the board: synthesize zero platform rows for them.
+    for (const [operatorId, delivery] of deliveryTotals) {
+      if (rows.some((row: any) => row.operator_id === operatorId)) continue;
+      const operator = await this.db.one<any>(
+        `SELECT o.operator_id, o.person_id, o.amoeba_id, o.operator_type, o.daily_revenue_target_ngn,
+           v.plate AS vehicle_plate
+         FROM ops_operators o LEFT JOIN ops_vehicles v ON v.vehicle_id = o.vehicle_id
+         WHERE o.operator_id = $1`,
+        [operatorId]
+      );
+      if (!operator) continue;
+      rows.push({
+        ...operator,
+        days_worked: delivery.days.size,
+        net_earnings_ngn: 0, trips_completed: 0, hours_online: 0,
+        acceptance_pct: 0, expected_cash_ngn: 0
+      });
+    }
+
     const entries = rows.map((row) => {
       const daysWorked = Number(row.days_worked);
       const acceptanceScore = Math.min(100, Math.max(0, Number(row.acceptance_pct || 0)));
@@ -1000,8 +1037,11 @@ export class DepthService {
       const shortfall = Math.max(0, expectedCash - remitted);
       const cashScore = expectedCash > 0 ? Math.max(0, 100 * (1 - shortfall / expectedCash)) : 100;
       const dailyTarget = Number(row.daily_revenue_target_ngn || 0);
-      const revenueScore = dailyTarget > 0
-        ? Math.min(100, (Number(row.net_earnings_ngn || 0) / (dailyTarget * daysWorked)) * 100)
+      const delivery = deliveryTotals.get(row.operator_id);
+      const combinedEarnings = Number(row.net_earnings_ngn || 0) + (delivery?.earned || 0);
+      const combinedTarget = dailyTarget * daysWorked + (delivery?.target || 0);
+      const revenueScore = combinedTarget > 0
+        ? Math.min(100, (combinedEarnings / combinedTarget) * 100)
         : 0;
       const performanceScore =
         Number(config.acceptance_weight) * acceptanceScore
@@ -1016,6 +1056,8 @@ export class DepthService {
         vehicle_plate: row.vehicle_plate,
         days_worked: daysWorked,
         net_earnings_ngn: Math.round(Number(row.net_earnings_ngn || 0) * 100) / 100,
+        delivery_earnings_allocated_ngn: Math.round((delivery?.earned || 0) * 100) / 100,
+        delivery_target_allocated_ngn: Math.round((delivery?.target || 0) * 100) / 100,
         trips_completed: Number(row.trips_completed || 0),
         hours_online: Math.round(Number(row.hours_online || 0) * 100) / 100,
         acceptance_pct: Math.round(acceptanceScore * 10) / 10,
