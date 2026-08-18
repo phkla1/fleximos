@@ -3837,6 +3837,209 @@
           }
         }
       }
+    },
+    "/delivery-batches/{batch_id}/stops": {
+      "post": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Add stops (manifest import or manual; optional per batch)",
+        "description": "Stops carry customer, address, phone, parcel count and sequence. Delivered/failed stop transitions drive the assignment counts.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/delivery-stops": {
+      "get": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "List stops (riders see their own)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/delivery-stops/{stop_id}/status": {
+      "post": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Advance a stop through the delivery workflow",
+        "description": "pending -> en_route -> arrived -> delivered/failed. Riders record their own stops (operator_manual); failed requires a reason from the fixed taxonomy; POD photos/signature attach via media_ids.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stop_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "409": {
+            "description": "Stop already completed or batch closed"
+          }
+        }
+      }
+    },
+    "/delivery-assignments/{assignment_id}/confirm": {
+      "post": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Supervisor confirms rider-entered figures at closeout",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed"
+          },
+          "401": {
+            "description": "Requires Supervisor"
+          }
+        }
+      }
     }
   },
   "components": {

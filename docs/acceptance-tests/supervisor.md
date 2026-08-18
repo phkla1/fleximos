@@ -142,6 +142,12 @@ batch (further count edits are refused); the closeout checklist's delivery
 line reflects open exceptions and unclosed batches; contract prices are
 nowhere visible — supervisors see allocated values only.
 
+4. Import a stop manifest (paste `customer, address, phone, parcels` rows
+   against an assigned driver) — the stops appear in that rider's Dispatch
+   screen, and completed stops update the counts automatically. When a rider
+   records their own figures, the row shows a "rider-entered" chip with a
+   **Confirm figures** link — confirm them as part of closeout.
+
 ## Results
 
 | Test | Pass/Fail | Notes |

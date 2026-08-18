@@ -8,9 +8,16 @@ type RecordBody = Record<string, unknown>;
 
 // Sources for every recorded count — typed numbers must never be mistaken
 // for scan truth (Scheduled-Deliveries-Spec-v0.2).
-const countSources = new Set(["customer_app_manual", "customer_app_import", "customer_api", "fleximos_scan"]);
+const countSources = new Set(["customer_app_manual", "customer_app_import", "customer_api", "operator_manual", "fleximos_scan"]);
 const exceptionCategories = new Set(["shortage", "damaged", "customer_dispute", "failed_delivery", "return_pending", "other"]);
 const assignmentStatuses = new Set(["assigned", "out_for_delivery", "completed"]);
+const stopStatuses = new Set(["pending", "en_route", "arrived", "delivered", "failed"]);
+// Mandatory failure taxonomy (rider review, 11 Aug 2026).
+const failedReasons = new Set([
+  "customer_unavailable", "wrong_address", "customer_refused", "reschedule_requested",
+  "phone_unreachable", "security_restriction", "road_inaccessible", "payment_issue",
+  "package_damaged", "vehicle_issue", "other"
+]);
 
 @Injectable()
 export class DeliveriesService {
@@ -368,6 +375,151 @@ export class DeliveriesService {
     );
     await this.audit("delivery_assignment.saved", "delivery_assignment", saved.assignment_id, null, saved, actorPersonId);
     return saved;
+  }
+
+  // Riders may record their own progress (D1 revised): resolves whether the
+  // actor person owns the assignment.
+  async assignmentOwnedBy(assignmentId: string, personId: string) {
+    const row = await this.db.one<any>(
+      `SELECT a.assignment_id FROM ops_delivery_assignments a
+       JOIN ops_operators o ON o.operator_id = a.operator_id
+       WHERE a.assignment_id = $1 AND o.person_id = $2`,
+      [assignmentId, personId]
+    );
+    return Boolean(row);
+  }
+
+  async confirmAssignment(assignmentId: string, actorPersonId: string) {
+    const assignment = await this.db.one<any>("SELECT * FROM ops_delivery_assignments WHERE assignment_id=$1", [assignmentId]);
+    if (!assignment) throw new NotFoundException("Delivery assignment not found.");
+    const timestamp = this.now();
+    await this.db.exec(
+      "UPDATE ops_delivery_assignments SET supervisor_confirmed_at=$2, updated_at=$2 WHERE assignment_id=$1",
+      [assignmentId, timestamp]
+    );
+    await this.audit("delivery_assignment.confirmed", "delivery_assignment", assignmentId, assignment, { supervisor_confirmed_at: timestamp }, actorPersonId);
+    return { ...assignment, supervisor_confirmed_at: timestamp };
+  }
+
+  /* ---------------- stops (optional per batch) ---------------- */
+
+  async createStops(batchId: string, body: RecordBody, actorPersonId: string) {
+    const batch = await this.loadBatch(batchId);
+    this.assertOpen(batch);
+    const rows = Array.isArray(body.stops) ? body.stops : [body];
+    if (!rows.length) throw new BadRequestException("Provide at least one stop.");
+    const timestamp = this.now();
+    const created = [];
+    for (const [index, row] of (rows as RecordBody[]).entries()) {
+      if (!row.customer_name) throw new BadRequestException(`stops[${index}].customer_name is required.`);
+      let assignmentId: string | null = null;
+      if (row.assignment_id) {
+        const assignment = await this.db.one<any>(
+          "SELECT assignment_id FROM ops_delivery_assignments WHERE assignment_id=$1 AND batch_id=$2",
+          [String(row.assignment_id), batchId]
+        );
+        if (!assignment) throw new BadRequestException(`stops[${index}].assignment_id does not belong to this batch.`);
+        assignmentId = assignment.assignment_id;
+      }
+      const stop = {
+        stop_id: this.id("dstop"),
+        batch_id: batchId,
+        assignment_id: assignmentId,
+        sequence: this.count(row.sequence ?? index + 1, "sequence"),
+        customer_name: String(row.customer_name).trim(),
+        address: row.address ? String(row.address) : null,
+        phone: row.phone ? String(row.phone).replace(/\s+/g, "") : null,
+        parcel_count: Math.max(1, this.count(row.parcel_count ?? 1, "parcel_count")),
+        status: "pending",
+        failed_reason: null,
+        notes: row.notes ? String(row.notes) : null,
+        media_ids: [] as string[],
+        arrival_at: null,
+        completed_at: null,
+        recorded_by_person_id: actorPersonId,
+        created_at: timestamp,
+        updated_at: timestamp
+      };
+      await this.db.exec(
+        `INSERT INTO ops_delivery_stops
+          (stop_id, batch_id, assignment_id, sequence, customer_name, address, phone, parcel_count,
+           status, failed_reason, notes, media_ids, arrival_at, completed_at, recorded_by_person_id, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        Object.values(stop)
+      );
+      created.push(stop);
+    }
+    await this.audit("delivery_stops.created", "delivery_batch", batchId, null, { count: created.length }, actorPersonId);
+    return created;
+  }
+
+  async listStops(filters: { batch_id?: string; assignment_id?: string; date_from?: string; date_to?: string }, scope: OpsDataScope = {}) {
+    const params: unknown[] = [];
+    const clauses: string[] = [];
+    if (filters.batch_id) { params.push(filters.batch_id); clauses.push(`s.batch_id = $${params.length}`); }
+    if (filters.assignment_id) { params.push(filters.assignment_id); clauses.push(`s.assignment_id = $${params.length}`); }
+    if (filters.date_from || filters.date_to) {
+      const from = this.date(filters.date_from || this.now().slice(0, 10), "date_from");
+      const to = this.date(filters.date_to || from, "date_to");
+      params.push(from, to);
+      clauses.push(`b.batch_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    }
+    if (!scope.unrestricted && scope.person_id) {
+      params.push(scope.person_id);
+      clauses.push(`o.person_id = $${params.length}`);
+    } else {
+      this.scopeClause(clauses, params, scope, "b");
+    }
+    return this.db.many(
+      `SELECT s.*, b.batch_date, c.name AS delivery_customer_name, a.operator_id
+       FROM ops_delivery_stops s
+       JOIN ops_delivery_batches b ON b.batch_id = s.batch_id
+       JOIN ops_delivery_customers c ON c.delivery_customer_id = b.delivery_customer_id
+       LEFT JOIN ops_delivery_assignments a ON a.assignment_id = s.assignment_id
+       LEFT JOIN ops_operators o ON o.operator_id = a.operator_id
+       ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+       ORDER BY b.batch_date DESC, s.sequence ASC`,
+      params
+    );
+  }
+
+  // Stop transitions drive the assignment counts, keeping one derivation
+  // chain: stop -> assignment -> batch totals.
+  async updateStopStatus(stopId: string, body: RecordBody, actorPersonId: string, asOperator: boolean) {
+    const stop = await this.db.one<any>("SELECT * FROM ops_delivery_stops WHERE stop_id=$1", [stopId]);
+    if (!stop) throw new NotFoundException("Delivery stop not found.");
+    const batch = await this.loadBatch(stop.batch_id);
+    this.assertOpen(batch);
+    const status = String(body.status || "");
+    if (!stopStatuses.has(status)) throw new BadRequestException(`status must be one of: ${[...stopStatuses].join(", ")}.`);
+    if (["delivered", "failed"].includes(stop.status)) throw new ConflictException("This stop is already completed.");
+    const failedReason = status === "failed" ? String(body.failed_reason || "") : null;
+    if (status === "failed" && !failedReasons.has(failedReason as string)) {
+      throw new BadRequestException(`failed_reason is required and must be one of: ${[...failedReasons].join(", ")}.`);
+    }
+    const mediaIds = Array.isArray(body.media_ids) ? body.media_ids.map(String) : [];
+    const timestamp = this.now();
+    await this.db.exec(
+      `UPDATE ops_delivery_stops SET status=$2, failed_reason=$3,
+        notes=COALESCE($4, notes),
+        media_ids=(media_ids || $5::jsonb),
+        arrival_at=CASE WHEN $2='arrived' AND arrival_at IS NULL THEN $6::timestamptz ELSE arrival_at END,
+        completed_at=CASE WHEN $2 IN ('delivered','failed') THEN $6::timestamptz ELSE completed_at END,
+        recorded_by_person_id=$7, updated_at=$6 WHERE stop_id=$1`,
+      [stopId, status, failedReason, body.notes ? String(body.notes) : null,
+       JSON.stringify(mediaIds), timestamp, actorPersonId]
+    );
+    if (["delivered", "failed"].includes(status) && stop.assignment_id) {
+      const column = status === "delivered" ? "delivered_count" : "failed_count";
+      await this.db.exec(
+        `UPDATE ops_delivery_assignments SET ${column} = ${column} + $2,
+          counts_source = $3, status = 'out_for_delivery', updated_by_person_id = $4, updated_at = $5
+         WHERE assignment_id = $1`,
+        [stop.assignment_id, Number(stop.parcel_count), asOperator ? "operator_manual" : "customer_app_manual", actorPersonId, timestamp]
+      );
+    }
+    await this.audit(`delivery_stop.${status}`, "delivery_stop", stopId, stop, { status, failed_reason: failedReason }, actorPersonId);
+    return this.db.one("SELECT * FROM ops_delivery_stops WHERE stop_id=$1", [stopId]);
   }
 
   async updateAssignment(assignmentId: string, body: RecordBody, actorPersonId: string) {

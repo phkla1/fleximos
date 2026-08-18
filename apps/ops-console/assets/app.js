@@ -16,6 +16,7 @@ const state = {
   deliveryAssignments: [],
   deliveryExceptions: [],
   deliveryCustomers: [],
+  deliveryStops: [],
   deliverySummary: null,
   operatingDate: null,
   dateFrom: null,
@@ -653,7 +654,9 @@ function renderDeliveries() {
             <div class="assignment-row">
               <strong>${escapeHtml(personName(assignment.person_id))}</strong>
               <span class="pill ${escapeHtml(assignment.status)}">${escapeHtml(assignment.status.replaceAll("_", " "))}</span>
+              ${assignment.counts_source === "operator_manual" ? `<span class="pill ${assignment.supervisor_confirmed_at ? "resolved" : "open"}">${assignment.supervisor_confirmed_at ? "rider-entered · confirmed" : "rider-entered"}</span>` : ""}
               <small>target ${Number(assignment.assigned_count)} · ₦${Number(assignment.earned_value_allocated_ngn).toLocaleString()} earned</small>
+              ${assignment.counts_source === "operator_manual" && !assignment.supervisor_confirmed_at ? `<button type="button" class="linklike" data-confirm-assignment="${escapeHtml(assignment.assignment_id)}">Confirm figures</button>` : ""}
               ${closed ? `<small>${Number(assignment.delivered_count)} delivered · ${Number(assignment.failed_count)} failed · ${Number(assignment.returned_count)} returned</small>` : `
               <span class="progress-inputs" data-assignment-inputs="${escapeHtml(assignment.assignment_id)}">
                 <label>del.<input type="number" min="0" value="${Number(assignment.delivered_count)}" data-field="delivered_count" /></label>
@@ -664,6 +667,25 @@ function renderDeliveries() {
             </div>`).join("")}
         </div>
 
+        ${(() => {
+          const stops = (state.deliveryStops || []).filter((stop) => stop.batch_id === batch.batch_id);
+          if (!stops.length) return "";
+          const done = stops.filter((stop) => stop.status === "delivered").length;
+          const failedStops = stops.filter((stop) => stop.status === "failed").length;
+          return `<div class="split-chips" style="margin-top:6px"><span>🗺 ${stops.length} stops · ${done} delivered · ${failedStops} failed</span></div>`;
+        })()}
+        ${closed || !assignments.length ? "" : `
+        <details class="management-panel" style="margin-top:8px">
+          <summary>Import stop manifest (paste rows)</summary>
+          <p class="section-intro">One stop per line: <code>customer, address, phone, parcels</code>. Stops attach to the driver chosen here and appear in that rider's dispatch screen.</p>
+          <div class="delivery-actions">
+            <select data-manifest-driver="${escapeHtml(batch.batch_id)}">
+              ${assignments.map((assignment) => `<option value="${escapeHtml(assignment.assignment_id)}">${escapeHtml(personName(assignment.person_id))}</option>`).join("")}
+            </select>
+          </div>
+          <textarea rows="4" style="width:100%;margin:6px 0;padding:9px;border:1px solid var(--line);border-radius:9px;font:inherit" data-manifest-rows="${escapeHtml(batch.batch_id)}" placeholder="Mr Ade, 12 Adeola Odeku VI, 08012345678, 3"></textarea>
+          <button type="button" data-import-manifest="${escapeHtml(batch.batch_id)}">Import stops</button>
+        </details>`}
         ${closed ? "" : `
         <div class="assign-panel">
           <strong class="assign-title">➕ Assign a driver</strong>
@@ -836,7 +858,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliverySummary] = await Promise.all([
+  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
@@ -851,6 +873,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops(`/ops/v1/delivery-assignments?${range}`).catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-exceptions").catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
+    ops(`/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null)
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
@@ -880,6 +903,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     deliveryAssignments: deliveryAssignments.data.filter((assignment) => assignedIds.has(assignment.operator_id)),
     deliveryExceptions: deliveryExceptions.data.filter((exception) => assignedAmoebas.has(exception.amoeba_id)),
     deliveryCustomers: deliveryCustomers.data,
+    deliveryStops: deliveryStops.data,
     deliverySummary,
     operatingDate,
     dateFrom,
@@ -1090,6 +1114,43 @@ document.addEventListener("click", async (event) => {
         body: JSON.stringify({ resolution_notes: "Resolved from supervisor console." })
       });
       await refresh("Delivery exception resolved.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const confirmAssignment = event.target.closest("[data-confirm-assignment]");
+  if (confirmAssignment) {
+    try {
+      await ops(`/ops/v1/delivery-assignments/${confirmAssignment.dataset.confirmAssignment}/confirm`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dconfirm") },
+        body: JSON.stringify({})
+      });
+      await refresh("Rider figures confirmed.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const importManifest = event.target.closest("[data-import-manifest]");
+  if (importManifest) {
+    const batchId = importManifest.dataset.importManifest;
+    const assignmentId = document.querySelector(`[data-manifest-driver="${batchId}"]`)?.value;
+    if (!assignmentId) return showError(new Error("Assign a driver first, then import their stops."));
+    const lines = (document.querySelector(`[data-manifest-rows="${batchId}"]`)?.value || "")
+      .split("\n").map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) return showError(new Error("Paste at least one stop line."));
+    const stops = lines.map((line, index) => {
+      const [customer, address, phone, parcels] = line.split(",").map((part) => part?.trim());
+      return {
+        sequence: index + 1, customer_name: customer, address: address || null,
+        phone: phone || null, parcel_count: Number(parcels) || 1, assignment_id: assignmentId
+      };
+    });
+    try {
+      await ops(`/ops/v1/delivery-batches/${batchId}/stops`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dstops") },
+        body: JSON.stringify({ stops })
+      });
+      await refresh(`${stops.length} stop${stops.length === 1 ? "" : "s"} imported.`);
     } catch (error) { showError(error); }
     return;
   }

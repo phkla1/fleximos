@@ -83,6 +83,13 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator("#deliveryCard")).toContainText("Konga");
     await expect(page.locator("#deliveryCard")).toContainText("delivered");
     await expect(page.locator("#deliveryCard")).toContainText("earned");
+
+    // MY DISPATCH: courier lands on the dispatch tab with progress and
+    // (counts-only batch) self-report steppers or (stop batch) stop rows.
+    await expect(page.locator("[data-tab-link='dispatch']")).toBeVisible();
+    await page.locator("[data-tab-link='dispatch']").click();
+    await expect(page.locator("#dispatchSummary")).toContainText("delivered");
+    await expect(page.locator("#dispatchList .card-row").first()).toBeVisible();
   });
 
   test("has no horizontal overflow on mobile", async ({ page }) => {

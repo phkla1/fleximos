@@ -32,8 +32,8 @@ it, your live status strip shows e.g. "online" or "checked out".
 
 **Expected:** trips, hours online, acceptance % and your daily target. They
 match what you know about your day (for seeded data, the demo records). The
-bottom dock has four tabs — Today, Alerts (with a count badge when any are
-open), Rank, Report.
+bottom dock has five tabs — Dispatch (with a pending-stops badge), Today,
+Alerts (count badge when open), Rank, Report.
 
 ### OP-4 · Vehicle and platform assignment
 1. Scroll to **Vehicle and platform**.
@@ -90,6 +90,20 @@ within 30 minutes.
 wider range, revenue, trips and hours sum across the days and the target
 scales to match.
 
+### OP-9b · My Dispatch (couriers)
+1. Sign in as a courier with delivery work (e.g. `0707 377 2773`). The app
+   opens on **Dispatch**.
+2. Tap **🚀 START ROUTE**. Where the batch has a stop manifest: use
+   **Navigate** (opens maps), **📞 Call**, **Arrived**, then **Delivered** —
+   attach a camera photo and sign on screen; for one stop use **Failed** and
+   pick a reason (a reason is mandatory; "Other" needs a note).
+3. On a counts-only batch, update the Delivered/Failed steppers and save.
+
+**Expected:** completed stops update your delivered/failed counts instantly;
+failed stops always carry a reason; delivered stops carry your proof (photo,
+signature, GPS, time); your entries are labelled rider-entered and your
+supervisor confirms them at closeout.
+
 ### OP-10 · Deliveries today (couriers)
 1. Sign in as a courier with a delivery assignment (e.g. `0707 377 2773`).
 
@@ -115,6 +129,7 @@ both at the allocated price. You never see the customer's contract price.
 | OP-7 | | |
 | OP-8 | | |
 | OP-9 | | |
+| OP-9b | | |
 | OP-10 | | |
 | OP-11 | | |
 

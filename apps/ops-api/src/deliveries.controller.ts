@@ -215,8 +215,20 @@ export class DeliveriesController {
     @Body() body: Record<string, unknown>
   ) {
     const actor = await this.auth(req);
-    this.identity.requireSupervisor(actor);
-    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.deliveries.updateAssignment(assignmentId, body, actor.person_id));
+    const scope = this.identity.dataScope(actor);
+    let payload = body;
+    if (!scope.unrestricted && scope.person_id) {
+      // Riders may record their own progress on counts-only batches;
+      // entries are labelled operator_manual for supervisor confirmation.
+      if (!(await this.deliveries.assignmentOwnedBy(assignmentId, scope.person_id))) {
+        this.identity.requireSupervisor(actor);
+      } else {
+        payload = { ...body, counts_source: "operator_manual" };
+      }
+    } else {
+      this.identity.requireSupervisor(actor);
+    }
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.deliveries.updateAssignment(assignmentId, payload, actor.person_id));
   }
 
   @ApiTags("Deliveries")
@@ -236,6 +248,85 @@ export class DeliveriesController {
       ),
       next_cursor: null
     };
+  }
+
+  /* ---------- stops + confirmation ---------- */
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Add stops to a batch (manifest import or manual; optional per batch)" })
+  @Post("ops/v1/delivery-batches/:batchId/stops")
+  async createStops(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("batchId") batchId: string,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.deliveries.createStops(batchId, body, actor.person_id));
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @Get("ops/v1/delivery-stops")
+  async listStops(
+    @Req() req: Request,
+    @Query("batch_id") batchId?: string,
+    @Query("assignment_id") assignmentId?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
+  ) {
+    const actor = await this.auth(req);
+    return {
+      data: await this.deliveries.listStops(
+        { batch_id: batchId, assignment_id: assignmentId, date_from: dateFrom, date_to: dateTo },
+        this.identity.dataScope(actor)
+      ),
+      next_cursor: null
+    };
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Advance a stop (rider records own progress; failed requires a reason; POD via media_ids)" })
+  @Post("ops/v1/delivery-stops/:stopId/status")
+  async updateStopStatus(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("stopId") stopId: string,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    const scope = this.identity.dataScope(actor);
+    let asOperator = false;
+    if (!scope.unrestricted && scope.person_id) {
+      // Operators may only advance stops on their own assignments.
+      const stops = await this.deliveries.listStops({ }, scope);
+      if (!stops.some((stop: any) => stop.stop_id === stopId)) {
+        this.identity.requireSupervisor(actor);
+      } else {
+        asOperator = true;
+      }
+    } else {
+      this.identity.requireSupervisor(actor);
+    }
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () =>
+      this.deliveries.updateStopStatus(stopId, body, actor.person_id, asOperator));
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Supervisor confirms rider-entered delivery figures at closeout" })
+  @Post("ops/v1/delivery-assignments/:assignmentId/confirm")
+  async confirmAssignment(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("assignmentId") assignmentId: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.deliveries.confirmAssignment(assignmentId, actor.person_id));
   }
 
   /* ---------- exceptions + summary ---------- */

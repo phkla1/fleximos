@@ -891,6 +891,75 @@ test("uses the higher of two Uber cash sources and flags the variance", async ()
   assert.equal(Number(correctedRow.expected_cash_ngn), 10000);
 });
 
+test("runs the stop-level dispatch workflow with rider recording", async () => {
+  const customers = await request("/ops/v1/delivery-customers");
+  const customer = customers.body.data[0];
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) => row.operator_status === "active");
+
+  const batch = await request("/ops/v1/delivery-batches", {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-batch-001" },
+    body: JSON.stringify({
+      delivery_customer_id: customer.delivery_customer_id,
+      amoeba_id: "amoeba_mainland", batch_date: "2026-06-15",
+      expected_count: 5, received_count: 5
+    })
+  });
+  const assignment = await request(`/ops/v1/delivery-batches/${batch.body.batch_id}/assignments`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-assign-001" },
+    body: JSON.stringify({ operator_id: operator.operator_id, assigned_count: 5 })
+  });
+
+  const stops = await request(`/ops/v1/delivery-batches/${batch.body.batch_id}/stops`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-create-001" },
+    body: JSON.stringify({ stops: [
+      { customer_name: "Customer A", address: "12 Adeola Odeku, VI", phone: "0801 234 5678", parcel_count: 3, assignment_id: assignment.body.assignment_id },
+      { customer_name: "Customer B", address: "3 Allen Avenue, Ikeja", parcel_count: 2, assignment_id: assignment.body.assignment_id }
+    ]})
+  });
+  assert.equal(stops.response.status, 201);
+  assert.equal(stops.body.length, 2);
+  assert.equal(stops.body[0].phone, "08012345678", "phone whitespace is stripped");
+
+  const noReason = await request(`/ops/v1/delivery-stops/${stops.body[0].stop_id}/status`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-fail-bad" },
+    body: JSON.stringify({ status: "failed" })
+  });
+  assert.equal(noReason.response.status, 400, "failed requires a reason");
+
+  await request(`/ops/v1/delivery-stops/${stops.body[0].stop_id}/status`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-arrive-001" },
+    body: JSON.stringify({ status: "arrived" })
+  });
+  await request(`/ops/v1/delivery-stops/${stops.body[0].stop_id}/status`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-deliver-001" },
+    body: JSON.stringify({ status: "delivered" })
+  });
+  await request(`/ops/v1/delivery-stops/${stops.body[1].stop_id}/status`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-fail-001" },
+    body: JSON.stringify({ status: "failed", failed_reason: "customer_unavailable", notes: "Phone off." })
+  });
+
+  const batches = await request("/ops/v1/delivery-batches?date_from=2026-06-15&date_to=2026-06-15");
+  const listed = batches.body.data.find((row) => row.batch_id === batch.body.batch_id);
+  assert.equal(Number(listed.delivered_count), 3, "delivered parcels flow from stop to assignment to batch");
+  assert.equal(Number(listed.failed_count), 2);
+
+  const confirmed = await request(`/ops/v1/delivery-assignments/${assignment.body.assignment_id}/confirm`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "stops-confirm-001" },
+    body: JSON.stringify({})
+  });
+  assert.ok(confirmed.body.supervisor_confirmed_at, "supervisor confirmation is timestamped");
+});
+
 test("generates immutable daily report revisions", async () => {
   const first = await request("/ops/v1/daily-reports", {
     method: "POST",

@@ -41,6 +41,7 @@
       <p id="appNotice" class="notice" role="status"></p>
 
       <nav class="dock" aria-label="Driver sections">
+        <a href="#dispatch" data-tab-link="dispatch"><span class="dock-icon">📦</span>Dispatch<span id="dispatchDockBadge" class="dock-badge" hidden></span></a>
         <a href="#today" data-tab-link="today" class="active"><span class="dock-icon">◉</span>Today</a>
         <a href="#alerts" data-tab-link="alerts"><span class="dock-icon">⚠</span>Alerts<span id="alertDockBadge" class="dock-badge" hidden></span></a>
         <a href="#rank" data-tab-link="rank"><span class="dock-icon">🏆</span>Rank</a>
@@ -48,6 +49,12 @@
       </nav>
 
       <main>
+        <!-- ============ MY DISPATCH ============ -->
+        <section id="dispatch" class="tab-panel" data-tab="dispatch">
+          <div class="section-heading"><h2>My dispatch</h2><span id="dispatchSummary" class="subtle"></span></div>
+          <div id="dispatchList" class="card-list"></div>
+        </section>
+
         <!-- ============ TODAY ============ -->
         <section id="today" class="tab-panel active" data-tab="today">
           <figure class="gauge hero-gauge" id="earningsGauge">
@@ -171,6 +178,52 @@
         </label>
         <label>Note<textarea id="explainNote" rows="2" placeholder="Required when choosing Other"></textarea></label>
         <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="send">Send to supervisor</button></div>
+      </form>
+    </dialog>
+
+    <!-- proof of delivery -->
+    <dialog id="podDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2>Proof of delivery</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
+        <p id="podContext" class="subtle"></p>
+        <label class="photo-field">Photo (camera only)
+          <input type="file" accept="image/*" capture="environment" data-photo-input="pod" />
+          <span class="photo-status" data-photo-status="pod"></span>
+        </label>
+        <label>Recipient signature
+          <canvas id="podSignature" width="360" height="140"></canvas>
+          <button type="button" class="linklike" id="podSignatureClear">Clear signature</button>
+        </label>
+        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="deliver">Confirm delivered</button></div>
+      </form>
+    </dialog>
+
+    <!-- failed delivery -->
+    <dialog id="failDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2>Delivery failed</h2><button value="cancel" type="submit" aria-label="Close">×</button></div>
+        <p id="failContext" class="subtle"></p>
+        <label>Why did it fail? (required)
+          <select id="failReason">
+            <option value="customer_unavailable">Customer unavailable</option>
+            <option value="wrong_address">Wrong address</option>
+            <option value="customer_refused">Customer refused</option>
+            <option value="reschedule_requested">Reschedule requested</option>
+            <option value="phone_unreachable">Phone unreachable</option>
+            <option value="security_restriction">Security restriction</option>
+            <option value="road_inaccessible">Road inaccessible</option>
+            <option value="payment_issue">Payment issue</option>
+            <option value="package_damaged">Package damaged</option>
+            <option value="vehicle_issue">Vehicle issue</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Note<textarea id="failNote" rows="2" placeholder="Required when choosing Other"></textarea></label>
+        <label class="photo-field">Photo (optional, camera only)
+          <input type="file" accept="image/*" capture="environment" data-photo-input="fail" />
+          <span class="photo-status" data-photo-status="fail"></span>
+        </label>
+        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="fail">Record failure</button></div>
       </form>
     </dialog>
 

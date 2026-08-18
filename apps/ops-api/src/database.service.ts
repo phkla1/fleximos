@@ -591,10 +591,35 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         status TEXT NOT NULL DEFAULT 'assigned',
         counts_source TEXT NOT NULL DEFAULT 'customer_app_manual',
         updated_by_person_id TEXT,
+        supervisor_confirmed_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
         UNIQUE(batch_id, operator_id)
       );
+
+      ALTER TABLE ops_delivery_assignments ADD COLUMN IF NOT EXISTS supervisor_confirmed_at TIMESTAMPTZ;
+
+      CREATE TABLE IF NOT EXISTS ops_delivery_stops (
+        stop_id TEXT PRIMARY KEY,
+        batch_id TEXT NOT NULL REFERENCES ops_delivery_batches(batch_id),
+        assignment_id TEXT REFERENCES ops_delivery_assignments(assignment_id),
+        sequence INTEGER NOT NULL DEFAULT 0,
+        customer_name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
+        parcel_count INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'pending',
+        failed_reason TEXT,
+        notes TEXT,
+        media_ids JSONB NOT NULL DEFAULT '[]',
+        arrival_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        recorded_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_delivery_stops_batch ON ops_delivery_stops(batch_id, sequence);
 
       CREATE TABLE IF NOT EXISTS ops_delivery_exceptions (
         exception_id TEXT PRIMARY KEY,
