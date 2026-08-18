@@ -245,7 +245,9 @@ for (let offset = -(windowDays - 1); offset <= 0; offset++) {
   generatedDays[date] = pattern.map((row) => {
     const [name, total, completed, cancelled, noResponse, revenue, earnings, fees, hours] = row;
     const hash = seededHash(`${name}:${date}`);
-    if (hash % 100 < 10) return [name, 0, 0, 0, 0, 0, 0, 0, 0]; // rest day
+    // Rest days make the month organic, but the flagship demo/test identity
+    // (the Bolt cash rider) always works so tests and walkthroughs are stable.
+    if (hash % 100 < 10 && name !== "Danjimoh Osheimoh") return [name, 0, 0, 0, 0, 0, 0, 0, 0];
     const factor = 0.75 + (hash % 51) / 100;
     let scaledRevenue = Math.round(revenue * factor * 100) / 100;
     let scaledEarnings = Math.round(earnings * factor * 100) / 100;

@@ -824,6 +824,73 @@ test("runs the scheduled-delivery batch lifecycle with two-price economics", asy
   assert.equal(Number(amoeba.delivery_margin_ngn), 30 * 400);
 });
 
+test("uses the higher of two Uber cash sources and flags the variance", async () => {
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) => row.operator_status === "active");
+  const registration = operator.platform_registrations[0];
+
+  // Performance side: a day with cash trips -> performance-derived cash.
+  await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "dual-src-perf-001" },
+    body: JSON.stringify({
+      platform_account_id: registration.platform_account_id,
+      record_date: "2026-06-12",
+      source: "connector_test",
+      records: [{
+        platform_operator_id: registration.platform_operator_id,
+        trips_total: 10, trips_completed: 10, trips_cancelled: 0, trips_no_response: 0,
+        ride_revenue_ngn: 20000, net_earnings_ngn: 17000, booking_fees_ngn: 0,
+        cash_trips: 5, card_trips: 5, acceptance_pct: 100, cancellation_pct: 0,
+        completion_pct: 100, hours_online: 8, current_status: "checked_out",
+        data_quality: "authoritative", provenance: { fixture: "dual-source" }
+      }]
+    })
+  });
+  const before = await request("/ops/v1/cash/status?record_date=2026-06-12");
+  const perfRow = before.body.data.find((row) => row.operator_id === operator.operator_id);
+  assert.equal(perfRow.cash_basis, "performance");
+  assert.equal(Number(perfRow.performance_cash_ngn), 10000, "cash share of revenue");
+
+  // Payment-report side: a HIGHER transaction-level total for the same day.
+  const saved = await request("/ops/v1/platform-payment-records", {
+    method: "POST",
+    headers: { "Idempotency-Key": "dual-src-payrec-001" },
+    body: JSON.stringify({
+      operator_id: operator.operator_id,
+      platform_account_id: registration.platform_account_id,
+      record_date: "2026-06-12",
+      amount_ngn: 11800,
+      transaction_count: 6,
+      source: "manual"
+    })
+  });
+  assert.equal(saved.response.status, 201);
+
+  const after = await request("/ops/v1/cash/status?record_date=2026-06-12");
+  const row = after.body.data.find((item) => item.operator_id === operator.operator_id);
+  assert.equal(Number(row.payment_report_cash_ngn), 11800);
+  assert.equal(Number(row.expected_cash_ngn), 11800, "expected cash uses the higher source");
+  assert.equal(row.cash_basis, "payment_report");
+  assert.equal(Number(row.source_variance_ngn), 1800, "gap between the two sources is flagged");
+
+  // Upsert replaces, never duplicates.
+  await request("/ops/v1/platform-payment-records", {
+    method: "POST",
+    headers: { "Idempotency-Key": "dual-src-payrec-002" },
+    body: JSON.stringify({
+      operator_id: operator.operator_id,
+      platform_account_id: registration.platform_account_id,
+      record_date: "2026-06-12",
+      amount_ngn: 9000
+    })
+  });
+  const corrected = await request("/ops/v1/cash/status?record_date=2026-06-12");
+  const correctedRow = corrected.body.data.find((item) => item.operator_id === operator.operator_id);
+  assert.equal(correctedRow.cash_basis, "performance", "performance wins when it is higher");
+  assert.equal(Number(correctedRow.expected_cash_ngn), 10000);
+});
+
 test("generates immutable daily report revisions", async () => {
   const first = await request("/ops/v1/daily-reports", {
     method: "POST",

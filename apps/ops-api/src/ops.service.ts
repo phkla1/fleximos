@@ -450,6 +450,7 @@ export class OpsService {
         COALESCE(d.cash_trips, 0) AS cash_trips,
         COALESCE(d.ride_revenue_ngn, 0) AS ride_revenue_ngn,
         COALESCE(d.expected_cash_ngn, 0) AS expected_cash_ngn,
+        COALESCE(pr.payment_report_cash_ngn, 0) AS payment_report_cash_ngn,
         COALESCE(t.remitted_cash_ngn, 0) AS remitted_cash_ngn,
         COALESCE(t.transaction_count, 0) AS transaction_count,
         t.latest_paid_at,
@@ -481,6 +482,12 @@ export class OpsService {
          GROUP BY operator_id
        ) t ON t.operator_id = o.operator_id
        LEFT JOIN (
+         SELECT operator_id, SUM(amount_ngn) AS payment_report_cash_ngn
+         FROM ops_platform_payment_records
+         WHERE record_date BETWEEN $1 AND $2
+         GROUP BY operator_id
+       ) pr ON pr.operator_id = o.operator_id
+       LEFT JOIN (
          SELECT operator_id, SUM(amount_ngn) AS adjustment_ngn, COUNT(*) AS adjustment_count
          FROM ops_cash_adjustments
          WHERE adjustment_date BETWEEN $1 AND $2
@@ -492,7 +499,14 @@ export class OpsService {
       params
     );
     return rows.map((row) => {
-      const expected = Number(row.expected_cash_ngn || 0);
+      // Dual-source rule (finance, 11 Aug 2026): where a platform payment
+      // report exists for the day, expected cash is the HIGHER of the
+      // performance-derived cash earnings and the payment-report total;
+      // the gap between the two sources is flagged for finance review.
+      const performanceCash = Number(row.expected_cash_ngn || 0);
+      const paymentReportCash = Number(row.payment_report_cash_ngn || 0);
+      const expected = paymentReportCash > 0 ? Math.max(performanceCash, paymentReportCash) : performanceCash;
+      const sourceVariance = paymentReportCash > 0 ? Math.abs(performanceCash - paymentReportCash) : 0;
       const remitted = Number(row.remitted_cash_ngn || 0);
       const adjustment = Number(row.adjustment_ngn || 0);
       const net = remitted + adjustment - expected;
@@ -505,6 +519,10 @@ export class OpsService {
         date_from: from,
         date_to: to,
         expected_cash_ngn: Math.round(expected * 100) / 100,
+        performance_cash_ngn: Math.round(performanceCash * 100) / 100,
+        payment_report_cash_ngn: Math.round(paymentReportCash * 100) / 100,
+        source_variance_ngn: Math.round(sourceVariance * 100) / 100,
+        cash_basis: paymentReportCash > performanceCash ? "payment_report" : "performance",
         remitted_cash_ngn: Math.round(remitted * 100) / 100,
         adjustment_ngn: Math.round(adjustment * 100) / 100,
         net_position_ngn: Math.round(net * 100) / 100,
@@ -512,6 +530,73 @@ export class OpsService {
         expected_cash_basis: "cash_trip_revenue_share"
       };
     });
+  }
+
+  async listPaymentRecords(
+    filters: { record_date?: string; date_from?: string; date_to?: string; operator_id?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const { from, to } = this.dateRange(filters);
+    const params: unknown[] = [from, to];
+    const clauses = ["p.record_date BETWEEN $1 AND $2"];
+    if (filters.operator_id) {
+      params.push(filters.operator_id);
+      clauses.push(`p.operator_id = $${params.length}`);
+    }
+    this.addScope(clauses, params, scope, "o");
+    return this.db.many(
+      `SELECT p.*, o.person_id, pa.display_name AS platform_display_name
+       FROM ops_platform_payment_records p
+       JOIN ops_operators o ON o.operator_id = p.operator_id
+       JOIN ops_platform_accounts pa ON pa.platform_account_id = p.platform_account_id
+       WHERE ${clauses.join(" AND ")}
+       ORDER BY p.record_date DESC`,
+      params
+    );
+  }
+
+  // One payment-report total per operator/platform/day, upserted so a
+  // corrected import simply replaces the figure.
+  async upsertPaymentRecord(body: RecordBody, actorPersonId: string) {
+    for (const field of ["operator_id", "platform_account_id", "record_date", "amount_ngn"]) {
+      if (body[field] === undefined || body[field] === "") throw new BadRequestException(`${field} is required.`);
+    }
+    const amount = Number(body.amount_ngn);
+    if (!(amount >= 0)) throw new BadRequestException("amount_ngn must be zero or positive.");
+    const timestamp = this.now();
+    const record = {
+      payment_record_id: this.id("payrec"),
+      operator_id: String(body.operator_id),
+      platform_account_id: String(body.platform_account_id),
+      record_date: this.date(body.record_date),
+      amount_ngn: amount,
+      transaction_count: body.transaction_count === undefined || body.transaction_count === null ? null : Number(body.transaction_count),
+      source: ["manual", "import", "api"].includes(String(body.source)) ? String(body.source) : "manual",
+      notes: body.notes ? String(body.notes) : null,
+      created_by_person_id: actorPersonId,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+    await this.db.exec(
+      `INSERT INTO ops_platform_payment_records
+        (payment_record_id, operator_id, platform_account_id, record_date, amount_ngn,
+         transaction_count, source, notes, created_by_person_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (operator_id, platform_account_id, record_date) DO UPDATE SET
+        amount_ngn = EXCLUDED.amount_ngn,
+        transaction_count = EXCLUDED.transaction_count,
+        source = EXCLUDED.source,
+        notes = EXCLUDED.notes,
+        created_by_person_id = EXCLUDED.created_by_person_id,
+        updated_at = EXCLUDED.updated_at`,
+      Object.values(record)
+    );
+    const saved = await this.db.one<any>(
+      "SELECT * FROM ops_platform_payment_records WHERE operator_id=$1 AND platform_account_id=$2 AND record_date=$3",
+      [record.operator_id, record.platform_account_id, record.record_date]
+    );
+    await this.audit("platform_payment_record.saved", "platform_payment_record", saved.payment_record_id, null, saved, actorPersonId);
+    return saved;
   }
 
   async createCashAdjustment(body: RecordBody, actorPersonId: string, scope: OpsDataScope = {}) {

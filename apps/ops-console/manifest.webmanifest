@@ -1,6 +1,6 @@
 {
-  "name": "Fleximotion Ops",
-  "short_name": "Flexi Ops",
+  "name": "Fleximotion Control Room",
+  "short_name": "Control Room",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f3f5f1",

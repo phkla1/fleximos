@@ -126,6 +126,7 @@ function accessModeLabel() {
 }
 
 function render() {
+  syncPaymentRecordForm();
   const activeOperators = state.operators.filter((operator) => operator.operator_status === "active");
   const netEarnings = state.performance.reduce((totals, record) => {
     const type = record.platform_vehicle_type || record.vehicle_type;
@@ -233,7 +234,7 @@ function render() {
       </article>`;
   }).join("") : '<div class="empty">No cash exposure is visible for this operating date.</div>';
 
-  const cashExceptions = state.cashStatus.filter((row) => ["shortfall", "in_credit"].includes(row.cash_status));
+  const cashExceptions = state.cashStatus.filter((row) => ["shortfall", "in_credit"].includes(row.cash_status) || Number(row.source_variance_ngn) > 100);
   const adjustmentsByRow = state.cashAdjustments.reduce((groups, item) => {
     const key = adjustmentKey(item);
     if (!groups.has(key)) groups.set(key, []);
@@ -250,7 +251,9 @@ function render() {
   el.cashExceptionList.innerHTML = cashExceptions.length ? cashExceptions.map((row) => `
     <article class="data-row alert ${row.cash_status === "shortfall" ? "critical" : ""}">
       <div><strong>${escapeHtml(personName(row.person_id))}</strong><small>${escapeHtml(amoebaName(row.amoeba_id))} · ${escapeHtml(row.vehicle_plate || "No vehicle")}</small></div>
-      <div><span class="row-label">Platform expected</span><strong>${money(row.expected_cash_ngn)}</strong><small>${escapeHtml(expectedCashBasis(row.expected_cash_basis))}</small></div>
+      <div><span class="row-label">Platform expected</span><strong>${money(row.expected_cash_ngn)}</strong><small>${Number(row.payment_report_cash_ngn) > 0
+        ? `Higher of two Uber sources — performance ${money(row.performance_cash_ngn)} vs payment report ${money(row.payment_report_cash_ngn)}${Number(row.source_variance_ngn) > 100 ? ` · ⚠ sources disagree by ${money(row.source_variance_ngn)}` : ""}`
+        : escapeHtml(expectedCashBasis(row.expected_cash_basis))}</small></div>
       <div><span class="row-label">Monnify received</span><strong>${money(row.remitted_cash_ngn)}</strong><small>${row.transaction_count} deposits</small></div>
       <div><span class="row-label">Variance</span><strong>${money(row.net_position_ngn)}</strong><small>${row.adjustment_count || 0} adjustments · ${escapeHtml(adjustmentSummary(row))}</small></div>
       <div class="row-actions"><span class="pill ${row.cash_status === "shortfall" ? "open" : "pending"}">${escapeHtml(row.cash_status.replaceAll("_", " "))}</span><button type="button" class="secondary" ${periodIsClosed || !financeCanMutate ? "disabled" : ""} data-adjust-operator="${escapeHtml(row.operator_id)}">${periodIsClosed ? "Locked" : financeCanMutate ? "Adjust" : "View-only"}</button></div>
@@ -442,6 +445,44 @@ el.adjustmentForm.addEventListener("submit", (event) => {
   event.preventDefault();
   submitAdjustment().catch(showError);
 });
+const paymentRecordForm = document.getElementById("paymentRecordForm");
+function syncPaymentRecordForm() {
+  if (!paymentRecordForm) return;
+  paymentRecordForm.elements.operator_id.innerHTML = state.operators.map((operator) =>
+    `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))}</option>`).join("");
+  const registrations = new Map();
+  for (const operator of state.operators) {
+    for (const registration of operator.platform_registrations || []) {
+      registrations.set(registration.platform_account_id, registration.platform_display_name);
+    }
+  }
+  paymentRecordForm.elements.platform_account_id.innerHTML = [...registrations.entries()].map(([id, name]) =>
+    `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("");
+  if (!paymentRecordForm.elements.record_date.value) paymentRecordForm.elements.record_date.value = state.operatingDate || today;
+}
+paymentRecordForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(paymentRecordForm));
+  try {
+    await ops("/ops/v1/platform-payment-records", {
+      method: "POST",
+      headers: { "Idempotency-Key": `payrec-${Date.now()}-${Math.random().toString(16).slice(2)}` },
+      body: JSON.stringify({
+        operator_id: values.operator_id,
+        platform_account_id: values.platform_account_id,
+        record_date: values.record_date,
+        amount_ngn: Number(values.amount_ngn),
+        transaction_count: values.transaction_count ? Number(values.transaction_count) : null,
+        source: "manual"
+      })
+    });
+    paymentRecordForm.reset();
+    await refresh();
+    el.notice.textContent = "Payment-report total saved — expected cash now uses the higher source.";
+    el.notice.classList.remove("error");
+  } catch (error) { showError(error); }
+});
+
 el.dateFrom.addEventListener("change", () => refresh().catch(showError));
 el.dateTo.addEventListener("change", () => refresh().catch(showError));
 function showError(error) { connection("error", "API error"); el.notice.textContent = error.message; el.notice.classList.add("error"); }

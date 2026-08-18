@@ -57,6 +57,18 @@ window, (b) a delivery progress card (stops done / packages left), and
 scoreless. Mode-mixing display (partial day each) is an O2 design decision
 to take with real batch data.
 
+## O2 — MY DISPATCH (decided 11 Aug 2026, next slice)
+
+Per the rider review: the app must be delivery-execution-first for dispatch
+riders. When the operator has delivery assignments, a **My Dispatch** view
+leads the Today experience: assigned/picked/delivered/failed/pending counts,
+the stop list where the batch has manifest data (sequence, customer, area,
+parcels, status; tap → Navigate via maps link, call customer), Start Route /
+Arrived / Delivered / Failed-with-mandatory-reason actions recorded by the
+rider (`operator_manual`, supervisor confirms at closeout), POD = photo +
+GPS + timestamp + signature pad. Rank de-emphasised below dispatch. Counts-
+only batches degrade gracefully to progress-bar + self-reported counts.
+
 ## O2 backlog (needs the readiness/deliveries APIs or product decisions)
 
 - Morning readiness self-check (photo proof items) feeding the supervisor

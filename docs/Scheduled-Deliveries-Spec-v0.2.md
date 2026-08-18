@@ -1,4 +1,4 @@
-# Scheduled Deliveries — Spec v0.2 (batch-level v1)
+# Scheduled Deliveries — Spec v0.3
 
 **Status:** Approved model (owner decisions 2 Aug 2026 folded in); build pending final go
 **Derived from:** `docs/Supervisor-App-Frontend-Brief.md` §7 + owner
@@ -107,9 +107,17 @@ ingestion-run pattern; the manual path must not depend on it.
 
 ## 5. Pricing and performance model (owner decisions, 2 Aug 2026)
 
-- **D1 (decided):** where no customer API exists, the **supervisor** enters
-  all progress counts; operators view only. When APIs land, `customer_api`
-  supersedes manual entry for those customers.
+- **D1 (revised, 11 Aug 2026 — rider review):** **riders record their own
+  progress** (per-stop or count-level: picked up, en route, arrived,
+  delivered, failed-with-mandatory-reason, POD) labelled
+  `operator_manual`; the **supervisor confirms at closeout**. Supervisors
+  can still enter/correct directly; customer APIs supersede both.
+- **Stops (11 Aug 2026):** stop-level detail (customer, address, phone,
+  parcels) is **optional per batch** — imported from a CSV/Excel manifest
+  where the customer can provide one ("mixed by customer"); counts-only
+  batches keep working unchanged.
+- **POD (11 Aug 2026):** photo + GPS + timestamp (existing media chain)
+  plus **on-screen signature capture**; no OTP in this phase.
 - **Two prices per delivery:**
   - **Contract price** (per customer, e.g. Speedaf ₦1,400/package): company
     revenue = contract price × delivered. Lives on the customer record;

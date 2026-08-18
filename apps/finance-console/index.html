@@ -68,6 +68,20 @@
         <div class="section-heading"><div><p class="eyebrow">Daily closeout</p><h2>Platform cash vs Monnify remittance</h2></div><button id="exportCashCsv" type="button" class="secondary">Export cash CSV</button></div>
         <p class="section-intro">Platform cash expected is compared with Monnify deposits received, including any Finance adjustments. Operator rows appear here only when there is a shortfall or credit to review. Per-platform fund locations (how much sits in Bolt or Uber vs the bank) become visible in the Monnify/payout integration phase.</p>
         <div id="periodCloseBanner" class="period-banner"></div>
+        <details class="management-panel">
+          <summary>Record an Uber payment-report total (second source)</summary>
+          <p class="section-intro">From Reports → Payment Transactions in Uber. Where a figure exists here, expected cash uses the HIGHER of it and the performance-sheet cash earnings, and any disagreement between the two sources is flagged below.</p>
+          <form id="paymentRecordForm" class="dialog-body" style="padding:0 0 12px">
+            <div class="form-grid">
+              <label>Operator<select name="operator_id" required></select></label>
+              <label>Platform<select name="platform_account_id" required></select></label>
+              <label>Date<input name="record_date" type="date" required /></label>
+              <label>Amount (₦)<input name="amount_ngn" type="number" min="0" step="0.01" required /></label>
+              <label>Transactions<input name="transaction_count" type="number" min="0" /></label>
+            </div>
+            <button type="submit">Save payment-report total</button>
+          </form>
+        </details>
         <div id="cashSummaryList" class="summary-grid"></div>
         <div id="cashExceptionList" class="data-list"></div>
       </section>

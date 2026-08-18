@@ -525,6 +525,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at TIMESTAMPTZ NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS ops_platform_payment_records (
+        payment_record_id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        platform_account_id TEXT NOT NULL REFERENCES ops_platform_accounts(platform_account_id),
+        record_date DATE NOT NULL,
+        amount_ngn NUMERIC(12, 2) NOT NULL,
+        transaction_count INTEGER,
+        source TEXT NOT NULL DEFAULT 'manual',
+        notes TEXT,
+        created_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(operator_id, platform_account_id, record_date)
+      );
+
       CREATE TABLE IF NOT EXISTS ops_delivery_customers (
         delivery_customer_id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,

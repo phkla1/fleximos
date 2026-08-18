@@ -72,6 +72,18 @@ intentional, not a defect.
 **Expected:** `…cash-closeout…csv` and `…reserved-accounts…csv` download and
 open cleanly in a spreadsheet.
 
+### FI-8b · Uber dual-source reconciliation
+1. Under **Platform cash vs Monnify remittance**, open **Record an Uber
+   payment-report total** — pick an operator, the Uber platform, today's
+   date, and enter an amount higher than the performance figure.
+
+**Expected:** after saving, the operator's expected cash uses the HIGHER of
+the performance cash earnings and the payment-report total; the row shows
+both figures and flags "sources disagree by ₦X" when they differ by more
+than ₦100 — rows with a source disagreement appear for review even when the
+cash itself is balanced. Re-saving a corrected amount replaces the figure
+(no duplicates).
+
 ### FI-9 · Fuel and mileage exceptions
 1. Review **Fuel and mileage exceptions**.
 
@@ -97,6 +109,7 @@ closed dates show the locked banner state.
 | FI-6 | | |
 | FI-7 | | |
 | FI-8 | | |
+| FI-8b | | |
 | FI-9 | | |
 | FI-10 | | |
 

@@ -3742,6 +3742,101 @@
           }
         ]
       }
+    },
+    "/platform-payment-records": {
+      "get": {
+        "tags": [
+          "Cash"
+        ],
+        "summary": "List platform payment-report totals",
+        "description": "The second cash source (e.g. the Uber Payment Transactions report), recorded per operator/platform/day. Finance/manager visibility.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "operator_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or non-oversight credentials"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Cash"
+        ],
+        "summary": "Record/replace a payment-report total",
+        "description": "Finance only. Upserts per (operator, platform, date). Where present, expected cash becomes the HIGHER of the performance-derived cash earnings and this figure, and the gap is flagged as source variance.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Requires Finance"
+          }
+        }
+      }
     }
   },
   "components": {

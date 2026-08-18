@@ -1,8 +1,8 @@
-# System Admin acceptance tests — Ops Admin + Identity Admin consoles
+# System Admin acceptance tests — Back Office (Ops) + Identity Admin consoles
 
 **Who this is for:** system administrators and data-operations staff.
 **Where:**
-- Ops admin: `https://<host>/apps/ops-admin-console/`
+- Back Office (ops admin): `https://<host>/apps/ops-admin-console/`
 - Identity/Amoeba admin: `https://<host>/apps/admin-console/`
 
 Admin surfaces are for configuration, roster, policies and data health — not

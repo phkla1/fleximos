@@ -223,6 +223,41 @@ export class OpsController {
     );
   }
 
+  @ApiTags("Cash")
+  @ApiBearerAuth()
+  @Get("ops/v1/platform-payment-records")
+  async listPaymentRecords(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("operator_id") operatorId?: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireBusinessOversight(actor);
+    return {
+      data: await this.ops.listPaymentRecords(
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, operator_id: operatorId },
+        this.identity.dataScope(actor)
+      ),
+      next_cursor: null
+    };
+  }
+
+  @ApiTags("Cash")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Record a platform payment-report total (second cash source, e.g. Uber Payment Transactions)" })
+  @Post("ops/v1/platform-payment-records")
+  async upsertPaymentRecord(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireFinanceMutation(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.ops.upsertPaymentRecord(body, actor.person_id));
+  }
+
   @ApiTags("Closeouts")
   @ApiBearerAuth()
   @Get("ops/v1/daily-closeouts")
