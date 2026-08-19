@@ -1,6 +1,6 @@
 {
-  "name": "Fleximotion Control Room",
-  "short_name": "Control Room",
+  "name": "Fleximotion Supervisor App",
+  "short_name": "Supervisor",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f3f5f1",

@@ -1,4 +1,4 @@
-# Supervisor acceptance tests — Fleximotion Control Room
+# Supervisor acceptance tests — Supervisor App
 
 **Who this is for:** supervisors / amoeba owners running a team day to day.
 **Where:** `https://<host>/apps/ops-console/` (mobile-first — test on a phone

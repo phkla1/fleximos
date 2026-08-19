@@ -5,7 +5,7 @@ test.describe("Supervisor Ops console", () => {
 
   test("cockpit answers what needs action now", async ({ page }) => {
     await page.goto(url);
-    await expect(page).toHaveTitle("Fleximotion Control Room");
+    await expect(page).toHaveTitle("Fleximotion Supervisor App");
     await expect(page.locator("#notice")).toContainText("Connected");
     await expect(page.locator("#paceGauge")).toBeVisible();
     await expect(page.locator("#utilisationGauge")).toBeVisible();
@@ -128,7 +128,7 @@ test.describe("Ops admin console", () => {
 
   test("keeps ingestion and roster controls out of the supervisor workspace", async ({ page }) => {
     await page.goto(url);
-    await expect(page).toHaveTitle("Fleximotion Back Office");
+    await expect(page).toHaveTitle("Fleximotion Administrator Console");
     await expect(page.locator("#notice")).toContainText("Connected");
     await expect(page.getByRole("heading", { name: "Manual data entry" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Operators" })).toBeVisible();

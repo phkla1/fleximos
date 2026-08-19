@@ -325,7 +325,9 @@ for (const [name, price] of [["Speedaf", 1400], ["Konga", 1300]]) {
     customerByName.set(name, created);
   }
 }
-const seedBatches = (await get(opsBase, `/ops/v1/delivery-batches?date_from=${dayAt(-1)}&date_to=${dayAt(0)}`)).data;
+// Always ensure TODAY has a live batch (keys are date-suffixed, so
+// re-running on a later day seeds that day's batch too).
+const seedBatches = (await get(opsBase, `/ops/v1/delivery-batches?date_from=${dayAt(0)}&date_to=${dayAt(0)}`)).data;
 if (!seedBatches.length) {
   const konga = customerByName.get("Konga");
   const batch = await post(opsBase, "/ops/v1/delivery-batches", `realistic-seed-dbatch-${dayAt(0)}`, {
