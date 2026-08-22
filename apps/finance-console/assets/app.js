@@ -357,13 +357,18 @@ function openAdjustmentDialog(operatorId) {
   el.adjustmentDialog.showModal();
 }
 
+let refreshSequence = 0;
 async function refresh() {
+  // Overlapping refreshes (date-change events + the Refresh button) must not
+  // let a slower, staler response repaint over the latest range.
+  const ticket = ++refreshSequence;
   connection("", "Connecting");
   el.notice.textContent = "Loading scoped Finance data...";
   const [actorProfile, people, amoebas, operators, allPerformance] = await Promise.all([
     foundation("/identity/v1/me").catch(() => ({ actor_type: "service", person_id: "person_system", scopes: [] })),
     foundation("/identity/v1/people"), foundation("/amoeba/v1/amoebas"), ops("/ops/v1/operators"), ops("/ops/v1/daily-performance")
   ]);
+  if (ticket !== refreshSequence) return;
   const dates = [...new Set(allPerformance.data.map((item) => String(item.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || today;
   let dateTo = el.dateTo.value || dateFrom;
@@ -414,6 +419,7 @@ async function refresh() {
   } catch {
     paymentsState.paymentsAvailable = false;
   }
+  if (ticket !== refreshSequence) return;
   Object.assign(state, {
     people: people.data,
     amoebas: amoebas.data,
@@ -464,23 +470,132 @@ paymentRecordForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(paymentRecordForm));
   try {
-    await ops("/ops/v1/platform-payment-records", {
+    await request(opsBase, "/ops/v1/platform-payment-records", {
       method: "POST",
-      headers: { "Idempotency-Key": `payrec-${Date.now()}-${Math.random().toString(16).slice(2)}` },
-      body: JSON.stringify({
+      idempotencyKey: `payrec-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      body: {
         operator_id: values.operator_id,
         platform_account_id: values.platform_account_id,
         record_date: values.record_date,
         amount_ngn: Number(values.amount_ngn),
         transaction_count: values.transaction_count ? Number(values.transaction_count) : null,
         source: "manual"
-      })
+      }
     });
     paymentRecordForm.reset();
     await refresh();
     el.notice.textContent = "Payment-report total saved — expected cash now uses the higher source.";
     el.notice.classList.remove("error");
   } catch (error) { showError(error); }
+});
+
+/* ---------- Uber Payment Transactions CSV import ---------- */
+
+// Minimal CSV parser that honours quoted fields (Uber's cash column
+// contains commas inside quotes).
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (inQuotes) {
+      if (char === '"' && text[index + 1] === '"') { field += '"'; index++; }
+      else if (char === '"') inQuotes = false;
+      else field += char;
+    } else if (char === '"') inQuotes = true;
+    else if (char === ",") { row.push(field); field = ""; }
+    else if (char === "\n" || char === "\r") {
+      if (char === "\r" && text[index + 1] === "\n") index++;
+      row.push(field); field = "";
+      if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+      row = [];
+    } else field += char;
+  }
+  row.push(field);
+  if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+// "(3,700.00)" -> 3700; " -   " -> 0. Uber shows collected cash in
+// accounting notation; we want the magnitude the driver holds.
+function parseUberCash(value) {
+  const cleaned = String(value || "").replaceAll(",", "").replace(/[()\s₦]/g, "").replace("-", "");
+  const amount = Number(cleaned);
+  return Number.isFinite(amount) ? Math.abs(amount) : 0;
+}
+
+document.getElementById("paymentCsvInput")?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  const statusEl = document.getElementById("paymentCsvStatus");
+  if (!file) return;
+  statusEl.textContent = "Reading file…";
+  try {
+    if (!state.operators.length) throw new Error("Operator roster is still loading — wait for the console to connect, then re-select the file.");
+    const rows = parseCsv(await file.text());
+    const headers = rows[0].map((header) => header.trim().toLowerCase());
+    const column = (pattern) => headers.findIndex((header) => pattern.test(header));
+    const uuidCol = column(/^driver uuid$/);
+    const firstCol = column(/^driver first name$/);
+    const lastCol = column(/^driver surname$/);
+    const dateCol = column(/^vs reporting$/);
+    const cashCol = column(/payouts\s*:\s*cash collected/);
+    if (dateCol < 0 || cashCol < 0) throw new Error("This does not look like an Uber Payment Transactions export (missing 'vs reporting' or 'Cash collected' columns).");
+
+    // operator lookup: Uber driver UUID via platform registrations, then name
+    const byExternalId = new Map();
+    const byName = new Map();
+    for (const operator of state.operators) {
+      const registrations = operator.platform_registrations || [];
+      const uber = registrations.find((registration) => /uber/i.test(registration.platform_display_name || "")) || registrations[0];
+      for (const registration of registrations) {
+        byExternalId.set(String(registration.platform_operator_id).toLowerCase(), { operator, registration });
+      }
+      if (uber) byName.set(personName(operator.person_id).toLowerCase().replace(/\s+/g, " "), { operator, registration: uber });
+    }
+
+    const totals = new Map();
+    const unmatched = new Set();
+    for (const row of rows.slice(1)) {
+      const cash = parseUberCash(row[cashCol]);
+      if (!cash) continue;
+      const date = String(row[dateCol] || "").trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const uuid = String(row[uuidCol] || "").trim().toLowerCase();
+      const fullName = `${String(row[firstCol] || "").trim()} ${String(row[lastCol] || "").trim()}`.toLowerCase().replace(/\s+/g, " ");
+      const reversedName = `${String(row[lastCol] || "").trim()} ${String(row[firstCol] || "").trim()}`.toLowerCase().replace(/\s+/g, " ");
+      const match = byExternalId.get(uuid) || byName.get(fullName) || byName.get(reversedName);
+      if (!match) { unmatched.add(fullName || uuid); continue; }
+      const key = `${match.operator.operator_id}|${match.registration.platform_account_id}|${date}`;
+      const entry = totals.get(key) || { amount: 0, count: 0, match, date };
+      entry.amount += cash; entry.count += 1;
+      totals.set(key, entry);
+    }
+    if (!totals.size) throw new Error("No matching cash rows found in the file.");
+
+    statusEl.textContent = `Saving ${totals.size} daily totals…`;
+    for (const entry of totals.values()) {
+      await request(opsBase, "/ops/v1/platform-payment-records", {
+        method: "POST",
+        idempotencyKey: `payrec-import-${entry.match.operator.operator_id}-${entry.date}-${Date.now()}`,
+        body: {
+          operator_id: entry.match.operator.operator_id,
+          platform_account_id: entry.match.registration.platform_account_id,
+          record_date: entry.date,
+          amount_ngn: Math.round(entry.amount * 100) / 100,
+          transaction_count: entry.count,
+          source: "import",
+          notes: `Imported from ${file.name}`
+        }
+      });
+    }
+    const drivers = new Set([...totals.values()].map((entry) => entry.match.operator.operator_id)).size;
+    statusEl.textContent = `✓ Imported ${totals.size} daily totals for ${drivers} driver${drivers === 1 ? "" : "s"}.`
+      + (unmatched.size ? ` ⚠ Unmatched (fix names/UUIDs in the roster): ${[...unmatched].slice(0, 5).join(", ")}${unmatched.size > 5 ? "…" : ""}` : "");
+    event.target.value = "";
+    await refresh();
+  } catch (error) {
+    statusEl.textContent = `Import failed: ${error.message}`;
+  }
 });
 
 el.dateFrom.addEventListener("change", () => refresh().catch(showError));

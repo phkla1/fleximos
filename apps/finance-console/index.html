@@ -69,7 +69,12 @@
         <p class="section-intro">Platform cash expected is compared with Monnify deposits received, including any Finance adjustments. Operator rows appear here only when there is a shortfall or credit to review. Per-platform fund locations (how much sits in Bolt or Uber vs the bank) become visible in the Monnify/payout integration phase.</p>
         <div id="periodCloseBanner" class="period-banner"></div>
         <details class="management-panel">
-          <summary>Record an Uber payment-report total (second source)</summary>
+          <summary>Import / record Uber Payment Transactions (second source)</summary>
+          <p class="section-intro"><strong>One-click import:</strong> upload the CSV exactly as exported from Uber's portal (Reports → Payment Transactions). Each driver's daily cash total is extracted and saved automatically — matched by Uber driver UUID first, then by name.</p>
+          <label class="compact-field">Payment Transactions CSV
+            <input id="paymentCsvInput" type="file" accept=".csv,text/csv" />
+          </label>
+          <p id="paymentCsvStatus" class="subtle"></p>
           <p class="section-intro">From Reports → Payment Transactions in Uber. Where a figure exists here, expected cash uses the HIGHER of it and the performance-sheet cash earnings, and any disagreement between the two sources is flagged below.</p>
           <form id="paymentRecordForm" class="dialog-body" style="padding:0 0 12px">
             <div class="form-grid">

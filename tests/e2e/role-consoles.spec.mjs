@@ -76,6 +76,25 @@ test.describe("role consoles", () => {
     await expect(page.getByRole("heading", { name: "Monnify service readiness" })).toBeVisible();
   });
 
+  test("finance console imports the real Uber Payment Transactions CSV", async ({ page }) => {
+    await page.goto("/apps/finance-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510&paymentsApiBase=http://127.0.0.1:4542");
+    await expect(page.locator("#notice")).not.toContainText("error");
+    await page.getByText("Import / record Uber Payment Transactions", { exact: false }).click();
+    await page.locator("#paymentCsvInput").setInputFiles("tests/fixtures/uber-payment-transactions-sample.csv");
+    await expect(page.locator("#paymentCsvStatus")).toContainText("✓ Imported", { timeout: 20000 });
+    await expect(page.locator("#paymentCsvStatus")).toContainText("Unmatched");
+
+    // The imported day shows the dual-source basis in the review list.
+    // (Wait for the range to actually land before asserting — each date
+    // change fires its own refresh.)
+    await page.locator("#dateFrom").fill("2026-08-18");
+    await expect(page.locator("#revenueContext")).toContainText("2026-08-18", { timeout: 15000 });
+    await page.locator("#dateTo").fill("2026-08-18");
+    await page.locator("#refreshButton").click();
+    await expect(page.locator("#revenueContext")).toContainText("for 2026-08-18", { timeout: 15000 });
+    await expect(page.locator("#cashExceptionList")).toContainText("payment report", { timeout: 15000 });
+  });
+
   test("finance console can run the sandbox Monnify test flow", async ({ page }) => {
     await page.goto("/apps/finance-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510&paymentsApiBase=http://127.0.0.1:4542");
 

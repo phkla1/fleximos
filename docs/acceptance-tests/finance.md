@@ -73,16 +73,24 @@ intentional, not a defect.
 open cleanly in a spreadsheet.
 
 ### FI-8b · Uber dual-source reconciliation
-1. Under **Platform cash vs Monnify remittance**, open **Record an Uber
-   payment-report total** — pick an operator, the Uber platform, today's
-   date, and enter an amount higher than the performance figure.
+1. Export the **Payment Transactions** report from the Uber fleet portal
+   (Reports → Payment Transactions) as CSV.
+2. Under **Platform cash vs Monnify remittance**, open **Import / record
+   Uber Payment Transactions** and choose the file.
+3. If a driver has no Uber UUID on file and their roster name doesn't match
+   the Uber name, they are listed as unmatched — use the manual form below
+   the import to record their daily total instead.
 
-**Expected:** after saving, the operator's expected cash uses the HIGHER of
-the performance cash earnings and the payment-report total; the row shows
-both figures and flags "sources disagree by ₦X" when they differ by more
-than ₦100 — rows with a source disagreement appear for review even when the
-cash itself is balanced. Re-saving a corrected amount replaces the figure
-(no duplicates).
+**Expected:** the import reads the "Cash collected" column, totals it per
+driver per day (Uber's bracketed amounts like `(3,700.00)` are handled),
+matches drivers by Uber UUID and then by name, and reports "✓ Imported N
+daily totals for D drivers" plus any unmatched names. For each imported
+day, the operator's expected cash uses the HIGHER of the performance cash
+earnings and the payment-report total; the row shows both figures and flags
+"sources disagree by ₦X" when they differ by more than ₦100 — rows with a
+source disagreement appear for review even when the cash itself is
+balanced. Re-importing the same file (or re-saving a corrected manual
+amount) replaces the figures — no duplicates.
 
 ### FI-9 · Fuel and mileage exceptions
 1. Review **Fuel and mileage exceptions**.
