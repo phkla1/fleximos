@@ -78,8 +78,8 @@ test.describe("role consoles", () => {
 
   test("finance console imports the real Uber Payment Transactions CSV", async ({ page }) => {
     await page.goto("/apps/finance-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510&paymentsApiBase=http://127.0.0.1:4542");
-    await expect(page.locator("#notice")).not.toContainText("error");
-    await page.getByText("Import / record Uber Payment Transactions", { exact: false }).click();
+    await expect(page.locator("#notice")).toContainText("access is active", { timeout: 20000 });
+    await page.getByText("Import / record Uber cash sources", { exact: false }).click();
     await page.locator("#paymentCsvInput").setInputFiles("tests/fixtures/uber-payment-transactions-sample.csv");
     await expect(page.locator("#paymentCsvStatus")).toContainText("✓ Imported", { timeout: 20000 });
     await expect(page.locator("#paymentCsvStatus")).toContainText("Unmatched");
@@ -93,6 +93,19 @@ test.describe("role consoles", () => {
     await page.locator("#refreshButton").click();
     await expect(page.locator("#revenueContext")).toContainText("for 2026-08-18", { timeout: 15000 });
     await expect(page.locator("#cashExceptionList")).toContainText("payment report", { timeout: 15000 });
+
+    // Performance CSV (first source): the file picker stays locked until the
+    // user declares the period the export covers.
+    await expect(page.locator("#performanceCsvInput")).toBeDisabled();
+    await expect(page.locator("#performanceCsvStatus")).toContainText("Enter the covered period");
+    await page.locator("#perfPeriodStart").fill("2026-08-18");
+    await page.locator("#perfPeriodEnd").fill("2026-08-18");
+    await expect(page.locator("#performanceCsvInput")).toBeEnabled();
+    await page.locator("#performanceCsvInput").setInputFiles("tests/fixtures/uber-performance-sample.csv");
+    await expect(page.locator("#performanceCsvStatus")).toContainText("✓ Imported", { timeout: 20000 });
+    await expect(page.locator("#performanceCsvStatus")).toContainText("covering 2026-08-18 to 2026-08-18");
+    await expect(page.locator("#revenueContext")).toContainText("for 2026-08-18", { timeout: 15000 });
+    await expect(page.locator("#cashExceptionList")).toContainText("(report import)", { timeout: 15000 });
   });
 
   test("finance console can run the sandbox Monnify test flow", async ({ page }) => {

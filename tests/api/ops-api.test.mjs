@@ -891,6 +891,75 @@ test("uses the higher of two Uber cash sources and flags the variance", async ()
   assert.equal(Number(correctedRow.expected_cash_ngn), 10000);
 });
 
+test("performance-report cash records require a declared period and lift the performance side", async () => {
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) =>
+    row.operator_status === "active" && row.platform_registrations?.length);
+  const registration = operator.platform_registrations[0];
+
+  // The export has no dates: the period is mandatory and must be sane.
+  const missing = await request("/ops/v1/performance-cash-records", {
+    method: "POST",
+    headers: { "Idempotency-Key": "perf-rec-missing-001" },
+    body: JSON.stringify({
+      operator_id: operator.operator_id,
+      platform_account_id: registration.platform_account_id,
+      amount_ngn: 12500
+    })
+  });
+  assert.equal(missing.response.status, 400, "period_start/period_end are required");
+
+  const saved = await request("/ops/v1/performance-cash-records", {
+    method: "POST",
+    headers: { "Idempotency-Key": "perf-rec-001" },
+    body: JSON.stringify({
+      operator_id: operator.operator_id,
+      platform_account_id: registration.platform_account_id,
+      period_start: "2026-06-12",
+      period_end: "2026-06-12",
+      amount_ngn: 12500,
+      source: "import"
+    })
+  });
+  assert.equal(saved.response.status, 201);
+
+  // Within a range that contains the period, the performance side becomes
+  // the higher of derived share (10000, from the dual-source test) and the
+  // imported report figure.
+  const contained = await request("/ops/v1/cash/status?record_date=2026-06-12");
+  const row = contained.body.data.find((item) => item.operator_id === operator.operator_id);
+  assert.equal(Number(row.performance_report_cash_ngn), 12500);
+  assert.equal(Number(row.performance_cash_ngn), 12500, "imported report lifts the performance side");
+  assert.equal(Number(row.expected_cash_ngn), 12500, "expected cash follows the higher performance figure");
+  assert.equal(row.expected_cash_basis, "performance_report_import");
+
+  // Outside the declared period the report does not apply.
+  const outside = await request("/ops/v1/cash/status?record_date=2026-06-13");
+  const outsideRow = outside.body.data.find((item) => item.operator_id === operator.operator_id);
+  assert.equal(Number(outsideRow.performance_report_cash_ngn), 0, "record only counts when its period is inside the range");
+
+  // Upsert replaces, never duplicates.
+  await request("/ops/v1/performance-cash-records", {
+    method: "POST",
+    headers: { "Idempotency-Key": "perf-rec-002" },
+    body: JSON.stringify({
+      operator_id: operator.operator_id,
+      platform_account_id: registration.platform_account_id,
+      period_start: "2026-06-12",
+      period_end: "2026-06-12",
+      amount_ngn: 9500
+    })
+  });
+  const list = await request("/ops/v1/performance-cash-records?date_from=2026-06-12&date_to=2026-06-12");
+  const records = list.body.data.filter((item) => item.operator_id === operator.operator_id);
+  assert.equal(records.length, 1, "corrected import replaces the figure");
+  assert.equal(Number(records[0].amount_ngn), 9500);
+  const correctedStatus = await request("/ops/v1/cash/status?record_date=2026-06-12");
+  const correctedRow = correctedStatus.body.data.find((item) => item.operator_id === operator.operator_id);
+  assert.equal(Number(correctedRow.performance_cash_ngn), 10000, "derived share wins again when it is higher");
+  assert.equal(correctedRow.expected_cash_basis, "cash_trip_revenue_share");
+});
+
 test("runs the stop-level dispatch workflow with rider recording", async () => {
   const customers = await request("/ops/v1/delivery-customers");
   const customer = customers.body.data[0];

@@ -451,6 +451,7 @@ export class OpsService {
         COALESCE(d.ride_revenue_ngn, 0) AS ride_revenue_ngn,
         COALESCE(d.expected_cash_ngn, 0) AS expected_cash_ngn,
         COALESCE(pr.payment_report_cash_ngn, 0) AS payment_report_cash_ngn,
+        COALESCE(pf.performance_report_cash_ngn, 0) AS performance_report_cash_ngn,
         COALESCE(t.remitted_cash_ngn, 0) AS remitted_cash_ngn,
         COALESCE(t.transaction_count, 0) AS transaction_count,
         t.latest_paid_at,
@@ -488,6 +489,12 @@ export class OpsService {
          GROUP BY operator_id
        ) pr ON pr.operator_id = o.operator_id
        LEFT JOIN (
+         SELECT operator_id, SUM(amount_ngn) AS performance_report_cash_ngn
+         FROM ops_performance_cash_records
+         WHERE period_start >= $1 AND period_end <= $2
+         GROUP BY operator_id
+       ) pf ON pf.operator_id = o.operator_id
+       LEFT JOIN (
          SELECT operator_id, SUM(amount_ngn) AS adjustment_ngn, COUNT(*) AS adjustment_count
          FROM ops_cash_adjustments
          WHERE adjustment_date BETWEEN $1 AND $2
@@ -503,7 +510,13 @@ export class OpsService {
       // report exists for the day, expected cash is the HIGHER of the
       // performance-derived cash earnings and the payment-report total;
       // the gap between the two sources is flagged for finance review.
-      const performanceCash = Number(row.expected_cash_ngn || 0);
+      // The performance side is derived from ingested cash-trip share, but
+      // an imported Uber performance report covering days inside the range
+      // is authoritative — take the higher so a partial import never
+      // understates the range.
+      const derivedCash = Number(row.expected_cash_ngn || 0);
+      const performanceReportCash = Number(row.performance_report_cash_ngn || 0);
+      const performanceCash = Math.max(derivedCash, performanceReportCash);
       const paymentReportCash = Number(row.payment_report_cash_ngn || 0);
       const expected = paymentReportCash > 0 ? Math.max(performanceCash, paymentReportCash) : performanceCash;
       const sourceVariance = paymentReportCash > 0 ? Math.abs(performanceCash - paymentReportCash) : 0;
@@ -520,6 +533,7 @@ export class OpsService {
         date_to: to,
         expected_cash_ngn: Math.round(expected * 100) / 100,
         performance_cash_ngn: Math.round(performanceCash * 100) / 100,
+        performance_report_cash_ngn: Math.round(performanceReportCash * 100) / 100,
         payment_report_cash_ngn: Math.round(paymentReportCash * 100) / 100,
         source_variance_ngn: Math.round(sourceVariance * 100) / 100,
         cash_basis: paymentReportCash > performanceCash ? "payment_report" : "performance",
@@ -527,7 +541,7 @@ export class OpsService {
         adjustment_ngn: Math.round(adjustment * 100) / 100,
         net_position_ngn: Math.round(net * 100) / 100,
         cash_status: status,
-        expected_cash_basis: "cash_trip_revenue_share"
+        expected_cash_basis: performanceReportCash > derivedCash ? "performance_report_import" : "cash_trip_revenue_share"
       };
     });
   }
@@ -596,6 +610,79 @@ export class OpsService {
       [record.operator_id, record.platform_account_id, record.record_date]
     );
     await this.audit("platform_payment_record.saved", "platform_payment_record", saved.payment_record_id, null, saved, actorPersonId);
+    return saved;
+  }
+
+  async listPerformanceCashRecords(
+    filters: { date_from?: string; date_to?: string; operator_id?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const { from, to } = this.dateRange(filters);
+    const params: unknown[] = [from, to];
+    const clauses = ["p.period_end >= $1", "p.period_start <= $2"];
+    if (filters.operator_id) {
+      params.push(filters.operator_id);
+      clauses.push(`p.operator_id = $${params.length}`);
+    }
+    this.addScope(clauses, params, scope, "o");
+    return this.db.many(
+      `SELECT p.*, o.person_id, pa.display_name AS platform_display_name
+       FROM ops_performance_cash_records p
+       JOIN ops_operators o ON o.operator_id = p.operator_id
+       JOIN ops_platform_accounts pa ON pa.platform_account_id = p.platform_account_id
+       WHERE ${clauses.join(" AND ")}
+       ORDER BY p.period_end DESC`,
+      params
+    );
+  }
+
+  // The Uber performance export carries no dates, so every saved figure must
+  // declare the period it covers; one total per operator/platform/period,
+  // upserted so a corrected import replaces the figure.
+  async upsertPerformanceCashRecord(body: RecordBody, actorPersonId: string) {
+    for (const field of ["operator_id", "platform_account_id", "period_start", "period_end", "amount_ngn"]) {
+      if (body[field] === undefined || body[field] === "") throw new BadRequestException(`${field} is required.`);
+    }
+    const amount = Number(body.amount_ngn);
+    if (!(amount >= 0)) throw new BadRequestException("amount_ngn must be zero or positive.");
+    const periodStart = this.date(body.period_start);
+    const periodEnd = this.date(body.period_end);
+    if (periodStart > periodEnd) throw new BadRequestException("period_start must not be after period_end.");
+    if ((new Date(periodEnd).getTime() - new Date(periodStart).getTime()) / 86400000 > 92) {
+      throw new BadRequestException("The covered period may span at most 92 days.");
+    }
+    const timestamp = this.now();
+    const record = {
+      performance_record_id: this.id("perfrec"),
+      operator_id: String(body.operator_id),
+      platform_account_id: String(body.platform_account_id),
+      period_start: periodStart,
+      period_end: periodEnd,
+      amount_ngn: amount,
+      source: ["manual", "import"].includes(String(body.source)) ? String(body.source) : "import",
+      notes: body.notes ? String(body.notes) : null,
+      created_by_person_id: actorPersonId,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+    await this.db.exec(
+      `INSERT INTO ops_performance_cash_records
+        (performance_record_id, operator_id, platform_account_id, period_start, period_end,
+         amount_ngn, source, notes, created_by_person_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (operator_id, platform_account_id, period_start, period_end) DO UPDATE SET
+        amount_ngn = EXCLUDED.amount_ngn,
+        source = EXCLUDED.source,
+        notes = EXCLUDED.notes,
+        created_by_person_id = EXCLUDED.created_by_person_id,
+        updated_at = EXCLUDED.updated_at`,
+      Object.values(record)
+    );
+    const saved = await this.db.one<any>(
+      "SELECT * FROM ops_performance_cash_records WHERE operator_id=$1 AND platform_account_id=$2 AND period_start=$3 AND period_end=$4",
+      [record.operator_id, record.platform_account_id, record.period_start, record.period_end]
+    );
+    await this.audit("performance_cash_record.saved", "performance_cash_record", saved.performance_record_id, null, saved, actorPersonId);
     return saved;
   }
 

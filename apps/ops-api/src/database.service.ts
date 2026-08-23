@@ -540,6 +540,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         UNIQUE(operator_id, platform_account_id, record_date)
       );
 
+      CREATE TABLE IF NOT EXISTS ops_performance_cash_records (
+        performance_record_id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        platform_account_id TEXT NOT NULL REFERENCES ops_platform_accounts(platform_account_id),
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        amount_ngn NUMERIC(12, 2) NOT NULL,
+        source TEXT NOT NULL DEFAULT 'import',
+        notes TEXT,
+        created_by_person_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(operator_id, platform_account_id, period_start, period_end)
+      );
+
       CREATE TABLE IF NOT EXISTS ops_delivery_customers (
         delivery_customer_id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,

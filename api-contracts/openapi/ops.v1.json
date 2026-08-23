@@ -3838,6 +3838,101 @@
         }
       }
     },
+    "/performance-cash-records": {
+      "get": {
+        "tags": [
+          "Cash"
+        ],
+        "summary": "List performance-report cash totals",
+        "description": "Uber performance-report cash figures recorded against a declared covering period (the export itself carries no dates). Finance/manager visibility.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "operator_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or non-oversight credentials"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Cash"
+        ],
+        "summary": "Record/replace a performance-report cash total for a declared period",
+        "description": "Finance only. The caller MUST supply period_start and period_end declaring the dates the imported export covers (max 92 days). Upserts per (operator, platform, period). Within a queried cash-status range that fully contains the period, the performance side of the dual-source comparison becomes the HIGHER of the derived cash-trip share and this figure.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "Validation failed (missing period, reversed period, or span over 92 days)"
+          },
+          "401": {
+            "description": "Requires Finance"
+          }
+        }
+      }
+    },
     "/delivery-batches/{batch_id}/stops": {
       "post": {
         "tags": [

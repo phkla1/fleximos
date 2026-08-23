@@ -258,6 +258,40 @@ export class OpsController {
     return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.ops.upsertPaymentRecord(body, actor.person_id));
   }
 
+  @ApiTags("Cash")
+  @ApiBearerAuth()
+  @Get("ops/v1/performance-cash-records")
+  async listPerformanceCashRecords(
+    @Req() req: Request,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("operator_id") operatorId?: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireBusinessOversight(actor);
+    return {
+      data: await this.ops.listPerformanceCashRecords(
+        { date_from: dateFrom, date_to: dateTo, operator_id: operatorId },
+        this.identity.dataScope(actor)
+      ),
+      next_cursor: null
+    };
+  }
+
+  @ApiTags("Cash")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Record an Uber performance-report cash total for a declared period (the export carries no dates)" })
+  @Post("ops/v1/performance-cash-records")
+  async upsertPerformanceCashRecord(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireFinanceMutation(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.ops.upsertPerformanceCashRecord(body, actor.person_id));
+  }
+
   @ApiTags("Closeouts")
   @ApiBearerAuth()
   @Get("ops/v1/daily-closeouts")

@@ -76,10 +76,15 @@ open cleanly in a spreadsheet.
 1. Export the **Payment Transactions** report from the Uber fleet portal
    (Reports → Payment Transactions) as CSV.
 2. Under **Platform cash vs Monnify remittance**, open **Import / record
-   Uber Payment Transactions** and choose the file.
+   Uber cash sources** and choose the file.
 3. If a driver has no Uber UUID on file and their roster name doesn't match
    the Uber name, they are listed as unmatched — use the manual form below
    the import to record their daily total instead.
+4. Now the **performance CSV** (first source): note that its file picker is
+   locked. Enter the period the export covers (**required — this file has
+   no dates in it, so the figures are only valid for the range you
+   declare**), then choose the file. Drivers are matched by phone number
+   first, then by name.
 
 **Expected:** the import reads the "Cash collected" column, totals it per
 driver per day (Uber's bracketed amounts like `(3,700.00)` are handled),
@@ -91,6 +96,14 @@ earnings and the payment-report total; the row shows both figures and flags
 source disagreement appear for review even when the cash itself is
 balanced. Re-importing the same file (or re-saving a corrected manual
 amount) replaces the figures — no duplicates.
+
+For the performance import: each driver's "Cash Collected" total is saved
+against exactly the declared period. When the cash review range fully
+contains that period, the performance side of the comparison uses the
+HIGHER of the ingested cash-trip share and the imported report figure, and
+the row notes "(report import)" when the import is what set it. Outside
+the declared period the imported figure does not apply. Re-importing over
+the same period replaces the figures.
 
 ### FI-9 · Fuel and mileage exceptions
 1. Review **Fuel and mileage exceptions**.

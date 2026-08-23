@@ -46,7 +46,9 @@ const personName = (id) => state.people.find((item) => item.person_id === id)?.d
 const amoebaName = (id) => state.amoebas.find((item) => item.amoeba_id === id)?.name || id;
 const expectedCashBasis = (basis) => basis === "cash_trip_revenue_share"
   ? "Derived from platform cash-trip share"
-  : String(basis || "Platform cash amount");
+  : basis === "performance_report_import"
+    ? "From the imported Uber performance report"
+    : String(basis || "Platform cash amount");
 const adjustmentKey = (item) => `${item.operator_id}:${String(item.adjustment_date).slice(0, 10)}`;
 const lagosDateString = (value) => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos",
@@ -252,7 +254,7 @@ function render() {
     <article class="data-row alert ${row.cash_status === "shortfall" ? "critical" : ""}">
       <div><strong>${escapeHtml(personName(row.person_id))}</strong><small>${escapeHtml(amoebaName(row.amoeba_id))} · ${escapeHtml(row.vehicle_plate || "No vehicle")}</small></div>
       <div><span class="row-label">Platform expected</span><strong>${money(row.expected_cash_ngn)}</strong><small>${Number(row.payment_report_cash_ngn) > 0
-        ? `Higher of two Uber sources — performance ${money(row.performance_cash_ngn)} vs payment report ${money(row.payment_report_cash_ngn)}${Number(row.source_variance_ngn) > 100 ? ` · ⚠ sources disagree by ${money(row.source_variance_ngn)}` : ""}`
+        ? `Higher of two Uber sources — performance ${money(row.performance_cash_ngn)}${row.expected_cash_basis === "performance_report_import" ? " (report import)" : ""} vs payment report ${money(row.payment_report_cash_ngn)}${Number(row.source_variance_ngn) > 100 ? ` · ⚠ sources disagree by ${money(row.source_variance_ngn)}` : ""}`
         : escapeHtml(expectedCashBasis(row.expected_cash_basis))}</small></div>
       <div><span class="row-label">Monnify received</span><strong>${money(row.remitted_cash_ngn)}</strong><small>${row.transaction_count} deposits</small></div>
       <div><span class="row-label">Variance</span><strong>${money(row.net_position_ngn)}</strong><small>${row.adjustment_count || 0} adjustments · ${escapeHtml(adjustmentSummary(row))}</small></div>
@@ -595,6 +597,107 @@ document.getElementById("paymentCsvInput")?.addEventListener("change", async (ev
     await refresh();
   } catch (error) {
     statusEl.textContent = `Import failed: ${error.message}`;
+  }
+});
+
+/* ---------- Uber performance CSV import (first source) ---------- */
+// The performance export has no date column, so the user must declare the
+// period it covers before the file picker unlocks; the figures are saved
+// against exactly that period.
+
+const perfPeriodStart = document.getElementById("perfPeriodStart");
+const perfPeriodEnd = document.getElementById("perfPeriodEnd");
+const performanceCsvInput = document.getElementById("performanceCsvInput");
+const performanceCsvStatus = document.getElementById("performanceCsvStatus");
+
+function performancePeriod() {
+  let start = perfPeriodStart?.value || "";
+  let end = perfPeriodEnd?.value || "";
+  if (start && end && start > end) [start, end] = [end, start];
+  return start && end ? { start, end } : null;
+}
+
+function syncPerformanceImportLock() {
+  if (!performanceCsvInput) return;
+  const period = performancePeriod();
+  performanceCsvInput.disabled = !period;
+  if (!period) {
+    performanceCsvStatus.textContent = "Enter the covered period above to unlock the file picker.";
+  } else if (performanceCsvStatus.textContent.startsWith("Enter the covered period")) {
+    performanceCsvStatus.textContent = `Figures will be recorded as covering ${period.start} to ${period.end}.`;
+  }
+}
+perfPeriodStart?.addEventListener("change", syncPerformanceImportLock);
+perfPeriodEnd?.addEventListener("change", syncPerformanceImportLock);
+
+const normalizePhone = (value) => String(value || "").replace(/\D/g, "").slice(-10);
+
+performanceCsvInput?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  performanceCsvStatus.textContent = "Reading file…";
+  try {
+    const period = performancePeriod();
+    if (!period) throw new Error("Enter the period this export covers first — the file itself has no dates.");
+    if (!state.operators.length) throw new Error("Operator roster is still loading — wait for the console to connect, then re-select the file.");
+    const rows = parseCsv(await file.text());
+    const headers = rows[0].map((header) => header.trim().toLowerCase());
+    const column = (pattern) => headers.findIndex((header) => pattern.test(header));
+    const firstCol = column(/^driver first name$/);
+    const lastCol = column(/^driver surname$/);
+    const phoneCol = column(/^driver phone$/);
+    const cashCol = column(/^cash collected$/);
+    if (cashCol < 0) throw new Error("This does not look like an Uber performance export (missing the 'Cash Collected' column).");
+
+    // operator lookup: phone digits first, then name (either order)
+    const byPhone = new Map();
+    const byName = new Map();
+    for (const operator of state.operators) {
+      const registrations = operator.platform_registrations || [];
+      const uber = registrations.find((registration) => /uber/i.test(registration.platform_display_name || "")) || registrations[0];
+      if (!uber) continue;
+      const person = state.people.find((item) => item.person_id === operator.person_id);
+      const phone = normalizePhone(person?.phone || person?.phone_number || "");
+      if (phone) byPhone.set(phone, { operator, registration: uber });
+      byName.set(personName(operator.person_id).toLowerCase().replace(/\s+/g, " "), { operator, registration: uber });
+    }
+
+    const saves = [];
+    const unmatched = new Set();
+    for (const row of rows.slice(1)) {
+      const cash = parseUberCash(row[cashCol]);
+      if (!cash) continue;
+      const phone = normalizePhone(row[phoneCol]);
+      const fullName = `${String(row[firstCol] || "").trim()} ${String(row[lastCol] || "").trim()}`.toLowerCase().replace(/\s+/g, " ");
+      const reversedName = `${String(row[lastCol] || "").trim()} ${String(row[firstCol] || "").trim()}`.toLowerCase().replace(/\s+/g, " ");
+      const match = (phone && byPhone.get(phone)) || byName.get(fullName) || byName.get(reversedName);
+      if (!match) { unmatched.add(fullName || phone); continue; }
+      saves.push({ match, cash });
+    }
+    if (!saves.length) throw new Error("No matching cash rows found in the file.");
+
+    performanceCsvStatus.textContent = `Saving ${saves.length} driver totals for ${period.start} to ${period.end}…`;
+    for (const entry of saves) {
+      await request(opsBase, "/ops/v1/performance-cash-records", {
+        method: "POST",
+        idempotencyKey: `perfrec-import-${entry.match.operator.operator_id}-${period.start}-${period.end}-${Date.now()}`,
+        body: {
+          operator_id: entry.match.operator.operator_id,
+          platform_account_id: entry.match.registration.platform_account_id,
+          period_start: period.start,
+          period_end: period.end,
+          amount_ngn: entry.cash,
+          source: "import",
+          notes: `Imported from ${file.name}`
+        }
+      });
+    }
+    performanceCsvStatus.textContent = `✓ Imported ${saves.length} driver totals covering ${period.start} to ${period.end}.`
+      + (unmatched.size ? ` ⚠ Unmatched (fix phones/names in the roster): ${[...unmatched].slice(0, 5).join(", ")}${unmatched.size > 5 ? "…" : ""}` : "");
+    event.target.value = "";
+    await refresh();
+  } catch (error) {
+    performanceCsvStatus.textContent = `Import failed: ${error.message}`;
   }
 });
 
