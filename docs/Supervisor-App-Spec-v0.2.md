@@ -46,6 +46,12 @@ top bar (defaults to today = today; targets scale by day count).
 ### 2.1 Cockpit (landing)
 - Three gauges: Net Earnings pace vs range target, utilisation
   (live/active), closeout readiness — each coloured by state.
+- A compact KPI strip under the gauges with the range's raw numbers:
+  vehicles (total / active / idle / in maintenance), drivers (working /
+  absent), Net Earnings vs target with achievement %, trips, KM, fuel ₦,
+  open incidents.
+- Quick-range chips beside the From/To pickers: Today · This week ·
+  This month — so week-to-date and month-to-date are one tap.
 - **Do these first**: up to three ranked actions (high-tier alerts,
   incidents to acknowledge, operator explanations to review, overdue
   inspections, unconfirmed fuel), each with a button that jumps straight
@@ -65,9 +71,11 @@ top bar (defaults to today = today; targets scale by day count).
   unauthorised absence. "Late" comes from the team's expected resumption
   time; "approved absence" from mark-unavailable; "unauthorised" is not
   seen today with no approval.
-- **Driver comparison table**: one sortable row per driver — Net
-  Earnings, target %, trips, KM, ₦/KM, fuel ₦, fuel cost/KM, km/L,
-  attendance, incidents — with CSV export.
+- **Driver comparison table**: one sortable row per driver — target ₦,
+  Net Earnings, variance ₦, target %, trips, KM, KM/trip, ₦/KM, fuel ₦,
+  fuel cost/KM, km/L, attendance, incidents, pace status — with CSV
+  export. Sorting by any column is the ranking view: rank by earnings,
+  target %, ₦/KM or efficiency as needed.
 - **Vehicle comparison table**: one row per vehicle — assigned driver,
   status, Net Earnings, trips, KM, fuel ₦, idle days, maintenance state
   and cost — with CSV export. A vehicle-day with an assigned operator and
@@ -97,7 +105,10 @@ The alert catalogue: behind pace · not seen today · offline after online ·
 mileage outside expected range · fuel consumption above benchmark ·
 vehicle inactive beyond threshold · absent without approval · service due
 or overdue · odometer reading not submitted · repeated underperformance ·
-ghost activity on a de-assigned platform account.
+fuel issued with no operational activity · high mileage or fuel with low
+Net Earnings (the connected-chain exception: distance and fuel spent
+without matching money in) · ghost activity on a de-assigned platform
+account.
 
 ### 2.5 Deliver (scheduled deliveries)
 - Batches per delivery customer and date with the count ladder: expected →
@@ -132,6 +143,11 @@ and fuel cost/KM.
   the amoeba P&L and the team contribution figure.
 - Incidents from operators (breakdown, accident, police, other) with
   severity, photos, acknowledge → resolve workflow, age and owner.
+  Supervisors can also log incidents directly with an extended category
+  set: driver misconduct, customer complaint, revenue anomaly, fuel
+  anomaly, vehicle damage, documentation, safety. An incident carries an
+  optional cost implication — entered directly or linked to the
+  maintenance repair it caused.
 
 ### 2.8 Close
 - One card per operating unit with an auto-filled checklist: unresolved
@@ -200,10 +216,13 @@ escalate; deliveries incl. stops, manifests, POD and confirmations; fuel
 reconciliation; inspections and maintenance with photo evidence;
 incidents; closeout checklist; date ranges.
 
-**Building now (this slice):** driver and vehicle comparison tables with
-CSV export; weekly team summary with contribution; incident ageing and
-ownership; day-level idle tracking; price-per-litre on the efficiency
-policy feeding fuel ₦, cost/KM and the money ratios.
+**Building now (this slice):** cockpit KPI strip and quick-range chips;
+driver and vehicle comparison tables with CSV export; weekly team summary
+with contribution; incident ageing, ownership and supervisor-logged
+categories with cost implication; day-level idle tracking; price-per-litre
+on the efficiency policy feeding fuel ₦, cost/KM and the money ratios;
+the two new anomaly alerts (fuel with no activity, high mileage/fuel with
+low earnings).
 
 **Next (S2):** readiness checks with odometer self-report; attendance
 grouping (late-resumption config, mark-unavailable); snooze with
