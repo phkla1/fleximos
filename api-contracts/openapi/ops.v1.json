@@ -4135,6 +4135,44 @@
           }
         }
       }
+    },
+    "/incidents/{incident_id}": {
+      "patch": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Set incident ownership, required action, or cost implication",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIncidentDetailsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated incident",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5082,6 +5120,11 @@
           "effective_from": {
             "type": "string",
             "format": "date"
+          },
+          "price_per_unit_ngn": {
+            "type": "number",
+            "nullable": true,
+            "description": "Price per fuel unit (naira per litre or per kWh); feeds fuel cost and cost-per-KM figures."
           }
         }
       },
@@ -5944,7 +5987,14 @@
               "police",
               "fuel_funds",
               "low_battery",
-              "other"
+              "other",
+              "driver_misconduct",
+              "customer_complaint",
+              "revenue_anomaly",
+              "fuel_anomaly",
+              "vehicle_damage",
+              "documentation",
+              "safety"
             ]
           },
           "description": {
@@ -5972,6 +6022,15 @@
           "occurred_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "required_action": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300
+          },
+          "cost_implication_ngn": {
+            "type": "number",
+            "nullable": true
           }
         }
       },
@@ -6043,6 +6102,18 @@
               "string",
               "null"
             ]
+          },
+          "owner_person_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "required_action": {
+            "type": "string",
+            "nullable": true
+          },
+          "cost_implication_ngn": {
+            "type": "number",
+            "nullable": true
           }
         }
       },
@@ -6071,6 +6142,10 @@
         "properties": {
           "resolution_notes": {
             "type": "string"
+          },
+          "cost_implication_ngn": {
+            "type": "number",
+            "nullable": true
           }
         }
       },
@@ -6666,6 +6741,26 @@
           },
           "counts": {
             "type": "object"
+          }
+        }
+      },
+      "UpdateIncidentDetailsRequest": {
+        "type": "object",
+        "description": "Any field omitted is left unchanged; pass null to clear.",
+        "properties": {
+          "owner_person_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Responsible person; defaults to whoever acknowledges the incident."
+          },
+          "required_action": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300
+          },
+          "cost_implication_ngn": {
+            "type": "number",
+            "nullable": true
           }
         }
       }

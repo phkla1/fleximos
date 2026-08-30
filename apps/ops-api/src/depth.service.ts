@@ -24,6 +24,14 @@ const incidentTypes: Record<string, string> = {
   breakdown: "normal",
   fuel_funds: "normal",
   low_battery: "normal",
+  // Supervisor-logged categories (supervisor review, Aug 2026).
+  driver_misconduct: "high",
+  customer_complaint: "normal",
+  revenue_anomaly: "normal",
+  fuel_anomaly: "normal",
+  vehicle_damage: "high",
+  documentation: "normal",
+  safety: "high",
   other: "normal"
 };
 
@@ -310,14 +318,18 @@ export class DepthService {
       status: "open",
       reported_by_person_id: actorPersonId,
       occurred_at: body.occurred_at ? new Date(String(body.occurred_at)).toISOString() : timestamp,
+      required_action: body.required_action ? String(body.required_action).slice(0, 300) : null,
+      cost_implication_ngn: body.cost_implication_ngn === undefined || body.cost_implication_ngn === null || body.cost_implication_ngn === ""
+        ? null : Number(body.cost_implication_ngn),
       created_at: timestamp,
       updated_at: timestamp
     };
     await this.db.exec(
       `INSERT INTO ops_incidents
        (incident_id, operator_id, vehicle_id, incident_type, severity, description,
-        gps_lat, gps_lng, media_ids, status, reported_by_person_id, occurred_at, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        gps_lat, gps_lng, media_ids, status, reported_by_person_id, occurred_at,
+        required_action, cost_implication_ngn, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       Object.values(incident)
     );
     if (operator.supervisor_person_id) {
@@ -354,7 +366,8 @@ export class DepthService {
     if (incident.status !== "open") throw new ConflictException("Only an open incident can be acknowledged.");
     await this.db.exec(
       `UPDATE ops_incidents SET status = 'acknowledged',
-         acknowledged_at = $2, acknowledged_by_person_id = $3, updated_at = $2
+         acknowledged_at = $2, acknowledged_by_person_id = $3,
+         owner_person_id = COALESCE(owner_person_id, $3), updated_at = $2
        WHERE incident_id = $1`,
       [incidentId, this.now(), actorPersonId]
     );
@@ -363,15 +376,35 @@ export class DepthService {
     return updated;
   }
 
+  async updateIncidentDetails(incidentId: string, body: RecordBody, actorPersonId: string) {
+    const incident = await this.getIncident(incidentId);
+    const owner = body.owner_person_id === undefined ? incident.owner_person_id : (body.owner_person_id ? String(body.owner_person_id) : null);
+    const requiredAction = body.required_action === undefined ? incident.required_action : (body.required_action ? String(body.required_action).slice(0, 300) : null);
+    const cost = body.cost_implication_ngn === undefined
+      ? incident.cost_implication_ngn
+      : (body.cost_implication_ngn === null || body.cost_implication_ngn === "" ? null : Number(body.cost_implication_ngn));
+    await this.db.exec(
+      `UPDATE ops_incidents SET owner_person_id=$2, required_action=$3, cost_implication_ngn=$4, updated_at=$5
+       WHERE incident_id=$1`,
+      [incidentId, owner, requiredAction, cost, this.now()]
+    );
+    const updated = await this.getIncident(incidentId);
+    await this.ops.audit("incident.details_updated", "incident", incidentId, incident, updated, actorPersonId);
+    return updated;
+  }
+
   async resolveIncident(incidentId: string, body: RecordBody, actorPersonId: string) {
     if (!body.resolution_notes) throw new BadRequestException("resolution_notes is required.");
     const incident = await this.getIncident(incidentId);
     if (incident.status === "resolved") throw new ConflictException("Incident is already resolved.");
+    const cost = body.cost_implication_ngn === undefined || body.cost_implication_ngn === null || body.cost_implication_ngn === ""
+      ? incident.cost_implication_ngn : Number(body.cost_implication_ngn);
     await this.db.exec(
       `UPDATE ops_incidents SET status = 'resolved',
-         resolved_at = $2, resolved_by_person_id = $3, resolution_notes = $4, updated_at = $2
+         resolved_at = $2, resolved_by_person_id = $3, resolution_notes = $4,
+         cost_implication_ngn = $5, updated_at = $2
        WHERE incident_id = $1`,
-      [incidentId, this.now(), actorPersonId, String(body.resolution_notes)]
+      [incidentId, this.now(), actorPersonId, String(body.resolution_notes), cost]
     );
     const updated = await this.getIncident(incidentId);
     await this.ops.audit("incident.resolved", "incident", incidentId, incident, updated, actorPersonId);

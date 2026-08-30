@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -191,6 +192,21 @@ export class DepthController {
     const actor = await this.auth(req);
     this.identity.requireSupervisor(actor);
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.depth.acknowledgeIncident(incidentId, actor.person_id));
+  }
+
+  @ApiTags("Incidents")
+  @ApiBearerAuth()
+  @Patch("ops/v1/incidents/:incidentId")
+  @ApiOperation({ summary: "Set incident ownership, required action, or cost implication" })
+  async updateIncidentDetails(
+    @Req() req: Request,
+    @Param("incidentId") incidentId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.depth.updateIncidentDetails(incidentId, body, actor.person_id));
   }
 
   @ApiTags("Incidents")

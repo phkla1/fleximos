@@ -387,3 +387,40 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .assign-field select, .assign-field input { padding: 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 .assign-field input { width: 84px; }
 .assign-panel button { padding: 9px 14px; border: 0; border-radius: 9px; background: var(--green); color: #fff; font-weight: 800; align-self: end; }
+
+/* ---------- supervisor review round: KPI strip, tables, summary ---------- */
+
+.quick-ranges { display: inline-flex; gap: 6px; align-items: end; }
+.quick-ranges button {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; color: var(--green-dark); font-weight: 800; font-size: 11.5px;
+}
+.quick-ranges button:active { background: var(--green-bg); }
+
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0;
+}
+@media (min-width: 720px) { .kpi-strip { grid-template-columns: repeat(6, 1fr); } }
+.kpi-cell {
+  display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 12px; background: #fff;
+}
+.kpi-cell strong { font-size: 16px; color: var(--green-deep); }
+.kpi-cell span { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.kpi-cell small { font-size: 10.5px; color: var(--muted); }
+
+.table-scroll { overflow-x: auto; margin: 10px 0; -webkit-overflow-scrolling: touch; }
+.compare-table { border-collapse: collapse; width: 100%; font-size: 12px; min-width: 900px; }
+.compare-table th, .compare-table td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.compare-table th {
+  cursor: pointer; user-select: none; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted); background: var(--green-bg);
+  position: sticky; top: 0;
+}
+.compare-table th.sorted { color: var(--green-dark); }
+.compare-table th.numeric, .compare-table td.numeric { text-align: right; }
+.compare-table td .neg { color: var(--red); font-weight: 800; }
+.compare-table td .pos { color: var(--green-dark); font-weight: 800; }
+
+.pill.aged { background: var(--red-bg); color: var(--red); }
+#exportWeeklyCsv { margin-bottom: 48px; }

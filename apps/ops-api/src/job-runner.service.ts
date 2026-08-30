@@ -117,8 +117,56 @@ export class JobRunnerService {
 
   private async evaluateAlerts(date: string) {
     const board = await this.ops.teamBoard({ record_date: date });
+    const mileage = await this.ops.mileageReconciliations(date);
+    const mileageByOperator = new Map((mileage as any[]).map((row) => [row.operator_id, row]));
     let created = 0;
     for (const operator of board as any[]) {
+      const recon: any = mileageByOperator.get(operator.operator_id);
+      // Fuel issued but no operational activity: money out, nothing moved.
+      if (recon?.fuel_issue_id && Number(operator.trips_completed || 0) === 0) {
+        created += await this.ops.ensureAlert({
+          operator_id: operator.operator_id,
+          platform_account_id: operator.platforms?.[0]?.platform_account_id || null,
+          alert_type: "fuel_without_activity",
+          alert_date: date,
+          tier: 1,
+          episode_key: date,
+          metadata: {
+            generated_by: "alert-watchdog",
+            fuel_quantity: recon.fuel_quantity,
+            fuel_unit: recon.fuel_unit,
+            fuel_cost_ngn: recon.fuel_cost_ngn
+          }
+        }) ? 1 : 0;
+      }
+      // The connected-chain exception: distance/fuel spent without matching
+      // money in — distance at or above the policy expectation while Net
+      // Earnings sit below half of the expected pace.
+      const officialKm = recon?.official_distance_km === null || recon?.official_distance_km === undefined
+        ? null : Number(recon.official_distance_km);
+      const expectedKm = recon?.expected_distance_km === null || recon?.expected_distance_km === undefined
+        ? null : Number(recon.expected_distance_km);
+      const expectedRevenue = Number(operator.expected_revenue_ngn || 0);
+      if (officialKm !== null && expectedKm !== null && expectedKm > 0
+        && officialKm >= expectedKm
+        && expectedRevenue > 0
+        && Number(operator.ride_revenue_ngn || 0) < expectedRevenue * 0.5) {
+        created += await this.ops.ensureAlert({
+          operator_id: operator.operator_id,
+          platform_account_id: operator.platforms?.[0]?.platform_account_id || null,
+          alert_type: "high_usage_low_earnings",
+          alert_date: date,
+          tier: 1,
+          episode_key: date,
+          metadata: {
+            generated_by: "alert-watchdog",
+            official_distance_km: officialKm,
+            expected_distance_km: expectedKm,
+            revenue_ngn: operator.ride_revenue_ngn,
+            expected_revenue_ngn: expectedRevenue
+          }
+        }) ? 1 : 0;
+      }
       if (operator.current_status === "not_seen_today") {
         created += await this.ops.ensureAlert({
           operator_id: operator.operator_id,

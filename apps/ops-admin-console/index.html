@@ -276,6 +276,7 @@
               <label>Daily fuel (litres)<input name="standard_daily_fuel_quantity" type="number" min="0" step="0.1" value="15" required /></label>
               <label>Expected distance (km)<input name="expected_distance_km" type="number" min="0" step="0.1" value="150" required /></label>
               <label>Allowed variance %<input name="allowed_variance_pct" type="number" min="0" value="10" required /></label>
+              <label>Price per litre/kWh (₦)<input name="price_per_unit_ngn" type="number" min="0" step="0.01" placeholder="e.g. 1050" /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
               <p class="form-hint">Choosing a vehicle type loads its current policy. Saving creates a new version for that vehicle type only, effective from the chosen date — other vehicle types are not affected and earlier versions stay listed for history.</p>
               <button type="submit">Save efficiency policy version</button>

@@ -265,6 +265,8 @@ function syncEfficiencyPolicyForm() {
   form.standard_daily_fuel_quantity.value = Number(policy.standard_daily_fuel_quantity);
   form.expected_distance_km.value = Number(policy.expected_distance_km);
   form.allowed_variance_pct.value = Number(policy.allowed_variance_pct);
+  form.price_per_unit_ngn.value = policy.price_per_unit_ngn === null || policy.price_per_unit_ngn === undefined
+    ? "" : Number(policy.price_per_unit_ngn);
 }
 
 function syncEconomicsPolicyForm() {
@@ -489,7 +491,7 @@ function render() {
     return `
     <article class="policy-row ${status}">
       <div><strong>${escapeHtml(policy.vehicle_type)}</strong><small>${escapeHtml(policy.make_model || "All models")}</small><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
-      <div><strong>${Number(policy.standard_daily_fuel_quantity)} ${escapeHtml(policy.fuel_unit)} → ${Number(policy.expected_distance_km)} km</strong><small>Allowed variance ±${Number(policy.allowed_variance_pct)}% · Effective ${escapeHtml(effectiveWindow(policy))}</small></div>
+      <div><strong>${Number(policy.standard_daily_fuel_quantity)} ${escapeHtml(policy.fuel_unit)} → ${Number(policy.expected_distance_km)} km</strong><small>Allowed variance ±${Number(policy.allowed_variance_pct)}%${policy.price_per_unit_ngn ? ` · ₦${Number(policy.price_per_unit_ngn).toLocaleString()}/${policy.fuel_unit === "kWh" ? "kWh" : "litre"}` : " · No unit price set"} · Effective ${escapeHtml(effectiveWindow(policy))}</small></div>
     </article>`;
   }).join("") || `<div class="empty">No efficiency policies configured.</div>`;
 
@@ -848,6 +850,7 @@ el.efficiencyPolicyForm.addEventListener("submit", async (event) => {
         standard_daily_fuel_quantity: Number(values.standard_daily_fuel_quantity),
         expected_distance_km: Number(values.expected_distance_km),
         allowed_variance_pct: Number(values.allowed_variance_pct),
+        price_per_unit_ngn: values.price_per_unit_ngn === "" ? null : Number(values.price_per_unit_ngn),
         effective_from: values.effective_from
       })
     });

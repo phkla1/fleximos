@@ -667,6 +667,25 @@ test("configures revenue pace and fuel efficiency controls", async () => {
   assert.equal(reconciliation.response.status, 200);
   assert.equal(reconciliation.body.data[0].tracker_variance_status, "tracker_unavailable");
   assert.equal(reconciliation.body.data[0].official_distance_status, "exception");
+  // The default policy carries ₦1,050/litre, so 5 litres price out at ₦5,250.
+  assert.equal(Number(reconciliation.body.data[0].fuel_cost_ngn), 5250);
+
+  const pricedPolicy = await request("/ops/v1/vehicle-efficiency-policies", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ops-efficiency-priced-001" },
+    body: JSON.stringify({
+      vehicle_type: "motorbike",
+      standard_daily_fuel_quantity: 5,
+      expected_distance_km: 100,
+      price_per_unit_ngn: 1200,
+      effective_from: "2026-06-05"
+    })
+  });
+  assert.equal(pricedPolicy.response.status, 201);
+  assert.equal(Number(pricedPolicy.body.price_per_unit_ngn), 1200);
+
+  const repriced = await request("/ops/v1/mileage-reconciliations?record_date=2026-06-06");
+  assert.equal(Number(repriced.body.data[0].fuel_cost_ngn), 6000);
 });
 
 test("aggregates team board and performance over an operating-date range", async () => {

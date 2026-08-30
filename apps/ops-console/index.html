@@ -20,6 +20,11 @@
     <div class="range-bar">
       <label>From<input id="dateFrom" type="date" /></label>
       <label>To<input id="dateTo" type="date" /></label>
+      <span class="quick-ranges">
+        <button type="button" class="secondary" data-quick-range="today">Today</button>
+        <button type="button" class="secondary" data-quick-range="week">This week</button>
+        <button type="button" class="secondary" data-quick-range="month">This month</button>
+      </span>
       <button id="refreshButton" type="button">Refresh</button>
       <span id="boardUpdated" class="subtle"></span>
     </div>
@@ -73,6 +78,8 @@
           <span id="teamCountChip">0 active · 0 live</span>
         </div>
 
+        <div id="kpiStrip" class="kpi-strip" aria-label="Range totals"></div>
+
         <div class="section-heading"><div><p class="eyebrow">Top actions</p><h2>Do these first</h2></div></div>
         <div id="topActions" class="top-actions"></div>
 
@@ -87,6 +94,18 @@
           <span class="subtle">Grouped by state — tap an operator for detail</span>
         </div>
         <div id="teamBoard" class="board-groups"></div>
+
+        <details class="management-panel" open>
+          <summary>Driver comparison table — tap a column to rank</summary>
+          <div class="table-scroll"><table id="driverTable" class="compare-table"></table></div>
+          <button type="button" id="exportDriversCsv" class="secondary">Export CSV</button>
+        </details>
+
+        <details class="management-panel">
+          <summary>Vehicle comparison table</summary>
+          <div class="table-scroll"><table id="vehicleTable" class="compare-table"></table></div>
+          <button type="button" id="exportVehiclesCsv" class="secondary">Export CSV</button>
+        </details>
 
         <details class="management-panel">
           <summary>Platform records for this range</summary>
@@ -160,6 +179,32 @@
         </div>
         <div id="incidentList" class="alert-list"></div>
 
+        <details class="management-panel">
+          <summary>Log an incident (misconduct, complaint, anomaly, damage…)</summary>
+          <form id="incidentForm" class="fuel-form">
+            <label>Operator<select name="operator_id" required></select></label>
+            <label>Category<select name="incident_type">
+              <option value="driver_misconduct">Driver misconduct</option>
+              <option value="customer_complaint">Customer complaint</option>
+              <option value="revenue_anomaly">Revenue anomaly</option>
+              <option value="fuel_anomaly">Fuel anomaly</option>
+              <option value="vehicle_damage">Vehicle damage</option>
+              <option value="documentation">Documentation</option>
+              <option value="safety">Safety</option>
+              <option value="other">Other</option>
+            </select></label>
+            <label>What happened?<input name="description" maxlength="500" required /></label>
+            <label>Required action<input name="required_action" maxlength="300" placeholder="Optional" /></label>
+            <label>Cost implication (₦)<input name="cost_implication_ngn" type="number" min="0" step="0.01" placeholder="Optional" /></label>
+            <label class="photo-field">Photo evidence (optional)
+              <input name="photo" type="file" accept="image/*" capture="environment" hidden />
+              <span class="photo-button" data-photo-for="sincident">📷 Take photo</span>
+              <span class="photo-status" data-photo-status="sincident"></span>
+            </label>
+            <button type="submit">Log incident</button>
+          </form>
+        </details>
+
         <div class="section-heading sub-section-heading">
           <div><p class="eyebrow">Regular checks</p><h2>Vehicle inspections</h2></div>
           <span id="inspectionComplianceLabel" class="subtle"></span>
@@ -212,6 +257,13 @@
         </div>
         <p class="section-intro">Review each line, clear what you can, explain what you cannot. Submitting records a timestamped closeout for the To date; managers see missing or exception closeouts in their own console.</p>
         <div id="closeoutList" class="closeout-list"></div>
+
+        <div class="section-heading sub-section-heading">
+          <div><p class="eyebrow">Range rollup</p><h2>Team summary</h2></div>
+          <span class="subtle">Money in and money out for the selected range — use the This week chip for the weekly report</span>
+        </div>
+        <div id="weeklySummary" class="closeout-list"></div>
+        <button type="button" id="exportWeeklyCsv" class="secondary">Export summary CSV</button>
       </section>
     </main>
 
@@ -228,6 +280,7 @@
         <div class="dialog-heading"><h2 id="dialogTitle">Alert action</h2><button value="cancel" aria-label="Close">×</button></div>
         <p id="dialogContext" class="subtle"></p>
         <label>Notes<textarea id="dialogNotes" rows="4"></textarea></label>
+        <label id="dialogCostField" hidden>Cost implication (₦)<input id="dialogCost" type="number" min="0" step="0.01" placeholder="Optional" /></label>
         <div class="dialog-actions">
           <button value="cancel" class="secondary">Cancel</button>
           <button id="confirmActionButton" value="default">Confirm</button>

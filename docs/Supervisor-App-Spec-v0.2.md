@@ -79,8 +79,11 @@ top bar (defaults to today = today; targets scale by day count).
 - **Vehicle comparison table**: one row per vehicle — assigned driver,
   status, Net Earnings, trips, KM, fuel ₦, idle days, maintenance state
   and cost — with CSV export. A vehicle-day with an assigned operator and
-  zero trips counts as an idle day (day-level only; there is no
-  hour-level telemetry and none is promised).
+  zero trips counts as an idle day. Beside it, an **hour-level downtime
+  column renders as a visible placeholder** ("— awaiting tracker
+  telemetry"): the UI slot exists so the gap stays on the roadmap, and it
+  fills in when telemetry integration lands rather than being added
+  later.
 
 ### 2.3 Operator detail
 One sheet per operator: today's figures vs target, platform accounts,
@@ -206,7 +209,10 @@ platform suspension succeeded unless it did.
   surfaces. User management, permissions, policies and system
   configuration live in the Administrator Console only.
 - Minute-level platform telemetry does not exist in the daily-aggregate
-  connectors; nothing in this app pretends otherwise.
+  connectors; nothing in this app pretends otherwise. Where a metric
+  depends on missing telemetry (hour-level downtime, operating hours per
+  vehicle), the UI shows a clearly-labelled awaiting-telemetry
+  placeholder instead of omitting the section.
 
 ## 7. Build plan
 

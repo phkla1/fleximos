@@ -231,6 +231,9 @@ function renderPnl() {
     ["Central costs", money(pnl.central_expenses_ngn), ""],
     ["Delivery revenue", money(pnl.totals.delivery_contract_revenue_ngn || 0), ""],
     ["Delivery margin", money(pnl.totals.delivery_margin_ngn || 0), Number(pnl.totals.delivery_margin_ngn) > 0 ? "metric-good" : ""],
+    ["Fuel (policy-priced)", state.fleetFuel?.cost
+      ? `${money(state.fleetFuel.cost)}${state.fleetFuel.km ? ` · ₦${(state.fleetFuel.cost / state.fleetFuel.km).toFixed(0)}/km` : ""}`
+      : "No unit price set", ""],
     ["Hourly P&L", pnl.totals.hourly_pnl_ngn === null ? "—" : `${money(pnl.totals.hourly_pnl_ngn)}/h`, Number(pnl.totals.hourly_pnl_ngn) < 0 ? "metric-risk" : "metric-good"]
   ].map(([name, value, cls]) => `<article class="${cls}"><span>${name}</span><strong>${value}</strong></article>`).join("");
 
@@ -330,14 +333,20 @@ async function loadPnlAndLeaderboard() {
   const start = state.dateFrom || state.operatingDate;
   const end = state.dateTo || state.operatingDate;
   el.pnlRangeLabel.textContent = start === end ? `Period: ${end}` : `Period: ${start} → ${end}`;
-  const [pnl, expenses, leaderboard] = await Promise.all([
+  const [pnl, expenses, leaderboard, mileage] = await Promise.all([
     ops(`/ops/v1/pnl?period_start=${start}&period_end=${end}`),
     ops(`/ops/v1/expenses?period_start=${start}&period_end=${end}`),
-    ops(`/ops/v1/leaderboard?period_start=${start}&period_end=${end}&sort=${state.leaderboardSort}`)
+    ops(`/ops/v1/leaderboard?period_start=${start}&period_end=${end}&sort=${state.leaderboardSort}`),
+    ops(`/ops/v1/mileage-reconciliations?date_from=${start}&date_to=${end}`).catch(() => ({ data: [] }))
   ]);
   state.pnl = pnl;
   state.expenses = expenses.data;
   state.leaderboard = leaderboard;
+  // Fleet fuel spend from the efficiency policy's ₦/unit price — the cost
+  // side of the mileage story (supervisor review, Aug 2026).
+  const fuelCost = mileage.data.reduce((sum, row) => sum + Number(row.fuel_cost_ngn || 0), 0);
+  const fuelKm = mileage.data.reduce((sum, row) => sum + Number(row.official_distance_km || 0), 0);
+  state.fleetFuel = { cost: Math.round(fuelCost), km: Math.round(fuelKm) };
 }
 
 async function refresh() {

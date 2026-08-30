@@ -32,7 +32,10 @@ const el = Object.fromEntries([
   "topActions", "conditionGrid", "carRevenueChip", "bikeRevenueChip",
   "deliveryList", "deliveryBatchForm", "deliverySummaryLabel",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
-  "operatorDialog", "operatorDialogTitle", "operatorDialogBody"
+  "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
+  "kpiStrip", "driverTable", "vehicleTable", "exportDriversCsv",
+  "exportVehiclesCsv", "incidentForm", "weeklySummary", "exportWeeklyCsv",
+  "dialogCostField", "dialogCost"
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
@@ -100,7 +103,7 @@ const timeOf = (value) => new Date(value).toLocaleTimeString("en-NG", { hour: "2
 // capture="environment" so phones open the camera directly (not the
 // gallery); captured_at is stamped at capture time and the server can
 // enforce a freshness window via MEDIA_STRICT_CAPTURE.
-const stagedPhotos = { inspection: null, maintenance: null, dexception: null };
+const stagedPhotos = { inspection: null, maintenance: null, dexception: null, sincident: null };
 
 function compressPhoto(file) {
   return new Promise((resolve, reject) => {
@@ -246,6 +249,223 @@ function analyseTeam() {
   return { rows, groups, mileageExceptions, fuelConfirmed, issues };
 }
 
+/* ---------- comparison metrics (supervisor review round) ---------- */
+
+function rangeDayList() {
+  const days = [];
+  const cursor = new Date(`${state.dateFrom}T00:00:00`);
+  const end = new Date(`${state.dateTo}T00:00:00`);
+  while (cursor <= end && days.length < 92) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function ageDays(value) {
+  if (!value) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86400000));
+}
+
+const round1 = (value) => Math.round(value * 10) / 10;
+
+// One consolidated row per driver: money in, distance, fuel (litres and ₦),
+// attendance and incidents — the flat view the supervisors asked for.
+function driverMetrics(analysis) {
+  return analysis.rows.map((row) => {
+    const recon = state.mileageReconciliations.filter((record) => record.operator_id === row.operator_id);
+    const km = recon.reduce((sum, record) => sum + Number(record.official_distance_km || 0), 0);
+    const litres = recon.reduce((sum, record) =>
+      sum + (record.fuel_unit === "litres" ? Number(record.fuel_quantity || 0) : 0), 0);
+    const fuelCost = recon.reduce((sum, record) => sum + Number(record.fuel_cost_ngn || 0), 0);
+    const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
+    const earnings = Number(row.ride_revenue_ngn || 0);
+    const trips = Number(row.trips_total || 0);
+    const incidents = state.incidents.filter((incident) => incident.operator_id === row.operator_id).length;
+    return {
+      operator_id: row.operator_id,
+      name: personName(row.person_id),
+      plate: row.vehicle_plate || "",
+      target,
+      earnings,
+      variance: Math.round((earnings - target) * 100) / 100,
+      targetPct: target ? Math.round(earnings / target * 100) : 0,
+      trips,
+      km: round1(km),
+      kmPerTrip: trips && km ? round1(km / trips) : 0,
+      earningsPerKm: km ? Math.round(earnings / km) : 0,
+      fuelCost: Math.round(fuelCost),
+      fuelCostPerKm: km && fuelCost ? Math.round(fuelCost / km * 100) / 100 : 0,
+      kmPerLitre: litres && km ? round1(km / litres) : 0,
+      attendance: String(row.current_status).replaceAll("_", " "),
+      incidents,
+      pace: String(row.pace_status || "—").replaceAll("_", " ")
+    };
+  });
+}
+
+// One row per vehicle: who has it, what it earned, and where it stood
+// idle. Hour-level downtime is a deliberate placeholder until tracker
+// telemetry exists (owner-directed, 30 Aug 2026).
+function vehicleMetrics(analysis) {
+  const days = rangeDayList();
+  const tripsByOperatorDay = new Map();
+  for (const record of state.dailyPerformance) {
+    const dayKey = `${record.operator_id}|${String(record.record_date).slice(0, 10)}`;
+    tripsByOperatorDay.set(dayKey, (tripsByOperatorDay.get(dayKey) || 0) + Number(record.trips_total || 0));
+  }
+  return state.vehicles.map((vehicle) => {
+    const operator = state.operators.find((candidate) => candidate.vehicle_id === vehicle.vehicle_id);
+    const row = operator ? analysis.rows.find((item) => item.operator_id === operator.operator_id) : null;
+    const metrics = row ? driverMetrics({ rows: [row] })[0] : null;
+    const idleDays = operator
+      ? days.filter((day) => !(tripsByOperatorDay.get(`${operator.operator_id}|${day}`) > 0)).length
+      : days.length;
+    const openReports = state.maintenance.filter((report) => report.vehicle_id === vehicle.vehicle_id && report.status !== "resolved");
+    const maintenanceCost = state.maintenance
+      .filter((report) => report.vehicle_id === vehicle.vehicle_id
+        && String(report.created_at).slice(0, 10) >= state.dateFrom
+        && String(report.created_at).slice(0, 10) <= state.dateTo)
+      .reduce((sum, report) => sum + Number(report.cost_ngn || 0), 0);
+    const status = openReports.length ? "in maintenance" : operator ? "assigned" : "unassigned";
+    return {
+      vehicle_id: vehicle.vehicle_id,
+      plate: vehicle.plate,
+      type: vehicle.vehicle_type,
+      driver: operator ? personName(operator.person_id) : "—",
+      status,
+      earnings: metrics?.earnings || 0,
+      trips: metrics?.trips || 0,
+      km: metrics?.km || 0,
+      fuelCost: metrics?.fuelCost || 0,
+      idleDays,
+      maintenanceCost: Math.round(maintenanceCost),
+      maintenanceState: openReports.length ? String(openReports[0].status).replaceAll("_", " ") : "clear"
+    };
+  });
+}
+
+const tableSort = {
+  driver: { key: "earnings", dir: -1 },
+  vehicle: { key: "earnings", dir: -1 }
+};
+
+function sortedBy(rows, sort) {
+  return rows.slice().sort((a, b) => {
+    const left = a[sort.key];
+    const right = b[sort.key];
+    if (typeof left === "string" || typeof right === "string") {
+      return String(left).localeCompare(String(right)) * sort.dir;
+    }
+    return (Number(left) - Number(right)) * sort.dir;
+  });
+}
+
+function comparisonTable(tableEl, tableName, columns, rows) {
+  const sort = tableSort[tableName];
+  const sorted = sortedBy(rows, sort);
+  tableEl.innerHTML = `
+    <thead><tr>${columns.map((column) => `
+      <th data-table="${tableName}" data-sort-key="${column.key || ""}" class="${column.key === sort.key ? "sorted" : ""}${column.numeric ? " numeric" : ""}">
+        ${escapeHtml(column.label)}${column.key === sort.key ? (sort.dir === -1 ? " ↓" : " ↑") : ""}
+      </th>`).join("")}</tr></thead>
+    <tbody>${sorted.map((row) => `<tr>${columns.map((column) => `
+      <td class="${column.numeric ? "numeric" : ""}">${column.render ? column.render(row) : escapeHtml(row[column.key])}</td>`).join("")}</tr>`).join("")}
+    </tbody>`;
+  return sorted;
+}
+
+function downloadCsv(filename, columns, rows) {
+  const csvEscape = (value) => {
+    const text = String(value ?? "");
+    return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  const lines = [
+    columns.map((column) => csvEscape(column.label)).join(","),
+    ...rows.map((row) => columns.map((column) => csvEscape(column.csv ? column.csv(row) : row[column.key])).join(","))
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 30000);
+}
+
+const DRIVER_COLUMNS = [
+  { key: "name", label: "Driver" },
+  { key: "plate", label: "Vehicle" },
+  { key: "target", label: "Target ₦", numeric: true, render: (row) => money(row.target) },
+  { key: "earnings", label: "Earnings ₦", numeric: true, render: (row) => money(row.earnings) },
+  { key: "variance", label: "Variance ₦", numeric: true, render: (row) => `<span class="${row.variance < 0 ? "neg" : "pos"}">${money(row.variance)}</span>` },
+  { key: "targetPct", label: "Target %", numeric: true, render: (row) => `${row.targetPct}%` },
+  { key: "trips", label: "Trips", numeric: true },
+  { key: "km", label: "KM", numeric: true },
+  { key: "kmPerTrip", label: "KM/trip", numeric: true },
+  { key: "earningsPerKm", label: "₦/KM", numeric: true },
+  { key: "fuelCost", label: "Fuel ₦", numeric: true, render: (row) => row.fuelCost ? money(row.fuelCost) : "—" },
+  { key: "fuelCostPerKm", label: "Fuel ₦/KM", numeric: true, render: (row) => row.fuelCostPerKm || "—" },
+  { key: "kmPerLitre", label: "KM/L", numeric: true, render: (row) => row.kmPerLitre || "—" },
+  { key: "attendance", label: "Attendance" },
+  { key: "incidents", label: "Incidents", numeric: true },
+  { key: "pace", label: "Status" }
+];
+
+const VEHICLE_COLUMNS = [
+  { key: "plate", label: "Vehicle" },
+  { key: "type", label: "Type" },
+  { key: "driver", label: "Driver" },
+  { key: "status", label: "Status" },
+  { key: "earnings", label: "Earnings ₦", numeric: true, render: (row) => money(row.earnings) },
+  { key: "trips", label: "Trips", numeric: true },
+  { key: "km", label: "KM", numeric: true },
+  { key: "fuelCost", label: "Fuel ₦", numeric: true, render: (row) => row.fuelCost ? money(row.fuelCost) : "—" },
+  { key: "idleDays", label: "Idle days", numeric: true },
+  { key: "downtime", label: "Downtime hrs", render: () => `<span class="subtle">— awaiting tracker telemetry</span>`, csv: () => "awaiting telemetry" },
+  { key: "maintenanceState", label: "Maintenance" },
+  { key: "maintenanceCost", label: "Maint. ₦", numeric: true, render: (row) => row.maintenanceCost ? money(row.maintenanceCost) : "—" }
+];
+
+// Per-team money-in/money-out rollup for the selected range; the This
+// week chip turns this into the weekly report. Contribution = earnings −
+// fuel − maintenance (full opex stays in the manager console).
+function teamSummaries(analysis) {
+  const drivers = driverMetrics(analysis);
+  const amoebaIds = [...new Set(state.operators.map((operator) => operator.amoeba_id))];
+  return amoebaIds.map((amoebaId) => {
+    const operatorIds = new Set(state.operators.filter((operator) => operator.amoeba_id === amoebaId).map((operator) => operator.operator_id));
+    const teamDrivers = drivers.filter((driver) => operatorIds.has(driver.operator_id));
+    const earnings = teamDrivers.reduce((sum, driver) => sum + driver.earnings, 0);
+    const target = teamDrivers.reduce((sum, driver) => sum + driver.target, 0);
+    const fuelCost = teamDrivers.reduce((sum, driver) => sum + driver.fuelCost, 0);
+    const teamVehicleIds = new Set(state.operators.filter((operator) => operatorIds.has(operator.operator_id)).map((operator) => operator.vehicle_id).filter(Boolean));
+    const maintenanceCost = state.maintenance
+      .filter((report) => teamVehicleIds.has(report.vehicle_id)
+        && String(report.created_at).slice(0, 10) >= state.dateFrom
+        && String(report.created_at).slice(0, 10) <= state.dateTo)
+      .reduce((sum, report) => sum + Number(report.cost_ngn || 0), 0);
+    const incidents = state.incidents.filter((incident) => operatorIds.has(incident.operator_id)).length;
+    const absent = analysis.rows.filter((row) => operatorIds.has(row.operator_id) && row.current_status === "not_seen_today").length;
+    const exceptions = analysis.mileageExceptions.filter((record) => operatorIds.has(record.operator_id)).length
+      + state.deliveryExceptions.filter((exception) => exception.amoeba_id === amoebaId && exception.status === "open").length;
+    return {
+      team: amoebaId.replace("amoeba_", "").replace(/^\w/, (char) => char.toUpperCase()),
+      drivers: teamDrivers.length,
+      earnings: Math.round(earnings),
+      target: Math.round(target),
+      targetPct: target ? Math.round(earnings / target * 100) : 0,
+      trips: teamDrivers.reduce((sum, driver) => sum + driver.trips, 0),
+      km: round1(teamDrivers.reduce((sum, driver) => sum + driver.km, 0)),
+      fuelCost: Math.round(fuelCost),
+      maintenanceCost: Math.round(maintenanceCost),
+      contribution: Math.round(earnings - fuelCost - maintenanceCost),
+      absent,
+      incidents,
+      exceptions
+    };
+  });
+}
+
 function closeoutChecklist(analysis) {
   const openAlerts = state.alerts.filter((alert) => ["open", "escalated"].includes(alert.resolution_status));
   const openIncidents = state.incidents.filter((incident) => incident.status !== "resolved");
@@ -364,7 +584,7 @@ function alertRow(alert) {
     : "";
   return `
     <article class="alert-row tier-${escapeHtml(alert.tier)}">
-      <div><strong>${escapeHtml(String(alert.alert_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(alert.person_id))} · ${escapeHtml(alert.platform_display_name || "General")} · Tier ${escapeHtml(alert.tier)} · ${timeOf(alert.fired_at)}</small></div>
+      <div><strong>${escapeHtml(String(alert.alert_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(alert.person_id))} · ${escapeHtml(alert.platform_display_name || "General")} · Tier ${escapeHtml(alert.tier)} · ${timeOf(alert.fired_at)}${alert.resolution_status !== "resolved" && ageDays(alert.fired_at) > 0 ? ` · <strong>open ${ageDays(alert.fired_at)} day${ageDays(alert.fired_at) === 1 ? "" : "s"}</strong>` : ""}</small></div>
       <div><span class="pill ${escapeHtml(alert.resolution_status)}">${escapeHtml(String(alert.resolution_status).replaceAll("_", " "))}</span></div>
       <div class="row-actions">
         ${alert.resolution_status === "open" ? `<button type="button" data-alert-action="acknowledge" data-alert-id="${escapeHtml(alert.alert_id)}">Acknowledge</button>` : ""}
@@ -408,6 +628,22 @@ function renderCockpit(analysis) {
   el.bikeRevenueChip.textContent = `Bikes ${money(revenueByType.bike)}`;
   el.teamCountChip.textContent = `${analysis.rows.length} active · ${live} live`;
 
+  // At-a-glance KPI strip: the raw range numbers the supervisors asked
+  // for, before any grouping or gauges.
+  const vehicles = vehicleMetrics(analysis);
+  const drivers = driverMetrics(analysis);
+  const targetTotal = drivers.reduce((sum, driver) => sum + driver.target, 0);
+  const kpis = [
+    { label: "Vehicles", value: `${vehicles.length}`, sub: `${vehicles.filter((vehicle) => vehicle.status === "assigned" && vehicle.trips > 0).length} active · ${vehicles.filter((vehicle) => vehicle.status !== "in maintenance" && !(vehicle.trips > 0)).length} idle · ${vehicles.filter((vehicle) => vehicle.status === "in maintenance").length} maint.` },
+    { label: "Drivers", value: `${analysis.rows.length}`, sub: `${analysis.rows.filter((row) => row.current_status !== "not_seen_today").length} working · ${analysis.rows.filter((row) => row.current_status === "not_seen_today").length} absent` },
+    { label: "Earnings", value: money(totals.revenue), sub: `of ${money(targetTotal)} target · ${targetTotal ? Math.round(totals.revenue / targetTotal * 100) : 0}%` },
+    { label: "Trips", value: `${drivers.reduce((sum, driver) => sum + driver.trips, 0)}`, sub: `${round1(drivers.reduce((sum, driver) => sum + driver.km, 0))} km` },
+    { label: "Fuel", value: drivers.some((driver) => driver.fuelCost) ? money(drivers.reduce((sum, driver) => sum + driver.fuelCost, 0)) : "—", sub: "issued this range" },
+    { label: "Incidents", value: `${state.incidents.filter((incident) => incident.status !== "resolved").length}`, sub: "open now" }
+  ];
+  el.kpiStrip.innerHTML = kpis.map((kpi) => `
+    <div class="kpi-cell"><strong>${kpi.value}</strong><span>${escapeHtml(kpi.label)}</span><small>${escapeHtml(kpi.sub)}</small></div>`).join("");
+
   const actions = topActionCandidates(analysis);
   el.topActions.innerHTML = actions.length ? actions.map((action) => `
     <article class="top-action tone-${action.tone}">
@@ -433,7 +669,12 @@ function renderCockpit(analysis) {
   el.alertDockBadge.textContent = openAlertCount;
 }
 
+let latestDriverMetrics = [];
+let latestVehicleMetrics = [];
+
 function renderBoard(analysis) {
+  latestDriverMetrics = comparisonTable(el.driverTable, "driver", DRIVER_COLUMNS, driverMetrics(analysis));
+  latestVehicleMetrics = comparisonTable(el.vehicleTable, "vehicle", VEHICLE_COLUMNS, vehicleMetrics(analysis));
   el.teamBoard.innerHTML = analysis.rows.length ? analysis.groups
     .filter((group) => group.rows.length)
     .map((group) => `
@@ -479,17 +720,26 @@ function renderAlerts() {
 }
 
 function renderField() {
-  el.incidentList.innerHTML = state.incidents.length ? state.incidents.map((incident) => `
+  el.incidentForm.elements.operator_id.innerHTML = state.operators.map((operator) =>
+    `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))}</option>`).join("");
+  el.incidentList.innerHTML = state.incidents.length ? state.incidents.map((incident) => {
+    const age = incident.status === "resolved" ? null : ageDays(incident.occurred_at);
+    const ownership = [
+      incident.status !== "resolved" && age !== null ? `open ${age === 0 ? "today" : `${age} day${age === 1 ? "" : "s"}`}` : null,
+      incident.owner_person_id ? `owner ${personName(incident.owner_person_id)}` : null,
+      incident.cost_implication_ngn ? `cost ${money(incident.cost_implication_ngn)}` : null
+    ].filter(Boolean).join(" · ");
+    return `
     <article class="alert-row ${incident.severity === "high" ? "tier-3" : "tier-1"}">
       <div><strong>${escapeHtml(String(incident.incident_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(incident.person_id))}${incident.vehicle_plate ? ` · ${escapeHtml(incident.vehicle_plate)}` : ""} · ${timeOf(incident.occurred_at)}</small></div>
-      <div><span class="row-label">Details</span><strong>${escapeHtml(incident.description || "No notes")}</strong><small>${incident.gps_lat ? `GPS ${Number(incident.gps_lat).toFixed(3)}, ${Number(incident.gps_lng).toFixed(3)}` : "No GPS"}</small></div>
-      <div><span class="pill ${escapeHtml(incident.status)}">${escapeHtml(incident.status)}</span></div>
+      <div><span class="row-label">Details</span><strong>${escapeHtml(incident.description || "No notes")}</strong><small>${incident.required_action ? `Action: ${escapeHtml(incident.required_action)}` : incident.gps_lat ? `GPS ${Number(incident.gps_lat).toFixed(3)}, ${Number(incident.gps_lng).toFixed(3)}` : "No GPS"}</small></div>
+      <div><span class="pill ${escapeHtml(incident.status)} ${age !== null && age >= 2 ? "aged" : ""}">${escapeHtml(incident.status)}</span>${ownership ? `<small class="subtle">${escapeHtml(ownership)}</small>` : ""}</div>
       <div class="row-actions">
         ${incident.status === "open" ? `<button type="button" data-incident-action="acknowledge" data-incident-id="${escapeHtml(incident.incident_id)}">Acknowledge</button>` : ""}
         ${incident.status !== "resolved" ? `<button type="button" class="secondary" data-incident-action="resolve" data-incident-id="${escapeHtml(incident.incident_id)}">Resolve</button>` : ""}
       </div>
-    </article>
-  `).join("") : `<div class="empty">No incidents reported by your team.</div>`;
+    </article>`;
+  }).join("") : `<div class="empty">No incidents reported by your team.</div>`;
 
   if (state.compliance) {
     const scoped = state.compliance.vehicles;
@@ -597,6 +847,27 @@ function renderCloseout(analysis) {
           <button type="button" data-submit-closeout="${escapeHtml(amoebaId)}">${blockers.length ? "Submit with exceptions" : "Submit closeout"}</button>`}
       </article>`;
   }).join("") : `<div class="empty">No operating units in scope.</div>`;
+
+  const summaries = teamSummaries(analysis);
+  el.weeklySummary.innerHTML = summaries.length ? summaries.map((summary) => `
+    <article class="closeout-card ready">
+      <div class="closeout-head">
+        <div><strong>${escapeHtml(summary.team)}</strong><small>${escapeHtml(state.dateFrom)} → ${escapeHtml(state.dateTo)} · ${summary.drivers} driver${summary.drivers === 1 ? "" : "s"}</small></div>
+        <span class="pill ${summary.targetPct >= 95 ? "resolved" : "open"}">${summary.targetPct}% of target</span>
+      </div>
+      <dl class="sheet-stats">
+        <div><dt>Earnings</dt><dd>${money(summary.earnings)}</dd></div>
+        <div><dt>Target</dt><dd>${money(summary.target)}</dd></div>
+        <div><dt>Trips</dt><dd>${summary.trips}</dd></div>
+        <div><dt>KM</dt><dd>${summary.km}</dd></div>
+        <div><dt>Fuel ₦</dt><dd>${summary.fuelCost ? money(summary.fuelCost) : "—"}</dd></div>
+        <div><dt>Maintenance ₦</dt><dd>${summary.maintenanceCost ? money(summary.maintenanceCost) : "—"}</dd></div>
+        <div><dt>Contribution</dt><dd><strong>${money(summary.contribution)}</strong></dd></div>
+        <div><dt>Absent</dt><dd>${summary.absent}</dd></div>
+        <div><dt>Incidents</dt><dd>${summary.incidents}</dd></div>
+        <div><dt>Exceptions</dt><dd>${summary.exceptions}</dd></div>
+      </dl>
+    </article>`).join("") : `<div class="empty">No teams in scope.</div>`;
 }
 
 function renderDeliveries() {
@@ -916,12 +1187,45 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
 
 /* ---------- events ---------- */
 
-for (const kind of ["inspection", "maintenance"]) {
-  const form = kind === "inspection" ? el.inspectionForm : el.maintenanceForm;
+for (const kind of ["inspection", "maintenance", "sincident"]) {
+  const form = kind === "inspection" ? el.inspectionForm : kind === "maintenance" ? el.maintenanceForm : el.incidentForm;
   const input = form.querySelector('input[name="photo"]');
   document.querySelector(`[data-photo-for="${kind}"]`).addEventListener("click", () => input.click());
   input.addEventListener("change", () => { if (input.files[0]) stagePhoto(kind, input.files[0]); });
 }
+
+el.incidentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.incidentForm));
+  try {
+    const mediaIds = await uploadStagedPhoto("sincident", "incident_evidence");
+    await ops("/ops/v1/incidents", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("sincident") },
+      body: JSON.stringify({
+        operator_id: values.operator_id,
+        incident_type: values.incident_type,
+        description: values.description,
+        required_action: values.required_action || null,
+        cost_implication_ngn: values.cost_implication_ngn || null,
+        media_ids: mediaIds
+      })
+    });
+    el.incidentForm.reset();
+    await refresh("Incident logged.");
+  } catch (error) { showError(error); }
+});
+
+el.exportDriversCsv.addEventListener("click", () =>
+  downloadCsv(`drivers-${state.dateFrom}-to-${state.dateTo}.csv`, DRIVER_COLUMNS, latestDriverMetrics));
+el.exportVehiclesCsv.addEventListener("click", () =>
+  downloadCsv(`vehicles-${state.dateFrom}-to-${state.dateTo}.csv`, VEHICLE_COLUMNS, latestVehicleMetrics));
+el.exportWeeklyCsv.addEventListener("click", () => {
+  if (!latestAnalysis) return;
+  const columns = ["team", "drivers", "earnings", "target", "targetPct", "trips", "km", "fuelCost", "maintenanceCost", "contribution", "absent", "incidents", "exceptions"]
+    .map((key) => ({ key, label: key }));
+  downloadCsv(`team-summary-${state.dateFrom}-to-${state.dateTo}.csv`, columns, teamSummaries(latestAnalysis));
+});
 
 el.alertFilter.addEventListener("change", renderAlerts);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
@@ -1013,6 +1317,7 @@ document.addEventListener("click", async (event) => {
     el.dialogTitle.textContent = dialogTitles[pendingAction.type];
     el.dialogContext.textContent = `${alert.alert_type.replaceAll("_", " ")} · ${personName(alert.person_id)}`;
     el.dialogNotes.value = "";
+    el.dialogCostField.hidden = true;
     el.actionDialog.showModal();
     return;
   }
@@ -1023,7 +1328,33 @@ document.addEventListener("click", async (event) => {
     el.dialogTitle.textContent = pendingAction.type === "acknowledge" ? "Acknowledge incident" : "Resolve incident";
     el.dialogContext.textContent = `${incident.incident_type.replaceAll("_", " ")} · ${personName(incident.person_id)}`;
     el.dialogNotes.value = "";
+    el.dialogCostField.hidden = pendingAction.type !== "resolve";
+    el.dialogCost.value = incident.cost_implication_ngn ?? "";
     el.actionDialog.showModal();
+    return;
+  }
+  const sortHeader = event.target.closest("th[data-sort-key]");
+  if (sortHeader && sortHeader.dataset.sortKey) {
+    const sort = tableSort[sortHeader.dataset.table];
+    if (sort.key === sortHeader.dataset.sortKey) sort.dir = -sort.dir;
+    else { sort.key = sortHeader.dataset.sortKey; sort.dir = -1; }
+    if (latestAnalysis) renderBoard(latestAnalysis);
+    return;
+  }
+  const quickRange = event.target.closest("[data-quick-range]");
+  if (quickRange) {
+    const now = new Date(`${todayLagos}T00:00:00`);
+    let from = todayLagos;
+    if (quickRange.dataset.quickRange === "week") {
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      from = monday.toISOString().slice(0, 10);
+    } else if (quickRange.dataset.quickRange === "month") {
+      from = `${todayLagos.slice(0, 8)}01`;
+    }
+    el.dateFrom.value = from;
+    el.dateTo.value = todayLagos;
+    refresh(describeRange()).catch(showError);
     return;
   }
   const deviationButton = event.target.closest("[data-deviation-decision]");
@@ -1212,7 +1543,12 @@ el.actionDialog.addEventListener("close", async () => {
       await ops(`/ops/v1/incidents/${incident.incident_id}/${type}`, {
         method: "POST",
         headers: { "Idempotency-Key": key(`incident-${type}`) },
-        body: JSON.stringify(type === "resolve" ? { resolution_notes: notes || "Handled in the field." } : {})
+        body: JSON.stringify(type === "resolve"
+          ? {
+            resolution_notes: notes || "Handled in the field.",
+            cost_implication_ngn: el.dialogCost.value === "" ? undefined : Number(el.dialogCost.value)
+          }
+          : {})
       });
       await refresh(type === "resolve" ? "Incident resolved." : "Incident acknowledged.");
     }

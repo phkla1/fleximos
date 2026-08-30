@@ -18,7 +18,11 @@ Cockpit · Board · Alerts · Deliver · Fuel · Field · Close.
 **Expected:** the status dot turns green ("Team data connected") and the
 Cockpit shows three gauges — Net Earnings pace, operators live now, and
 closeout readiness — coloured green/yellow/red by state, plus Cars/Bikes
-Net Earnings chips. No API IDs or connector jargon anywhere.
+Net Earnings chips. Under the gauges, a KPI strip shows the range's raw
+numbers: vehicles (total/active/idle/maintenance), drivers
+(working/absent), earnings vs target, trips + KM, fuel ₦ and open
+incidents. Beside the From/To pickers, **Today · This week · This month**
+chips set the range in one tap. No API IDs or connector jargon anywhere.
 
 ### SU-2 · Read "Do these first"
 1. Look at the **Do these first** strip under the gauges.
@@ -148,6 +152,40 @@ nowhere visible — supervisors see allocated values only.
    records their own figures, the row shows a "rider-entered" chip with a
    **Confirm figures** link — confirm them as part of closeout.
 
+### SU-16 · Rank drivers and vehicles
+1. Open **Board**. Below the grouped tiles, review the **Driver
+   comparison table** — tap any column heading (Target %, ₦/KM, KM/L…)
+   to rank by it; tap again to reverse. 2. Open the **Vehicle comparison
+   table**. 3. Tap **Export CSV** on each.
+
+**Expected:** one sortable row per driver with target ₦, earnings,
+variance ₦, target %, trips, KM, KM/trip, ₦/KM, fuel ₦, fuel ₦/KM, KM/L,
+attendance, incidents and status. The vehicle table shows driver, status,
+earnings, KM, fuel ₦, idle days (assigned vehicle, zero trips = idle day)
+and maintenance state/cost. The "Downtime hrs" column deliberately shows
+"— awaiting tracker telemetry" — the slot exists so the gap stays
+visible. Fuel ₦ figures need the ₦/litre price set in the Administrator
+Console's efficiency policy. Each CSV downloads and opens in Excel.
+
+### SU-17 · Read the team summary
+1. Tap **This week**, then open **Close** and scroll to **Team summary**.
+2. Tap **Export summary CSV**.
+
+**Expected:** one card per team: earnings vs target with %, trips, KM,
+fuel ₦, maintenance ₦, **contribution** (earnings − fuel − maintenance),
+absent count, incidents and exceptions — your weekly report without
+compiling anything. The CSV downloads.
+
+### SU-18 · Log and age an incident
+1. In **Field**, open **Log an incident**. Pick an operator, category
+   "Customer complaint", describe it, add a required action and a cost,
+   submit. 2. Note an older open incident's age label.
+
+**Expected:** the incident appears with its category, required action and
+cost; acknowledging an incident makes you its owner. Open incidents show
+"open N days" and turn red-flagged once 2+ days old — nothing unresolved
+can hide.
+
 ## Results
 
 | Test | Pass/Fail | Notes |
@@ -167,5 +205,8 @@ nowhere visible — supervisors see allocated values only.
 | SU-13 | | |
 | SU-14 | | |
 | SU-15 | | |
+| SU-16 | | |
+| SU-17 | | |
+| SU-18 | | |
 
 Tester: ____________  Date: ____________  Device/browser: ____________

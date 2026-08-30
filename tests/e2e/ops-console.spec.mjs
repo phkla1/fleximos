@@ -76,6 +76,70 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#maintenanceList .alert-row").first()).toBeVisible();
   });
 
+  test("shows the KPI strip and ranks drivers and vehicles with CSV export", async ({ page }) => {
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+
+    // Cockpit KPI strip: raw range numbers at a glance.
+    await expect(page.locator("#kpiStrip .kpi-cell")).toHaveCount(6);
+    await expect(page.locator("#kpiStrip")).toContainText("Vehicles");
+    await expect(page.locator("#kpiStrip")).toContainText("Earnings");
+
+    // Quick-range chips are one tap.
+    await page.locator("[data-quick-range='week']").click();
+    await expect(page.locator("#notice")).toContainText(/Showing team activity/);
+
+    await page.locator("[data-tab-link='board']").click();
+    const driverTable = page.locator("#driverTable");
+    await expect(driverTable.locator("tbody tr").first()).toBeVisible();
+    await expect(driverTable).toContainText("Variance ₦");
+    await expect(driverTable).toContainText("KM/L");
+
+    // Column sort = ranking view.
+    await driverTable.locator("th[data-sort-key='targetPct']").click();
+    await expect(driverTable.locator("th.sorted")).toContainText("Target %");
+
+    // Vehicle table carries the honest downtime placeholder.
+    await page.getByText("Vehicle comparison table", { exact: true }).click();
+    await expect(page.locator("#vehicleTable tbody tr").first()).toBeVisible();
+    await expect(page.locator("#vehicleTable")).toContainText("Idle days");
+    await expect(page.locator("#vehicleTable")).toContainText("awaiting tracker telemetry");
+
+    const download = page.waitForEvent("download");
+    await page.locator("#exportDriversCsv").click();
+    expect((await download).suggestedFilename()).toMatch(/^drivers-.*\.csv$/);
+  });
+
+  test("rolls the range into a team summary with contribution", async ({ page }) => {
+    await page.goto(`${url}#closeout`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await expect(page.getByRole("heading", { name: "Team summary" })).toBeVisible();
+    const summaryCard = page.locator("#weeklySummary .closeout-card").first();
+    await expect(summaryCard).toBeVisible();
+    await expect(summaryCard).toContainText("Contribution");
+    await expect(summaryCard).toContainText("Fuel ₦");
+
+    const download = page.waitForEvent("download");
+    await page.locator("#exportWeeklyCsv").click();
+    expect((await download).suggestedFilename()).toMatch(/^team-summary-.*\.csv$/);
+  });
+
+  test("logs a supervisor incident with category, action and cost", async ({ page }) => {
+    await page.goto(`${url}#field`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Log an incident", { exact: false }).click();
+    const form = page.locator("#incidentForm");
+    await form.locator('select[name="operator_id"]').selectOption({ index: 0 });
+    await form.locator('select[name="incident_type"]').selectOption("customer_complaint");
+    await form.locator('input[name="description"]').fill("Customer reported repeated late arrivals.");
+    await form.locator('input[name="required_action"]').fill("Call the customer today.");
+    await form.locator('input[name="cost_implication_ngn"]').fill("2500");
+    await form.getByRole("button", { name: "Log incident" }).click();
+    await expect(page.locator("#notice")).toContainText("Incident logged");
+    await expect(page.locator("#incidentList")).toContainText("customer complaint");
+    await expect(page.locator("#incidentList")).toContainText("Call the customer today.");
+  });
+
   test("confirms fuel or charge with a unit choice", async ({ page }) => {
     await page.goto(`${url}#fuel`);
     await expect(page.locator("#notice")).toContainText("Connected");

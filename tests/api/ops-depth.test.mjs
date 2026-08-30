@@ -168,14 +168,39 @@ test("reports, acknowledges, and resolves a field incident", async () => {
 
   const acknowledged = await post(`/ops/v1/incidents/${created.body.incident_id}/acknowledge`, "depth-incident-ack-001", {});
   assert.equal(acknowledged.body.status, "acknowledged");
+  // Acknowledging takes ownership by default.
+  assert.equal(acknowledged.body.owner_person_id, "person_system");
+
+  const detailed = await request(`/ops/v1/incidents/${created.body.incident_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "depth-incident-details-001" },
+    body: JSON.stringify({ required_action: "Recover the vehicle and inspect the alternator." })
+  });
+  assert.equal(detailed.response.status, 200);
+  assert.equal(detailed.body.required_action, "Recover the vehicle and inspect the alternator.");
 
   const resolved = await post(`/ops/v1/incidents/${created.body.incident_id}/resolve`, "depth-incident-resolve-001", {
-    resolution_notes: "Mechanic dispatched, vehicle recovered."
+    resolution_notes: "Mechanic dispatched, vehicle recovered.",
+    cost_implication_ngn: 18500
   });
   assert.equal(resolved.body.status, "resolved");
+  assert.equal(Number(resolved.body.cost_implication_ngn), 18500);
 
   const list = await request("/ops/v1/incidents?status=resolved");
   assert.ok(list.body.data.some((item) => item.incident_id === created.body.incident_id));
+});
+
+test("accepts supervisor-logged incident categories", async () => {
+  const created = await post("/ops/v1/incidents", "depth-incident-sup-001", {
+    operator_id: "operator_demo_wole",
+    incident_type: "customer_complaint",
+    description: "Customer says parcels arrived late twice this week.",
+    required_action: "Call the customer, review the routing.",
+    cost_implication_ngn: 0
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.incident_type, "customer_complaint");
+  assert.equal(created.body.required_action, "Call the customer, review the routing.");
 });
 
 test("tracks vehicle inspections and 48-hour compliance", async () => {

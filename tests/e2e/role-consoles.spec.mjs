@@ -26,7 +26,7 @@ test.describe("role consoles", () => {
     await expect(page.locator("#notice")).toContainText("Manager view is limited");
 
     await expect(page.getByRole("heading", { name: "Profit & loss" })).toBeVisible();
-    await expect(page.locator("#pnlTotals article")).toHaveCount(7);
+    await expect(page.locator("#pnlTotals article")).toHaveCount(8);
     await expect(page.locator("#pnlList .summary-card")).not.toHaveCount(0);
 
     const expenseForm = page.locator("#expenseForm");

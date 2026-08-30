@@ -1019,6 +1019,9 @@ export class OpsService {
       fuel_unit: body.fuel_unit || "litres",
       expected_distance_km: this.number(body.expected_distance_km, "expected_distance_km"),
       allowed_variance_pct: this.number(body.allowed_variance_pct ?? 10, "allowed_variance_pct"),
+      price_per_unit_ngn: body.price_per_unit_ngn === undefined || body.price_per_unit_ngn === null || body.price_per_unit_ngn === ""
+        ? null
+        : this.number(body.price_per_unit_ngn, "price_per_unit_ngn"),
       effective_from: this.date(body.effective_from || this.lagosDate()),
       effective_to: body.effective_to ? this.date(body.effective_to) : null,
       created_by_person_id: actorPersonId,
@@ -1029,9 +1032,9 @@ export class OpsService {
       `INSERT INTO ops_vehicle_efficiency_policies
        (efficiency_policy_id, vehicle_type, make_model, fuel_type,
         standard_daily_fuel_quantity, fuel_unit, expected_distance_km,
-        allowed_variance_pct, effective_from, effective_to, created_by_person_id,
-        created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        allowed_variance_pct, price_per_unit_ngn, effective_from, effective_to,
+        created_by_person_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       Object.values(policy)
     );
     await this.audit("vehicle_efficiency_policy.created", "vehicle_efficiency_policy", policy.efficiency_policy_id, null, policy, actorPersonId);
@@ -1117,7 +1120,8 @@ export class OpsService {
         f.fuel_issue_id, f.quantity AS fuel_quantity, f.unit AS fuel_unit,
         d.official_distance_km,
         t.actual_distance_km AS tracker_distance_km,
-        p.standard_daily_fuel_quantity, p.expected_distance_km, p.allowed_variance_pct
+        p.standard_daily_fuel_quantity, p.expected_distance_km, p.allowed_variance_pct,
+        p.price_per_unit_ngn
        FROM ops_operators o JOIN ops_vehicles v ON v.vehicle_id=o.vehicle_id
        LEFT JOIN ops_fuel_issues f ON f.operator_id=o.operator_id AND f.vehicle_id=v.vehicle_id AND f.operating_date=$1
        LEFT JOIN (
@@ -1143,9 +1147,15 @@ export class OpsService {
       const tolerance = Number(row.allowed_variance_pct || 10);
       const fuelVariance = expected && official !== null ? ((official - expected) / expected) * 100 : null;
       const trackerVariance = official !== null && official > 0 && tracker !== null ? ((tracker - official) / official) * 100 : null;
+      const pricePerUnit = row.price_per_unit_ngn === null || row.price_per_unit_ngn === undefined
+        ? null : Number(row.price_per_unit_ngn);
+      const fuelCost = pricePerUnit !== null && row.fuel_quantity
+        ? Math.round(Number(row.fuel_quantity) * pricePerUnit * 100) / 100 : null;
       return {
         ...row,
         record_date: date,
+        fuel_cost_ngn: fuelCost,
+        fuel_cost_per_km_ngn: fuelCost !== null && official ? Math.round((fuelCost / official) * 100) / 100 : null,
         expected_distance_km: expected === null ? null : Math.round(expected * 10) / 10,
         fuel_efficiency_variance_pct: fuelVariance === null ? null : Math.round(fuelVariance * 10) / 10,
         official_distance_status: expected === null || official === null ? "not_available" : Math.abs(fuelVariance!) <= tolerance ? "acceptable" : "exception",

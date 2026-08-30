@@ -224,12 +224,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         fuel_unit TEXT NOT NULL DEFAULT 'litres',
         expected_distance_km NUMERIC(10, 2) NOT NULL,
         allowed_variance_pct NUMERIC(5, 2) NOT NULL DEFAULT 10,
+        price_per_unit_ngn NUMERIC(10, 2),
         effective_from DATE NOT NULL,
         effective_to DATE,
         created_by_person_id TEXT,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
       );
+
+      ALTER TABLE ops_vehicle_efficiency_policies
+        ADD COLUMN IF NOT EXISTS price_per_unit_ngn NUMERIC(10, 2);
 
       CREATE TABLE IF NOT EXISTS ops_economics_policies (
         economics_policy_id TEXT PRIMARY KEY,
@@ -435,9 +439,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         resolved_at TIMESTAMPTZ,
         resolved_by_person_id TEXT,
         resolution_notes TEXT,
+        owner_person_id TEXT,
+        required_action TEXT,
+        cost_implication_ngn NUMERIC(12, 2),
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
       );
+
+      ALTER TABLE ops_incidents ADD COLUMN IF NOT EXISTS owner_person_id TEXT;
+      ALTER TABLE ops_incidents ADD COLUMN IF NOT EXISTS required_action TEXT;
+      ALTER TABLE ops_incidents ADD COLUMN IF NOT EXISTS cost_implication_ngn NUMERIC(12, 2);
 
       CREATE INDEX IF NOT EXISTS idx_ops_incidents_status
         ON ops_incidents(status, occurred_at DESC);
@@ -756,15 +767,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!existingPolicy) {
       const timestamp = new Date().toISOString();
       for (const policy of [
-        ["efficiency_car_default", "car", 15, 150],
-        ["efficiency_motorbike_default", "motorbike", 5, 100]
+        ["efficiency_car_default", "car", 15, 150, 1050],
+        ["efficiency_motorbike_default", "motorbike", 5, 100, 1050]
       ]) {
         await this.exec(
           `INSERT INTO ops_vehicle_efficiency_policies
            (efficiency_policy_id, vehicle_type, fuel_type, standard_daily_fuel_quantity,
-            fuel_unit, expected_distance_km, allowed_variance_pct, effective_from,
-            created_by_person_id, created_at, updated_at)
-           VALUES ($1,$2,'petrol',$3,'litres',$4,10,'2026-01-01','person_system',$5,$5)`,
+            fuel_unit, expected_distance_km, allowed_variance_pct, price_per_unit_ngn,
+            effective_from, created_by_person_id, created_at, updated_at)
+           VALUES ($1,$2,'petrol',$3,'litres',$4,10,$5,'2026-01-01','person_system',$6,$6)`,
           [...policy, timestamp]
         );
       }
