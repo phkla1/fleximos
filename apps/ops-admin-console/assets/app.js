@@ -235,7 +235,9 @@ function syncPaceProfileForm() {
 }
 
 function policyStatus(policy, peers) {
-  const today = state.operatingDate || todayLagos;
+  // Judge against the real calendar day — the data-snapped operating
+  // date can lag a day behind and mislabel today's policy "scheduled".
+  const today = todayLagos;
   const from = String(policy.effective_from).slice(0, 10);
   const to = policy.effective_to ? String(policy.effective_to).slice(0, 10) : null;
   if (from > today) return "scheduled";

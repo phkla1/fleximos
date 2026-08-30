@@ -922,6 +922,33 @@ export class OpsService {
   async createRevenuePaceProfile(body: RecordBody, actorPersonId: string) {
     if (!["car", "motorbike", "other"].includes(String(body.vehicle_type))) throw new BadRequestException("vehicle_type is invalid.");
     const timestamp = this.now();
+    // Same-version saves correct in place rather than stacking duplicates.
+    const existing = await this.db.one<any>(
+      `SELECT * FROM ops_revenue_pace_profiles
+       WHERE vehicle_type=$1 AND day_type=$2 AND effective_from=$3`,
+      [String(body.vehicle_type), String(body.day_type || "all"), this.date(body.effective_from || this.lagosDate())]
+    );
+    if (existing) {
+      const updated = {
+        daily_target_ngn: this.number(body.daily_target_ngn, "daily_target_ngn"),
+        checkpoints: this.checkpoints(body.checkpoints),
+        warning_tolerance_pct: this.number(body.warning_tolerance_pct ?? 10, "warning_tolerance_pct"),
+        critical_tolerance_pct: this.number(body.critical_tolerance_pct ?? 20, "critical_tolerance_pct"),
+        effective_to: body.effective_to ? this.date(body.effective_to) : null
+      };
+      await this.db.exec(
+        `UPDATE ops_revenue_pace_profiles SET daily_target_ngn=$2, checkpoints=$3,
+          warning_tolerance_pct=$4, critical_tolerance_pct=$5, effective_to=$6, updated_at=$7
+         WHERE pace_profile_id=$1`,
+        [existing.pace_profile_id, ...Object.values(updated), timestamp]
+      );
+      const saved = await this.db.one<any>(
+        "SELECT * FROM ops_revenue_pace_profiles WHERE pace_profile_id=$1",
+        [existing.pace_profile_id]
+      );
+      await this.audit("revenue_pace_profile.updated", "revenue_pace_profile", existing.pace_profile_id, existing, saved, actorPersonId);
+      return saved;
+    }
     const profile = {
       pace_profile_id: this.id("pace"),
       vehicle_type: body.vehicle_type,
@@ -1010,6 +1037,39 @@ export class OpsService {
   async createEfficiencyPolicy(body: RecordBody, actorPersonId: string) {
     if (!body.vehicle_type) throw new BadRequestException("vehicle_type is required.");
     const timestamp = this.now();
+    // Saving the same vehicle type + make/model + effective date again
+    // corrects that version in place — it must not stack duplicates.
+    const existing = await this.db.one<any>(
+      `SELECT * FROM ops_vehicle_efficiency_policies
+       WHERE vehicle_type=$1 AND COALESCE(make_model,'')=COALESCE($2,'') AND effective_from=$3`,
+      [String(body.vehicle_type), body.make_model || null, this.date(body.effective_from || this.lagosDate())]
+    );
+    if (existing) {
+      const updated = {
+        fuel_type: body.fuel_type || existing.fuel_type,
+        standard_daily_fuel_quantity: this.number(body.standard_daily_fuel_quantity, "standard_daily_fuel_quantity"),
+        fuel_unit: body.fuel_unit || existing.fuel_unit,
+        expected_distance_km: this.number(body.expected_distance_km, "expected_distance_km"),
+        allowed_variance_pct: this.number(body.allowed_variance_pct ?? 10, "allowed_variance_pct"),
+        price_per_unit_ngn: body.price_per_unit_ngn === undefined || body.price_per_unit_ngn === null || body.price_per_unit_ngn === ""
+          ? null
+          : this.number(body.price_per_unit_ngn, "price_per_unit_ngn"),
+        effective_to: body.effective_to ? this.date(body.effective_to) : null
+      };
+      await this.db.exec(
+        `UPDATE ops_vehicle_efficiency_policies SET fuel_type=$2,
+          standard_daily_fuel_quantity=$3, fuel_unit=$4, expected_distance_km=$5,
+          allowed_variance_pct=$6, price_per_unit_ngn=$7, effective_to=$8, updated_at=$9
+         WHERE efficiency_policy_id=$1`,
+        [existing.efficiency_policy_id, ...Object.values(updated), timestamp]
+      );
+      const saved = await this.db.one<any>(
+        "SELECT * FROM ops_vehicle_efficiency_policies WHERE efficiency_policy_id=$1",
+        [existing.efficiency_policy_id]
+      );
+      await this.audit("vehicle_efficiency_policy.updated", "vehicle_efficiency_policy", existing.efficiency_policy_id, existing, saved, actorPersonId);
+      return saved;
+    }
     const policy = {
       efficiency_policy_id: this.id("efficiency"),
       vehicle_type: body.vehicle_type,

@@ -235,6 +235,24 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_vehicle_efficiency_policies
         ADD COLUMN IF NOT EXISTS price_per_unit_ngn NUMERIC(10, 2);
 
+      -- Repeated saves once stacked duplicate versions (same vehicle
+      -- type + make/model + effective date); keep the newest of each.
+      DELETE FROM ops_vehicle_efficiency_policies a
+      USING ops_vehicle_efficiency_policies b
+      WHERE a.vehicle_type = b.vehicle_type
+        AND COALESCE(a.make_model, '') = COALESCE(b.make_model, '')
+        AND a.effective_from = b.effective_from
+        AND (a.updated_at < b.updated_at
+          OR (a.updated_at = b.updated_at AND a.efficiency_policy_id < b.efficiency_policy_id));
+
+      DELETE FROM ops_revenue_pace_profiles a
+      USING ops_revenue_pace_profiles b
+      WHERE a.vehicle_type = b.vehicle_type
+        AND a.day_type = b.day_type
+        AND a.effective_from = b.effective_from
+        AND (a.updated_at < b.updated_at
+          OR (a.updated_at = b.updated_at AND a.pace_profile_id < b.pace_profile_id));
+
       CREATE TABLE IF NOT EXISTS ops_economics_policies (
         economics_policy_id TEXT PRIMARY KEY,
         policy_name TEXT NOT NULL,

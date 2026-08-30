@@ -686,6 +686,25 @@ test("configures revenue pace and fuel efficiency controls", async () => {
 
   const repriced = await request("/ops/v1/mileage-reconciliations?record_date=2026-06-06");
   assert.equal(Number(repriced.body.data[0].fuel_cost_ngn), 6000);
+
+  // Re-saving the same vehicle type + effective date corrects the version
+  // in place — it must not stack a duplicate policy row.
+  const countBefore = (await request("/ops/v1/vehicle-efficiency-policies")).body.data.length;
+  const resaved = await request("/ops/v1/vehicle-efficiency-policies", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ops-efficiency-priced-002" },
+    body: JSON.stringify({
+      vehicle_type: "motorbike",
+      standard_daily_fuel_quantity: 5,
+      expected_distance_km: 100,
+      price_per_unit_ngn: 1300,
+      effective_from: "2026-06-05"
+    })
+  });
+  assert.equal(resaved.body.efficiency_policy_id, pricedPolicy.body.efficiency_policy_id);
+  assert.equal(Number(resaved.body.price_per_unit_ngn), 1300);
+  const countAfter = (await request("/ops/v1/vehicle-efficiency-policies")).body.data.length;
+  assert.equal(countAfter, countBefore);
 });
 
 test("aggregates team board and performance over an operating-date range", async () => {
