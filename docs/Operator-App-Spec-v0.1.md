@@ -2,7 +2,7 @@
 
 **Status:** O1 slice built for local review; O2 backlog listed below
 **Derived from:** `docs/Supervisor-App-Frontend-Brief.md` (shared visual
-ethos) and `docs/Supervisor-App-Spec-v0.1.md` (the supervisor cockpit drives
+ethos) and `docs/Supervisor-App-Spec-v0.2.md` (the supervisor cockpit drives
 this design)
 
 The operator app is the operator's personal cockpit: one glance answers
