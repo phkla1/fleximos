@@ -284,6 +284,30 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#operatorList")).toContainText("No operators match this scope");
   });
 
+  test("saves an efficiency policy version in place and closes the panel", async ({ page }) => {
+    await page.goto(`${url}#controls`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    const panel = page.locator("#efficiencyPolicyForm").locator("xpath=ancestor::details");
+    await page.getByText("Update the efficiency policy for a vehicle type", { exact: true }).click();
+    const form = page.locator("#efficiencyPolicyForm");
+    await form.locator('input[name="price_per_unit_ngn"]').fill("1150");
+    await form.getByRole("button", { name: "Save efficiency policy version" }).click();
+    await expect(page.locator("#notice")).toContainText("efficiency policy saved");
+    // The edit window closes so the click clearly landed.
+    await expect(panel).not.toHaveAttribute("open", "");
+
+    const rowCount = await page.locator("#efficiencyPolicyList .policy-row").count();
+
+    // Saving again with the same effective date corrects in place — no
+    // duplicate version rows.
+    await page.getByText("Update the efficiency policy for a vehicle type", { exact: true }).click();
+    await form.locator('input[name="price_per_unit_ngn"]').fill("1175");
+    await form.getByRole("button", { name: "Save efficiency policy version" }).click();
+    await expect(page.locator("#notice")).toContainText("efficiency policy saved");
+    await expect(page.locator("#efficiencyPolicyList .policy-row")).toHaveCount(rowCount);
+    await expect(page.locator("#efficiencyPolicyList")).toContainText("₦1,175");
+  });
+
   test("loads the selected vehicle pace profile into the form", async ({ page }) => {
     await page.goto(`${url}#controls`);
     await expect(page.locator("#notice")).toContainText("Connected");

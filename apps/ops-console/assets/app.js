@@ -998,7 +998,35 @@ function renderDeliveries() {
 }
 
 let latestAnalysis = null;
+
+/* ---------- double-submit guard ----------
+   The moment any form submits, its save button goes inactive and reads
+   "Saving…" so the user knows the click landed; buttons unlock on the
+   next successful render or on an error notice. */
+document.addEventListener("submit", (event) => {
+  const button = event.target.querySelector('button[type="submit"], button:not([type])');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.dataset.lockedLabel = button.textContent;
+  button.textContent = "Saving…";
+  setTimeout(() => {
+    if (button.dataset.lockedLabel !== undefined) {
+      button.disabled = false;
+      button.textContent = button.dataset.lockedLabel;
+      delete button.dataset.lockedLabel;
+    }
+  }, 15000);
+}, true);
+function unlockSubmitButtons() {
+  for (const button of document.querySelectorAll("button[data-locked-label]")) {
+    button.disabled = false;
+    button.textContent = button.dataset.lockedLabel;
+    delete button.dataset.lockedLabel;
+  }
+}
+
 function render() {
+  unlockSubmitButtons();
   latestAnalysis = analyseTeam();
   el.boardUpdated.textContent = `Updated ${timeOf(new Date())}`;
   renderCockpit(latestAnalysis);
@@ -1599,6 +1627,7 @@ el.maintenanceForm.addEventListener("submit", async (event) => {
 });
 
 function showError(error) {
+  unlockSubmitButtons();
   setConnection("error", "Connection issue");
   setNotice(error.message, true);
 }

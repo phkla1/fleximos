@@ -284,7 +284,35 @@ function syncEconomicsPolicyForm() {
   form.expected_hours_per_operator.value = Number(policy.expected_hours_per_operator);
 }
 
+
+/* ---------- double-submit guard ----------
+   The moment any form submits, its save button goes inactive and reads
+   "Saving…" so the user knows the click landed; buttons unlock on the
+   next successful render or on an error notice. */
+document.addEventListener("submit", (event) => {
+  const button = event.target.querySelector('button[type="submit"], button:not([type])');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.dataset.lockedLabel = button.textContent;
+  button.textContent = "Saving…";
+  setTimeout(() => {
+    if (button.dataset.lockedLabel !== undefined) {
+      button.disabled = false;
+      button.textContent = button.dataset.lockedLabel;
+      delete button.dataset.lockedLabel;
+    }
+  }, 15000);
+}, true);
+function unlockSubmitButtons() {
+  for (const button of document.querySelectorAll("button[data-locked-label]")) {
+    button.disabled = false;
+    button.textContent = button.dataset.lockedLabel;
+    delete button.dataset.lockedLabel;
+  }
+}
+
 function render() {
+  unlockSubmitButtons();
   el.activeOperatorCount.textContent = state.operators.filter((item) => item.operator_status === "active").length;
   el.openAlertCount.textContent = state.alerts.filter((item) => item.resolution_status === "open").length;
   el.activeVehicleCount.textContent = state.vehicles.filter((item) => item.status === "active").length;
@@ -833,7 +861,8 @@ el.paceProfileForm.addEventListener("submit", async (event) => {
         effective_from: values.effective_from
       })
     });
-    await refresh("Revenue pace profile added.");
+    el.paceProfileForm.closest("details").open = false;
+    await refresh("Revenue pace profile saved — the list shows the current version per vehicle type.");
   } catch (error) { showError(error); }
 });
 
@@ -856,7 +885,8 @@ el.efficiencyPolicyForm.addEventListener("submit", async (event) => {
         effective_from: values.effective_from
       })
     });
-    await refresh("Vehicle efficiency policy added.");
+    el.efficiencyPolicyForm.closest("details").open = false;
+    await refresh("Vehicle efficiency policy saved — same effective date updates that version in place.");
   } catch (error) { showError(error); }
 });
 
@@ -1189,6 +1219,7 @@ el.actionDialog.addEventListener("close", async () => {
 });
 
 function showError(error) {
+  unlockSubmitButtons();
   setConnection("error", "Connection issue");
   setNotice(error.message, true);
 }
