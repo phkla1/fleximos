@@ -466,9 +466,15 @@ function teamSummaries(analysis) {
   });
 }
 
+// A checklist line is CRITICAL (true blocker, red) when it hides risk that
+// must not be waved through — escalated/high-tier alerts and open
+// high-severity incidents. Everything else is a warning (amber): submit
+// records it as an exception, visible to the manager, but the day can end.
 function closeoutChecklist(analysis) {
   const openAlerts = state.alerts.filter((alert) => ["open", "escalated"].includes(alert.resolution_status));
+  const criticalAlerts = openAlerts.filter((alert) => alert.resolution_status === "escalated" || Number(alert.tier) >= 2);
   const openIncidents = state.incidents.filter((incident) => incident.status !== "resolved");
+  const criticalIncidents = openIncidents.filter((incident) => incident.severity === "high");
   const overdueInspections = (state.compliance?.vehicles || []).filter((vehicle) => vehicle.inspection_status !== "current");
   const openMaintenance = state.maintenance.filter((report) => report.status !== "resolved");
   const unconfirmedFuel = state.operators.filter((operator) =>
@@ -476,13 +482,13 @@ function closeoutChecklist(analysis) {
   const openDeliveryExceptions = state.deliveryExceptions.filter((exception) => exception.status === "open").length;
   const unclosedBatches = state.deliveryBatches.filter((batch) => batch.status !== "closed").length;
   return [
-    { id: "alerts", label: "Unresolved alerts", count: openAlerts.length, tab: "alerts" },
-    { id: "deliveries", label: "Delivery exceptions / open batches", count: openDeliveryExceptions + unclosedBatches, tab: "deliveries" },
-    { id: "incidents", label: "Open incidents", count: openIncidents.length, tab: "field" },
-    { id: "inspections", label: "Overdue inspections", count: overdueInspections.length, tab: "field" },
-    { id: "fuel", label: "Fuel not confirmed", count: unconfirmedFuel.length, tab: "fuel" },
-    { id: "mileage", label: "Mileage exceptions", count: analysis.mileageExceptions.length, tab: "fuel" },
-    { id: "maintenance", label: "Maintenance blockers", count: openMaintenance.length, tab: "field" }
+    { id: "alerts", label: "Unresolved alerts", count: openAlerts.length, criticalCount: criticalAlerts.length, tab: "alerts" },
+    { id: "deliveries", label: "Delivery exceptions / open batches", count: openDeliveryExceptions + unclosedBatches, criticalCount: 0, tab: "deliveries" },
+    { id: "incidents", label: "Open incidents", count: openIncidents.length, criticalCount: criticalIncidents.length, tab: "field" },
+    { id: "inspections", label: "Overdue inspections", count: overdueInspections.length, criticalCount: 0, tab: "field" },
+    { id: "fuel", label: "Fuel not confirmed", count: unconfirmedFuel.length, criticalCount: 0, tab: "fuel" },
+    { id: "mileage", label: "Mileage exceptions", count: analysis.mileageExceptions.length, criticalCount: 0, tab: "fuel" },
+    { id: "maintenance", label: "Maintenance blockers", count: openMaintenance.length, criticalCount: 0, tab: "field" }
   ];
 }
 
@@ -817,34 +823,42 @@ function renderCloseout(analysis) {
     const operatorIds = new Set(state.operators.filter((operator) => operator.amoeba_id === amoebaId).map((operator) => operator.operator_id));
     const scopedChecklist = checklist.map((item) => ({ ...item }));
     // Scope operator-linked counts to the amoeba where the data allows it.
-    scopedChecklist.find((item) => item.id === "alerts").count =
-      state.alerts.filter((alert) => ["open", "escalated"].includes(alert.resolution_status) && operatorIds.has(alert.operator_id)).length;
-    scopedChecklist.find((item) => item.id === "incidents").count =
-      state.incidents.filter((incident) => incident.status !== "resolved" && operatorIds.has(incident.operator_id)).length;
+    const amoebaAlerts = state.alerts.filter((alert) => ["open", "escalated"].includes(alert.resolution_status) && operatorIds.has(alert.operator_id));
+    const alertItem = scopedChecklist.find((item) => item.id === "alerts");
+    alertItem.count = amoebaAlerts.length;
+    alertItem.criticalCount = amoebaAlerts.filter((alert) => alert.resolution_status === "escalated" || Number(alert.tier) >= 2).length;
+    const amoebaIncidents = state.incidents.filter((incident) => incident.status !== "resolved" && operatorIds.has(incident.operator_id));
+    const incidentItem = scopedChecklist.find((item) => item.id === "incidents");
+    incidentItem.count = amoebaIncidents.length;
+    incidentItem.criticalCount = amoebaIncidents.filter((incident) => incident.severity === "high").length;
     const existing = closeoutFor(amoebaId);
     const blockers = scopedChecklist.filter((item) => item.count);
+    const criticalTotal = scopedChecklist.reduce((sum, item) => sum + (item.criticalCount || 0), 0);
     return `
       <article class="closeout-card ${existing ? "submitted" : blockers.length ? "blocked" : "ready"}">
         <div class="closeout-head">
           <div><strong>${escapeHtml(amoebaId.replace("amoeba_", "").replace(/^\w/, (char) => char.toUpperCase()))}</strong><small>Closeout for ${escapeHtml(state.dateTo)}</small></div>
           ${existing
             ? `<span class="pill ${existing.status === "submitted" ? "resolved" : "open"}">${escapeHtml(String(existing.status).replaceAll("_", " "))} · ${timeOf(existing.submitted_at)}</span>`
-            : `<span class="pill ${blockers.length ? "open" : "resolved"}">${blockers.length ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}` : "Ready"}</span>`}
+            : criticalTotal
+              ? `<span class="pill open">${criticalTotal} critical</span>`
+              : `<span class="pill ${blockers.length ? "pending" : "resolved"}">${blockers.length ? `${blockers.length} warning${blockers.length === 1 ? "" : "s"}` : "Ready"}</span>`}
         </div>
         <ul class="closeout-checklist">
           ${scopedChecklist.map((item) => `
-            <li class="${item.count ? "flagged" : "clear"}">
-              <span class="check-mark">${item.count ? "!" : "✓"}</span>
-              <span>${escapeHtml(item.label)}</span>
+            <li class="${item.count ? (item.criticalCount ? "flagged critical" : "flagged warning") : "clear"}">
+              <span class="check-mark">${item.count ? (item.criticalCount ? "!" : "⚠") : "✓"}</span>
+              <span>${escapeHtml(item.label)}${item.criticalCount ? ` — <strong>${item.criticalCount} critical</strong>` : ""}</span>
               <span class="check-count">${item.count || "Clear"}</span>
               ${item.count ? `<button type="button" class="linklike" data-goto-tab="${escapeHtml(item.tab)}">Review</button>` : ""}
             </li>`).join("")}
         </ul>
         ${existing ? existing.notes ? `<p class="subtle">Note: ${escapeHtml(existing.notes)}</p>` : "" : `
-          <label class="closeout-note">Supervisor note (optional — explain anything still open)
+          ${criticalTotal ? `<p class="subtle critical-note">⛔ ${criticalTotal} critical issue${criticalTotal === 1 ? "" : "s"} (escalated or high-severity) — submitting records them as exceptions in the manager's escalation view; they cannot be hidden.</p>` : ""}
+          <label class="closeout-note">Supervisor note (${criticalTotal ? "required — explain the critical issues" : "optional — explain anything still open"})
             <textarea rows="2" data-closeout-note="${escapeHtml(amoebaId)}"></textarea>
           </label>
-          <button type="button" data-submit-closeout="${escapeHtml(amoebaId)}">${blockers.length ? "Submit with exceptions" : "Submit closeout"}</button>`}
+          <button type="button" data-submit-closeout="${escapeHtml(amoebaId)}" data-critical-count="${criticalTotal}">${criticalTotal ? `Submit with ${criticalTotal} critical exception${criticalTotal === 1 ? "" : "s"}` : blockers.length ? "Submit with warnings" : "Submit closeout"}</button>`}
       </article>`;
   }).join("") : `<div class="empty">No operating units in scope.</div>`;
 
@@ -1530,6 +1544,12 @@ document.addEventListener("click", async (event) => {
   if (closeoutButton) {
     const amoebaId = closeoutButton.dataset.submitCloseout;
     const note = document.querySelector(`[data-closeout-note="${amoebaId}"]`)?.value.trim() || null;
+    // Critical issues can be submitted as exceptions but never silently:
+    // the supervisor must say why the day is ending with them open.
+    if (Number(closeoutButton.dataset.criticalCount || 0) > 0 && !note) {
+      showError(new Error("Explain the critical issues in the note before submitting — they will appear in the manager's escalation view."));
+      return;
+    }
     closeoutButton.disabled = true;
     closeoutButton.textContent = "Submitting…";
     try {

@@ -424,3 +424,6 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 
 .pill.aged { background: var(--red-bg); color: var(--red); }
 #exportWeeklyCsv { margin-bottom: 48px; }
+.closeout-checklist li.flagged.warning .check-mark { background: var(--amber-bg); color: var(--amber); }
+.closeout-checklist li.flagged.critical .check-mark { background: var(--red-bg); color: var(--red); }
+.critical-note { color: var(--red); font-weight: 700; }

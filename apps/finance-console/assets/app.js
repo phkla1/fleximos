@@ -388,7 +388,7 @@ function openAdjustmentDialog(operatorId) {
 }
 
 let refreshSequence = 0;
-async function refresh() {
+async function refresh({ keepRange = false } = {}) {
   // Overlapping refreshes (date-change events + the Refresh button) must not
   // let a slower, staler response repaint over the latest range.
   const ticket = ++refreshSequence;
@@ -404,7 +404,7 @@ async function refresh() {
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   const rangeHasData = dates.some((date) => date >= dateFrom && date <= dateTo);
-  if (!rangeHasData && dates.length) {
+  if (!rangeHasData && dates.length && !keepRange) {
     dateFrom = dates[0];
     dateTo = dates[0];
   }
@@ -619,10 +619,15 @@ document.getElementById("paymentCsvInput")?.addEventListener("change", async (ev
       });
     }
     const drivers = new Set([...totals.values()].map((entry) => entry.match.operator.operator_id)).size;
-    statusEl.textContent = `✓ Imported ${totals.size} daily totals for ${drivers} driver${drivers === 1 ? "" : "s"}.`
+    // Jump the console to the imported days so the results are visible
+    // immediately — imports usually cover past dates, not today.
+    const importedDates = [...totals.values()].map((entry) => entry.date).sort();
+    el.dateFrom.value = importedDates[0];
+    el.dateTo.value = importedDates[importedDates.length - 1];
+    statusEl.textContent = `✓ Imported ${totals.size} daily totals for ${drivers} driver${drivers === 1 ? "" : "s"} — showing ${importedDates[0]}${importedDates[0] === importedDates[importedDates.length - 1] ? "" : ` to ${importedDates[importedDates.length - 1]}`} below.`
       + (unmatched.size ? ` ⚠ Unmatched (fix names/UUIDs in the roster): ${[...unmatched].slice(0, 5).join(", ")}${unmatched.size > 5 ? "…" : ""}` : "");
     event.target.value = "";
-    await refresh();
+    await refresh({ keepRange: true });
   } catch (error) {
     statusEl.textContent = `Import failed: ${error.message}`;
   }
@@ -720,10 +725,13 @@ performanceCsvInput?.addEventListener("change", async (event) => {
         }
       });
     }
-    performanceCsvStatus.textContent = `✓ Imported ${saves.length} driver totals covering ${period.start} to ${period.end}.`
+    // Jump to the declared period so the imported figures show at once.
+    el.dateFrom.value = period.start;
+    el.dateTo.value = period.end;
+    performanceCsvStatus.textContent = `✓ Imported ${saves.length} driver totals covering ${period.start} to ${period.end} — showing that range below.`
       + (unmatched.size ? ` ⚠ Unmatched (fix phones/names in the roster): ${[...unmatched].slice(0, 5).join(", ")}${unmatched.size > 5 ? "…" : ""}` : "");
     event.target.value = "";
-    await refresh();
+    await refresh({ keepRange: true });
   } catch (error) {
     performanceCsvStatus.textContent = `Import failed: ${error.message}`;
   }

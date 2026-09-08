@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 test.describe("Supervisor Ops console", () => {
@@ -105,9 +106,32 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#vehicleTable")).toContainText("Idle days");
     await expect(page.locator("#vehicleTable")).toContainText("awaiting tracker telemetry");
 
+    // Calculation integrity: the rendered arithmetic must reconcile.
+    const naira = (text) => Number(String(text).replace(/[^\d.-]/g, "")) || 0;
+    const firstRow = driverTable.locator("tbody tr").first();
+    const cells = await firstRow.locator("td").allTextContents();
+    const [/*name*/, /*plate*/, target, earnings, variance, targetPct] = cells;
+    expect(Math.abs(naira(variance) - (naira(earnings) - naira(target)))).toBeLessThanOrEqual(1);
+    if (naira(target) > 0) {
+      expect(Math.abs(naira(targetPct) - Math.round(naira(earnings) / naira(target) * 100))).toBeLessThanOrEqual(1);
+    }
+    // Zero divisions must never leak into the UI.
+    for (const tab of ["cockpit", "board", "closeout"]) {
+      await page.evaluate((name) => { location.hash = `#${name}`; }, tab);
+      expect(await page.locator(`[data-tab='${tab}']`).textContent()).not.toMatch(/NaN|Infinity/);
+    }
+    await page.evaluate(() => { location.hash = "#board"; });
+
+    // Export validation: the CSV mirrors the table, row for row.
     const download = page.waitForEvent("download");
     await page.locator("#exportDriversCsv").click();
-    expect((await download).suggestedFilename()).toMatch(/^drivers-.*\.csv$/);
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/^drivers-.*\.csv$/);
+    const csv = await readFile(await file.path(), "utf8");
+    const csvLines = csv.trim().split("\n");
+    expect(csvLines.length).toBe(await driverTable.locator("tbody tr").count() + 1);
+    expect(csvLines[0]).toContain("Variance ₦");
+    expect(csv).toContain(cells[0].trim());
   });
 
   test("rolls the range into a team summary with contribution", async ({ page }) => {
@@ -158,6 +182,9 @@ test.describe("Supervisor Ops console", () => {
 
     const submitButton = page.locator("[data-submit-closeout]").first();
     if (await submitButton.count()) {
+      // Critical exceptions require an explanatory note before submit.
+      const card = page.locator(".closeout-card").filter({ has: submitButton }).first();
+      await card.locator("[data-closeout-note]").fill("End-of-day note from Playwright: open items handed to the manager.");
       await submitButton.click();
       await expect(page.locator("#notice")).toContainText("Closeout submitted");
       await expect(page.locator(".closeout-card.submitted").first()).toBeVisible();

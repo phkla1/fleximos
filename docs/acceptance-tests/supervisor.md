@@ -111,11 +111,16 @@ design) and variance pills.
 
 **Expected:** one card per operating unit with an auto-filled checklist:
 unresolved alerts, open incidents, overdue inspections, fuel not confirmed,
-mileage exceptions, maintenance blockers — each Clear (✓) or flagged (!)
-with a Review link that jumps to the right tab. Add an optional note and
-submit ("Submit with exceptions" when blockers remain). The card flips to a
-timestamped submitted state, the closeout-readiness gauge updates, and the
-manager console stops listing your closeout as missing.
+mileage exceptions, maintenance blockers — each Clear (✓), a **warning
+(⚠, amber)**, or **critical (!, red — escalated/high-tier alerts and
+high-severity incidents)**, with a Review link that jumps to the right
+tab. Warnings can be submitted with an optional note ("Submit with
+warnings"). Critical issues can NOT be quietly waved through: the button
+reads "Submit with N critical exceptions", the note becomes **required**,
+and the submission lands in the manager's escalation view — critical
+items are recorded, never hidden. The card flips to a timestamped
+submitted state, the closeout-readiness gauge updates, and the manager
+console stops listing your closeout as missing.
 
 ### SU-13 · Review a date range
 1. Set **From** to two days ago and **To** to today in the top bar.
@@ -186,6 +191,26 @@ cost; acknowledging an incident makes you its owner. Open incidents show
 "open N days" and turn red-flagged once 2+ days old — nothing unresolved
 can hide.
 
+### SU-19 · Edge cases and failure handling
+1. **Network loss:** turn on airplane mode mid-session, tap Refresh, then
+   restore the network and refresh again.
+2. **Camera denial:** deny the camera permission, then try 📷 Take photo
+   on an inspection.
+3. **Invalid values:** try a negative fuel quantity, delivered counts
+   above the assigned target, and letters in number fields.
+4. **Zero data:** set From/To to a range with no activity.
+5. **Double-tap:** double-tap any save button quickly.
+6. **Stale session:** leave the app open overnight, then act on an alert.
+
+**Expected:** (1) the status dot turns red with "Connection issue" and no
+action is recorded twice after the retry; (2) the photo field reports the
+problem and the form still submits without a photo; (3) every invalid
+value is rejected with a plain-language message — nothing partial is
+saved; (4) tables and gauges show zeros/dashes, never "NaN" or blank
+screens; (5) the button locks on the first tap ("Saving…") and only one
+record exists afterwards; (6) the action either completes or asks you to
+reconnect — it is never silently lost.
+
 ## Results
 
 | Test | Pass/Fail | Notes |
@@ -208,5 +233,6 @@ can hide.
 | SU-16 | | |
 | SU-17 | | |
 | SU-18 | | |
+| SU-19 | | |
 
 Tester: ____________  Date: ____________  Device/browser: ____________
