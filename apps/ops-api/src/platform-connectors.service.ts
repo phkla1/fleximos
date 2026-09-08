@@ -32,6 +32,7 @@ export type NormalizedDailyRecord = {
 };
 
 const boltTokenCache = new Map<string, { token: string; expiresAt: number }>();
+const boltCompanyCache = new Map<string, number>();
 const uberTokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 function round(value: number) {
@@ -118,6 +119,26 @@ export class PlatformConnectorsService {
     }), `Bolt ${path}`));
   }
 
+  // The company ID is discoverable from the credentials themselves, so
+  // configuring it is optional: a single-company fleet needs only
+  // BOLT_CLIENT_ID and BOLT_CLIENT_SECRET. An explicit ID (env or the
+  // platform account's external_account_id) still wins for multi-company
+  // credentials.
+  private async boltCompanyId(account: PlatformAccount) {
+    const configured = Number(account.external_account_id || this.env(account, "COMPANY_ID", "BOLT_COMPANY_ID"));
+    if (configured) return configured;
+    const cached = boltCompanyCache.get(account.credentials_key);
+    if (cached) return cached;
+    const data = await retry(async () => responseJson(await fetch(
+      "https://node.bolt.eu/fleet-integration-gateway/fleetIntegration/v1/getCompanies",
+      { headers: { Authorization: `Bearer ${await this.boltToken(account)}`, Accept: "application/json" } }
+    ), "Bolt getCompanies"));
+    const companyIds: number[] = data.data?.company_ids || [];
+    if (!companyIds.length) throw new Error(`${account.credentials_key} Bolt credentials have no companies attached.`);
+    boltCompanyCache.set(account.credentials_key, companyIds[0]);
+    return companyIds[0];
+  }
+
   private async boltPages(account: PlatformAccount, path: string, key: string, body: Record<string, unknown>) {
     const rows: any[] = [];
     for (let offset = 0; ; offset += 1000) {
@@ -154,8 +175,7 @@ export class PlatformConnectorsService {
     const { start, end } = dateWindow(date);
     const startTs = Math.floor(start.getTime() / 1000);
     const endTs = Math.floor(end.getTime() / 1000);
-    const companyId = Number(account.external_account_id || this.env(account, "COMPANY_ID", "BOLT_COMPANY_ID"));
-    if (!companyId) throw new Error(`${account.credentials_key} company ID is not configured.`);
+    const companyId = await this.boltCompanyId(account);
     const base = { company_id: companyId, start_ts: startTs, end_ts: endTs };
     const [orders, stateLogs] = await Promise.all([
       this.boltPages(account, "/fleetIntegration/v1/getFleetOrders", "orders", { ...base, company_ids: [companyId] }),
