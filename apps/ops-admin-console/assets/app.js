@@ -12,6 +12,7 @@ const state = {
   paceProfiles: [],
   economicsPolicies: [],
   efficiencyPolicies: [],
+  trackerInventory: null,
   scheduledJobs: [],
   scheduledJobRuns: [],
   dailyReports: [],
@@ -515,6 +516,26 @@ function render() {
     </article>
   `).join("") || `<div class="empty">No pace profiles configured.</div>`;
 
+  const inventory = state.trackerInventory;
+  const trackerSummary = document.getElementById("trackerSummary");
+  const trackerList = document.getElementById("trackerDeviceList");
+  if (trackerSummary && trackerList) {
+    if (!inventory || !inventory.configured) {
+      trackerSummary.textContent = "Tracker connector not configured — set CARTRACKER_EMAIL and CARTRACKER_PASSWORD in the server environment.";
+      trackerList.innerHTML = `<div class="empty">Distances fall back to platform-reported KM until the tracker connects.</div>`;
+    } else {
+      trackerSummary.innerHTML = `${inventory.device_count} device${inventory.device_count === 1 ? "" : "s"} at ${escapeHtml(inventory.provider)} · ${inventory.mapped_count} mapped to vehicles · distances stored daily (hourly capture + 23:30 final). <button type="button" class="linklike" data-tracker-pull>Pull today now</button>`;
+      trackerList.innerHTML = inventory.devices.map((device) => `
+        <article class="policy-row">
+          <div><strong>${escapeHtml(device.name)}</strong><small>Device ${escapeHtml(device.device_id)}${device.group ? ` · ${escapeHtml(device.group)}` : ""}</small></div>
+          <div>${device.vehicle_id
+            ? `<strong>${escapeHtml(device.vehicle_plate)}</strong><small>mapped by ${escapeHtml(String(device.matched_by).replaceAll("_", " "))}</small>`
+            : `<strong>Unmapped</strong><small>Set the device ID on a vehicle, or rename the device to include the plate</small>`}
+          <span class="pill ${device.vehicle_id ? "" : "open"}">${device.vehicle_id ? "mapped" : "unmapped"}</span></div>
+        </article>`).join("") || `<div class="empty">The tracker account returned no devices.</div>`;
+    }
+  }
+
   el.efficiencyPolicyList.innerHTML = state.efficiencyPolicies.map((policy) => {
     const peers = state.efficiencyPolicies.filter((peer) => peer.vehicle_type === policy.vehicle_type);
     const status = policyStatus(policy, peers);
@@ -640,7 +661,7 @@ function render() {
 async function refresh(message = "Connected to Fleximotion Ops.") {
   setConnection("", "Connecting");
   setNotice("Loading operational data...");
-  const [people, amoebas, sites, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth] = await Promise.all([
+  const [people, amoebas, sites, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth, trackerInventory] = await Promise.all([
     foundation("/identity/v1/people"),
     foundation("/amoeba/v1/amoebas"),
     foundation("/amoeba/v1/sites"),
@@ -656,7 +677,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/scheduled-job-runs"),
     ops("/ops/v1/notification-deliveries"),
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
-  ]);
+  ,
+    ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] }))]);
   const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
@@ -701,6 +723,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     paceProfiles: paceProfiles.data,
     economicsPolicies: economicsPolicies.data,
     efficiencyPolicies: efficiencyPolicies.data,
+    trackerInventory,
     scheduledJobs: scheduledJobs.data,
     scheduledJobRuns: scheduledJobRuns.data,
     notificationDeliveries: notificationDeliveries.data,
@@ -1054,6 +1077,21 @@ document.addEventListener("click", async (event) => {
   const openReport = event.target.closest("[data-open-report]");
   const closeReport = event.target.closest("[data-close-report]");
   const downloadReport = event.target.closest("[data-download-report]");
+  const trackerPull = event.target.closest("[data-tracker-pull]");
+  if (trackerPull) {
+    trackerPull.disabled = true;
+    trackerPull.textContent = "Pulling…";
+    try {
+      const result = await ops("/ops/v1/tracker/ingest", {
+        method: "POST",
+        headers: { "Idempotency-Key": key("tracker-pull") },
+        body: JSON.stringify({})
+      });
+      await refresh(`Tracker pull complete — ${result.upserted} distance${result.upserted === 1 ? "" : "s"} stored, ${result.rejected} skipped.`);
+    } catch (error) { showError(error); }
+    return;
+  }
+
   const deleteReport = event.target.closest("[data-delete-report]");
 
   if (deleteReport) {

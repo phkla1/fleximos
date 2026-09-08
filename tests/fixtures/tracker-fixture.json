@@ -1,0 +1,22 @@
+{
+  "devices": [
+    {
+      "device_id": "9001",
+      "name": "QLINK FLEXI-001",
+      "online": "ack",
+      "group": "Qutes"
+    },
+    {
+      "device_id": "9002",
+      "name": "Unmatched spare tracker",
+      "online": "offline",
+      "group": "Spares"
+    }
+  ],
+  "distances": {
+    "9001": {
+      "2026-06-06": 118.4,
+      "2026-06-05": 96.2
+    }
+  }
+}

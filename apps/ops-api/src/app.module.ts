@@ -11,6 +11,7 @@ import { OpsService } from "./ops.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { SchedulerService } from "./scheduler.service.js";
 import { NotificationService } from "./notification.service.js";
+import { TrackerIngestService } from "./tracker-ingest.service.js";
 
 @Module({
   controllers: [OpsController, DepthController, DeliveriesController],
@@ -22,6 +23,7 @@ import { NotificationService } from "./notification.service.js";
     DeliveriesService,
     PlatformConnectorsService,
     NotificationService,
+    TrackerIngestService,
     JobRunnerService,
     SchedulerService
   ]

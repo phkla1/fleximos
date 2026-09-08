@@ -274,7 +274,11 @@ const round1 = (value) => Math.round(value * 10) / 10;
 function driverMetrics(analysis) {
   return analysis.rows.map((row) => {
     const recon = state.mileageReconciliations.filter((record) => record.operator_id === row.operator_id);
-    const km = recon.reduce((sum, record) => sum + Number(record.official_distance_km || 0), 0);
+    // Tracker distance is the truthful road KM (includes off-app
+    // movement); platform distance is the fallback where no tracker
+    // reports. ₦/KM and fuel ratios build on this figure.
+    const km = recon.reduce((sum, record) =>
+      sum + Number(record.tracker_distance_km ?? record.official_distance_km ?? 0), 0);
     const litres = recon.reduce((sum, record) =>
       sum + (record.fuel_unit === "litres" ? Number(record.fuel_quantity || 0) : 0), 0);
     const fuelCost = recon.reduce((sum, record) => sum + Number(record.fuel_cost_ngn || 0), 0);

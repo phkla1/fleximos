@@ -76,7 +76,8 @@ async function startServer() {
       HOST: "127.0.0.1",
       FLEXI_OPS_DB_DIR: dbDir,
       FOUNDATION_API_BASE: foundationBaseUrl,
-      PAYMENTS_API_BASE: paymentsBaseUrl
+      PAYMENTS_API_BASE: paymentsBaseUrl,
+      TRACKER_FIXTURE_FILE: new URL("../fixtures/tracker-fixture.json", import.meta.url).pathname
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -1206,4 +1207,54 @@ test("acknowledges and resolves an alert with audit history", async () => {
   });
   assert.equal(resolve.response.status, 200);
   assert.equal(resolve.body.resolution_status, "resolved");
+});
+
+test("stores tracker distances daily and reconciles against them", async () => {
+  // Inventory: fixture connector reports two devices; FLEXI-001 auto-maps
+  // to the demo vehicle by plate, the spare stays unmapped.
+  const inventory = await request("/ops/v1/tracker/devices");
+  assert.equal(inventory.response.status, 200);
+  assert.equal(inventory.body.configured, true);
+  assert.equal(inventory.body.device_count, 2);
+  assert.equal(inventory.body.mapped_count, 1);
+  const mapped = inventory.body.devices.find((device) => device.device_id === "9001");
+  assert.equal(mapped.vehicle_plate, "FLEXI-001");
+
+  // Daily capture: the same code path the scheduler runs hourly.
+  const ingest = await request("/ops/v1/tracker/ingest", {
+    method: "POST",
+    headers: { "Idempotency-Key": "tracker-ingest-run-001" },
+    body: JSON.stringify({ record_date: "2026-06-06" })
+  });
+  assert.equal(ingest.response.status, 200);
+  assert.equal(ingest.body.upserted, 1);
+  assert.equal(ingest.body.rejected, 1, "the unmapped spare device is rejected, not invented");
+
+  const stored = await request("/ops/v1/tracker-daily-records?date_from=2026-06-06&date_to=2026-06-06");
+  assert.equal(stored.body.data.length, 1);
+  assert.equal(Number(stored.body.data[0].actual_distance_km), 118.4);
+  assert.equal(stored.body.data[0].plate, "FLEXI-001");
+  assert.ok(String(stored.body.data[0].source).startsWith("live:"));
+
+  // The vehicle mapping persisted, so vendor renames cannot unhook it.
+  const vehicles = await request("/ops/v1/vehicles");
+  const demoVehicle = vehicles.body.data.find((vehicle) => vehicle.vehicle_id === "vehicle_demo_001");
+  assert.equal(demoVehicle.tracker_device_id, "9001");
+
+  // Reconciliation now shows tracker distance instead of tracker_unavailable.
+  const recon = await request("/ops/v1/mileage-reconciliations?record_date=2026-06-06");
+  const row = recon.body.data.find((item) => item.vehicle_id === "vehicle_demo_001");
+  assert.equal(Number(row.tracker_distance_km), 118.4);
+  assert.notEqual(row.tracker_variance_status, "tracker_unavailable");
+
+  // Manual fallback records a day by hand and re-saving corrects in place.
+  const manual = await request("/ops/v1/tracker-daily-records", {
+    method: "POST",
+    headers: { "Idempotency-Key": "tracker-manual-001" },
+    body: JSON.stringify({ vehicle_id: "vehicle_demo_001", record_date: "2026-06-04", actual_distance_km: 55.5 })
+  });
+  assert.equal(manual.response.status, 201);
+  assert.equal(manual.body.source, "manual");
+  const manualList = await request("/ops/v1/tracker-daily-records?date_from=2026-06-04&date_to=2026-06-04");
+  assert.equal(manualList.body.data.length, 1);
 });

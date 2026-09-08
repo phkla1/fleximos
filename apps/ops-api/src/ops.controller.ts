@@ -18,12 +18,14 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
 import { OpsService } from "./ops.service.js";
+import { TrackerIngestService } from "./tracker-ingest.service.js";
 
 @Controller()
 export class OpsController {
   constructor(
     @Inject(OpsService) private readonly ops: OpsService,
-    @Inject(AuthService) private readonly identity: AuthService
+    @Inject(AuthService) private readonly identity: AuthService,
+    @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService
   ) {}
 
   private auth(req: Request) {
@@ -221,6 +223,59 @@ export class OpsController {
     return this.mutate(this.key(rawKey), HttpStatus.CREATED, () =>
       this.ops.createCashAdjustment(body, actor.person_id, this.identity.dataScope(actor))
     );
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Live tracker device inventory with vehicle mapping status" })
+  @Get("ops/v1/tracker/devices")
+  async trackerDevices(@Req() req: Request) {
+    const actor = await this.auth(req);
+    this.identity.requireBusinessOversight(actor);
+    return this.trackerIngest.deviceInventory();
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Pull today's tracker distances now (same capture the scheduler runs hourly)" })
+  @Post("ops/v1/tracker/ingest")
+  @HttpCode(HttpStatus.OK)
+  async runTrackerIngest(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () =>
+      this.trackerIngest.ingestDaily(String(body.record_date || this.ops.lagosDate())));
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
+  @Get("ops/v1/tracker-daily-records")
+  async listTrackerRecords(
+    @Req() req: Request,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireBusinessOversight(actor);
+    return { data: await this.trackerIngest.listRecords({ date_from: dateFrom, date_to: dateTo }), next_cursor: null };
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Record a tracker daily distance manually (fallback when the vendor API is down)" })
+  @Post("ops/v1/tracker-daily-records")
+  async createTrackerRecord(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.trackerIngest.manualRecord(body, actor.person_id));
   }
 
   @ApiTags("Cash")

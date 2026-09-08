@@ -4173,6 +4173,163 @@
           }
         }
       }
+    },
+    "/tracker/devices": {
+      "get": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "Live tracker device inventory with vehicle mapping status",
+        "description": "Business-oversight roles only. FlexiMOS stores tracker distances daily because the vendor cannot be relied on to serve past days.",
+        "responses": {
+          "200": {
+            "description": "Inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackerDeviceInventory"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tracker-daily-records": {
+      "get": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "List stored tracker daily distances",
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TrackerDailyRecord"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "Record a tracker daily distance manually (vendor-API-down fallback)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrackerDailyRecordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackerDailyRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tracker/ingest": {
+      "post": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "Pull today's tracker distances now (same capture the scheduler runs hourly)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Defaults to today (Lagos)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Capture summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "received": {
+                      "type": "integer"
+                    },
+                    "upserted": {
+                      "type": "integer"
+                    },
+                    "rejected": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4459,6 +4616,11 @@
               "inactive",
               "in_repair"
             ]
+          },
+          "tracker_device_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Tracker device mapped to this vehicle; auto-mapped by plate when the device name contains it."
           }
         }
       },
@@ -6760,6 +6922,138 @@
           },
           "cost_implication_ngn": {
             "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "TrackerDevice": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "string",
+            "nullable": true
+          },
+          "group": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_seen_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "vehicle_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "vehicle_plate": {
+            "type": "string",
+            "nullable": true
+          },
+          "matched_by": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "device_id",
+              "plate",
+              null
+            ]
+          }
+        }
+      },
+      "TrackerDeviceInventory": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true
+          },
+          "device_count": {
+            "type": "integer"
+          },
+          "mapped_count": {
+            "type": "integer"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackerDevice"
+            }
+          }
+        }
+      },
+      "TrackerDailyRecord": {
+        "type": "object",
+        "properties": {
+          "tracker_record_id": {
+            "type": "string"
+          },
+          "vehicle_id": {
+            "type": "string"
+          },
+          "tracker_account_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "record_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "actual_distance_km": {
+            "type": "number"
+          },
+          "data_quality": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "live:<provider>, backfill:<provider>, or manual"
+          },
+          "ingested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "plate": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateTrackerDailyRecordRequest": {
+        "type": "object",
+        "required": [
+          "vehicle_id",
+          "record_date",
+          "actual_distance_km"
+        ],
+        "properties": {
+          "vehicle_id": {
+            "type": "string"
+          },
+          "record_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "actual_distance_km": {
+            "type": "number",
+            "minimum": 0
+          },
+          "tracker_account_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
             "nullable": true
           }
         }

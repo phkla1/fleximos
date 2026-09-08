@@ -45,6 +45,29 @@ Layout on the server:
 - `~/fleximos-data/fleximos.env` — secrets and feature flags (chmod 600)
 - `~/fleximos-backups` — nightly data snapshots (14-day retention)
 
+### Vehicle tracker (Car Tracker Nigeria)
+
+FlexiMOS stores tracker distances in its own database every day — the
+vendor portal cannot be relied on to show past days, so the suite is the
+system of record. To activate the connector, append to
+`~/fleximos-data/fleximos.env` (chmod 600 keeps it private):
+
+```bash
+CARTRACKER_EMAIL=<account email>
+CARTRACKER_PASSWORD=<account password>
+# CARTRACKER_API_BASE=https://app.cartracker.com.ng/api   # default
+```
+
+then `pm2 delete fleximos-ops-api && pm2 start` from the ecosystem file
+(a plain restart does not re-read the env file). Once configured, the
+embedded scheduler captures distances hourly 07:30–22:30, finalises the
+day at 23:30, re-reads yesterday at 00:10, and back-fills missing days at
+02:15. Verify in the Administrator Console → Targets, fuel and mileage →
+**Vehicle trackers**: it lists every device, its mapped vehicle, and a
+"Pull today now" button. Devices map to vehicles automatically when the
+device name contains the plate; otherwise set the Tracker device ID on
+the vehicle.
+
 ## 1. Provision
 
 A shared-CPU Linode with 2 GB RAM is enough for UAT. Attach your SSH key,

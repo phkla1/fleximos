@@ -226,6 +226,7 @@
           <label>Amoeba<select name="amoeba_id" required></select></label>
           <label>Make / model<input name="make_model" /></label>
           <label>Color<input name="color" /></label>
+          <label>Tracker device ID<input name="tracker_device_id" placeholder="Auto-mapped by plate if blank" /></label>
           <button type="submit">Add vehicle</button>
           </form>
           <div class="asset-filters">
@@ -243,6 +244,11 @@
           <div><p class="eyebrow">Operating policy</p><h2>Targets, fuel and mileage</h2></div>
         </div>
         <div class="control-grid">
+          <div class="control-panel">
+            <h3>Vehicle trackers</h3>
+            <p id="trackerSummary" class="filter-summary"></p>
+            <div id="trackerDeviceList" class="data-list compact-list"></div>
+          </div>
           <div class="control-panel">
             <h3>Revenue pace profile</h3>
             <div id="paceProfileList" class="data-list compact-list"></div>

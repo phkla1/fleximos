@@ -110,9 +110,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         color TEXT,
         status TEXT NOT NULL DEFAULT 'active',
         assigned_operator_id TEXT,
+        tracker_device_id TEXT,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
       );
+
+      ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_device_id TEXT;
 
       CREATE TABLE IF NOT EXISTS ops_platform_accounts (
         platform_account_id TEXT PRIMARY KEY,
