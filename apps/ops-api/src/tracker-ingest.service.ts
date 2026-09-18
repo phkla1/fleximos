@@ -163,23 +163,34 @@ export class TrackerIngestService {
     const vehicles = await this.db.many<any>(
       "SELECT vehicle_id, plate, vehicle_type, status, tracker_device_id, tracker_provider FROM ops_vehicles");
     let received = 0, upserted = 0, rejected = 0;
+    const failures: string[] = [];
     for (const connector of connectors) {
-      const devices = await this.connectorDevices(connector, vehicles);
-      for (const device of devices) {
-        if (!device.vehicle_id) { rejected++; continue; }
-        if (device.matched_by === "plate") {
-          const vehicle = vehicles.find((row) => row.vehicle_id === device.vehicle_id);
-          if (vehicle) await this.persistMapping(vehicle, device.device_id, connector.provider);
+      // One vendor's outage must never stop another vendor's capture.
+      try {
+        const devices = await this.connectorDevices(connector, vehicles);
+        for (const device of devices) {
+          if (!device.vehicle_id) { rejected++; continue; }
+          if (device.matched_by === "plate") {
+            const vehicle = vehicles.find((row) => row.vehicle_id === device.vehicle_id);
+            if (vehicle) await this.persistMapping(vehicle, device.device_id, connector.provider);
+          }
+          received++;
+          try {
+            const reading = await connector.dailyDistance(device.device_id, date);
+            if (reading.distance_km === null) { rejected++; continue; }
+            await this.upsertRecord(device.vehicle_id, device.device_id, date, reading.distance_km, reading.raw, `live:${connector.provider}`);
+            upserted++;
+          } catch (error: any) {
+            rejected++;
+            failures.push(`${connector.provider}/${device.vehicle_plate || device.device_id}: ${String(error?.message).slice(0, 120)}`);
+          }
         }
-        received++;
-        const reading = await connector.dailyDistance(device.device_id, date);
-        if (reading.distance_km === null) { rejected++; continue; }
-        await this.upsertRecord(device.vehicle_id, device.device_id, date, reading.distance_km, reading.raw, `live:${connector.provider}`);
-        upserted++;
+      } catch (error: any) {
+        failures.push(`${connector.provider}: ${String(error?.message).slice(0, 160)}`);
       }
     }
     await this.ops.audit("tracker.daily_ingested", "tracker_daily_record", date, null,
-      { date, providers: connectors.map((connector) => connector.provider), upserted, rejected });
+      { date, providers: connectors.map((connector) => connector.provider), upserted, rejected, failures: failures.slice(0, 20) });
     return { received, upserted, rejected };
   }
 
@@ -203,10 +214,12 @@ export class TrackerIngestService {
         for (const device of mapped) {
           if (have.has(device.vehicle_id)) continue;
           received++;
-          const reading = await connector.dailyDistance(device.device_id, date);
-          if (reading.distance_km === null) { rejected++; continue; }
-          await this.upsertRecord(device.vehicle_id!, device.device_id, date, reading.distance_km, reading.raw, `backfill:${connector.provider}`);
-          upserted++;
+          try {
+            const reading = await connector.dailyDistance(device.device_id, date);
+            if (reading.distance_km === null) { rejected++; continue; }
+            await this.upsertRecord(device.vehicle_id!, device.device_id, date, reading.distance_km, reading.raw, `backfill:${connector.provider}`);
+            upserted++;
+          } catch { rejected++; }
         }
       }
     }
@@ -244,12 +257,22 @@ export class TrackerIngestService {
        LEFT JOIN ops_operators o ON o.vehicle_id = v.vehicle_id AND o.operator_status = 'active'`);
     const rows: any[] = [];
     const positioned = new Set<string>();
+    const feedErrors = new Map<string, string>();
     for (const connector of connectors) {
       if (!connector.latestPositions) continue;
       const devices = await this.connectorDevices(connector, vehicles);
       const mapped = new Map(devices.filter((device) => device.vehicle_id)
         .map((device) => [device.device_id, device]));
-      const positions = await connector.latestPositions([...mapped.keys()]);
+      let positions;
+      try {
+        positions = await connector.latestPositions([...mapped.keys()]);
+      } catch (error: any) {
+        // A dead feed shows as "feed error" on its vehicles — never a 500.
+        for (const device of mapped.values()) {
+          feedErrors.set(device.vehicle_id!, `${connector.provider} feed error: ${String(error?.message).slice(0, 80)}`);
+        }
+        continue;
+      }
       for (const position of positions) {
         const device = mapped.get(position.device_id);
         if (!device) continue;
@@ -292,7 +315,8 @@ export class TrackerIngestService {
         person_id: vehicle.person_id || null,
         supervisor_person_id: vehicle.supervisor_person_id || null,
         provider: vehicle.tracker_provider || null,
-        reason: vehicle.tracker_device_id ? "no recent position from the tracker" : "no tracker fitted"
+        reason: feedErrors.get(vehicle.vehicle_id)
+          || (vehicle.tracker_device_id ? "no recent position from the tracker" : "no tracker fitted")
       }));
     const result = [{ positions: rows, no_feed: noFeed }];
     this.positionsCache = { at: Date.now(), rows: result };
@@ -334,7 +358,15 @@ export class TrackerIngestService {
     if (command === 0 && !stolenOverride && connector.latestPositions) {
       // Safety interlock: never cut power under a moving rider unless the
       // vehicle is explicitly declared stolen (override, still audited).
-      const positions = await connector.latestPositions([deviceId]);
+      let positions;
+      try {
+        positions = await connector.latestPositions([deviceId]);
+      } catch {
+        throw new ConflictException(
+          "Blocked: the movement check is unavailable (tracker feed error), so it cannot be confirmed that nobody is riding. "
+          + "Tick the stolen-vehicle override only if the bike is genuinely stolen."
+        );
+      }
       const latest = positions.find((position) => position.device_id === deviceId);
       const ageMinutes = latest?.at ? (Date.now() - new Date(latest.at.replace(" ", "T")).getTime()) / 60000 : null;
       if (latest && latest.speed_kmh !== null && latest.speed_kmh > 5 && ageMinutes !== null && ageMinutes <= 10) {
