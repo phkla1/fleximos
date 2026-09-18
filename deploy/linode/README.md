@@ -62,8 +62,8 @@ For the Tankvolt EV bikes (host:port and key are assigned by Tankvolt's
 developers once the VINs are attached to the account):
 
 ```bash
-TANKVOLT_API_BASE=https://<ip:port assigned by Tankvolt>
 TANKVOLT_API_KEY=<key assigned by Tankvolt>
+# TANKVOLT_API_BASE=https://web.tankvolt.net   # default, verified live
 ```
 
 Register the bikes once with `node scripts/import-tankvolt-fleet.mjs`

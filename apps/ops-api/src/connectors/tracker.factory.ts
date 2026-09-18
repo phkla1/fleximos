@@ -24,9 +24,12 @@ export function createTrackerConnectors(env: NodeJS.ProcessEnv = process.env): T
       password: env.CARTRACKER_PASSWORD
     }));
   }
-  if (env.TANKVOLT_API_BASE && env.TANKVOLT_API_KEY) {
+  if (env.TANKVOLT_API_KEY) {
+    // Probed 18 Sep 2026: the partner API answers at web.tankvolt.net
+    // (the docs' {ip:port} placeholder resolves to the same host as the
+    // dashboard), so only the key is mandatory.
     connectors.push(new TankvoltConnector({
-      baseUrl: env.TANKVOLT_API_BASE.replace(/\/$/, ""),
+      baseUrl: (env.TANKVOLT_API_BASE || "https://web.tankvolt.net").replace(/\/$/, ""),
       apiKey: env.TANKVOLT_API_KEY
     }));
   }
