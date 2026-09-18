@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#14231f" />
     <title>Fleximotion Manager Console</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
     <link rel="stylesheet" href="../role-console-assets/styles.css" />
   </head>
   <body>
@@ -40,6 +41,16 @@
       </section>
 
       <section id="escalations" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Live fleet</p><h2>Fleet map</h2></div><span id="fleetMapStatus" class="subtle"></span></div>
+        <div id="fleetMap" class="vehicle-map"></div>
+        <details class="management-panel">
+          <summary>Vehicles without a position feed / recent remote power commands</summary>
+          <div id="fleetNoFeed" class="data-list"></div>
+          <div id="controlActionList" class="data-list"></div>
+        </details>
+      </section>
+
+      <section class="workspace-section">
         <div class="section-heading"><div><p class="eyebrow">Manager action queue</p><h2>Escalations</h2></div></div>
         <p class="section-intro">Escalated and tier 2+ alerts, unacknowledged high-severity incidents, overdue inspections, missing closeouts and open maintenance — everything that has outgrown the supervisor inbox.</p>
         <div id="escalationSummary" class="metrics" aria-label="Escalation counts"></div>
@@ -119,7 +130,9 @@
         <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="default">Confirm</button></div>
       </form>
     </dialog>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="../role-console-assets/flexi-env.js"></script>
+    <script src="../role-console-assets/flexi-map.js"></script>
     <script src="./assets/app.js"></script>
   </body>
 </html>

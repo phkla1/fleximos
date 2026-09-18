@@ -1,4 +1,4 @@
-import type { TrackerConnector, TrackerDailyDistance, TrackerDevice } from "./tracker.types.js";
+import type { TrackerConnector, TrackerDailyDistance, TrackerDevice, TrackerPosition } from "./tracker.types.js";
 
 // Car Tracker Nigeria (cartracker.com.ng — a GPSWOX-style platform).
 // Auth: POST /login (form fields email/password) → user_api_hash, which
@@ -80,6 +80,32 @@ export class CartrackerConnector implements TrackerConnector {
       }
     }
     return devices;
+  }
+
+  // get_devices already carries each device's live lat/lng/speed, so the
+  // map costs one call for the whole fleet.
+  async latestPositions(): Promise<TrackerPosition[]> {
+    const devices = await this.listDevices();
+    return devices
+      .filter((device) => {
+        const raw: any = device.raw;
+        return Number.isFinite(Number(raw?.lat)) && Number.isFinite(Number(raw?.lng))
+          && (Number(raw.lat) !== 0 || Number(raw.lng) !== 0);
+      })
+      .map((device) => {
+        const raw: any = device.raw;
+        return {
+          device_id: device.device_id,
+          lat: Number(raw.lat),
+          lng: Number(raw.lng),
+          speed_kmh: raw.speed === undefined ? null : Number(raw.speed),
+          heading: raw.course === undefined || raw.course === "" ? null : Number(raw.course),
+          at: device.last_seen_at,
+          battery_sn: null,
+          battery_state: null,
+          raw: { online: device.online }
+        };
+      });
   }
 
   async dailyDistance(deviceId: string, date: string): Promise<TrackerDailyDistance> {

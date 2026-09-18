@@ -384,3 +384,6 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
 .evidence-chip:hover { border-color: var(--green, #1d7a5f); }
 
 .risk-text { color: var(--red, #b3392b); }
+
+/* ---------- fleet map (shared) ---------- */
+.vehicle-map { height: 420px; border-radius: 14px; border: 1px solid var(--line, #d8e2dd); background: #e8efec; margin-bottom: 12px; }

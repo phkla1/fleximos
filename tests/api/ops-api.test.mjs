@@ -1258,3 +1258,55 @@ test("stores tracker distances daily and reconciles against them", async () => {
   const manualList = await request("/ops/v1/tracker-daily-records?date_from=2026-06-04&date_to=2026-06-04");
   assert.equal(manualList.body.data.length, 1);
 });
+
+test("maps live positions and enforces the power-cut safety interlock", async () => {
+  // Positions: the fixture reports FLEXI-001 moving at 45 km/h.
+  const positions = await request("/ops/v1/vehicle-positions");
+  assert.equal(positions.response.status, 200);
+  const moving = positions.body.positions.find((row) => row.plate === "FLEXI-001");
+  assert.ok(moving, "mapped vehicle reports a position");
+  assert.equal(moving.movement, "moving");
+  assert.equal(moving.battery_state, "discharging");
+  assert.equal(moving.controllable, true);
+  assert.ok(Array.isArray(positions.body.no_feed), "honesty list is present");
+
+  // Reason is mandatory.
+  const noReason = await request("/ops/v1/vehicles/vehicle_demo_001/battery-control", {
+    method: "POST",
+    headers: { "Idempotency-Key": "vctrl-noreason-001" },
+    body: JSON.stringify({ command: 0 })
+  });
+  assert.equal(noReason.response.status, 400);
+
+  // Cutting power under a moving rider is blocked...
+  const blocked = await request("/ops/v1/vehicles/vehicle_demo_001/battery-control", {
+    method: "POST",
+    headers: { "Idempotency-Key": "vctrl-blocked-001" },
+    body: JSON.stringify({ command: 0, reason: "Rider absconding with parcels." })
+  });
+  assert.equal(blocked.response.status, 409);
+  assert.match(blocked.body.message, /moving/);
+
+  // ...unless the stolen-vehicle override is explicit. Fully audited.
+  const cut = await request("/ops/v1/vehicles/vehicle_demo_001/battery-control", {
+    method: "POST",
+    headers: { "Idempotency-Key": "vctrl-cut-001" },
+    body: JSON.stringify({ command: 0, reason: "Bike reported stolen at 14:20.", stolen_override: true })
+  });
+  assert.equal(cut.response.status, 200);
+  assert.equal(cut.body.succeeded, true);
+  assert.equal(cut.body.command, "power_off");
+  assert.equal(cut.body.stolen_override, true);
+
+  // Restore needs no override.
+  const restore = await request("/ops/v1/vehicles/vehicle_demo_001/battery-control", {
+    method: "POST",
+    headers: { "Idempotency-Key": "vctrl-restore-001" },
+    body: JSON.stringify({ command: 1, reason: "Bike recovered." })
+  });
+  assert.equal(restore.body.command, "power_on");
+
+  const actions = await request("/ops/v1/vehicle-control-actions");
+  const commands = actions.body.data.filter((action) => action.vehicle_id === "vehicle_demo_001").map((action) => action.command);
+  assert.deepEqual(commands.slice(0, 2), ["power_on", "power_off"], "both commands are on the audit record");
+});

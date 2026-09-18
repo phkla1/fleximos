@@ -58,6 +58,17 @@ CARTRACKER_PASSWORD=<account password>
 # CARTRACKER_API_BASE=https://app.cartracker.com.ng/api   # default
 ```
 
+For the Tankvolt EV bikes (host:port and key are assigned by Tankvolt's
+developers once the VINs are attached to the account):
+
+```bash
+TANKVOLT_API_BASE=https://<ip:port assigned by Tankvolt>
+TANKVOLT_API_KEY=<key assigned by Tankvolt>
+```
+
+Register the bikes once with `node scripts/import-tankvolt-fleet.mjs`
+(after sourcing the env file). Both connectors run side by side.
+
 then `pm2 delete fleximos-ops-api && pm2 start` from the ecosystem file
 (a plain restart does not re-read the env file). Once configured, the
 embedded scheduler captures distances hourly 07:30–22:30, finalises the

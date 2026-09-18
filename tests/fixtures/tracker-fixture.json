@@ -18,5 +18,19 @@
       "2026-06-06": 118.4,
       "2026-06-05": 96.2
     }
+  },
+  "positions": [
+    {
+      "device_id": "9001",
+      "lat": 6.5244,
+      "lng": 3.3792,
+      "speed_kmh": 45,
+      "heading": 90,
+      "battery_sn": "BT-FIXTURE-01",
+      "battery_state": "discharging"
+    }
+  ],
+  "control": {
+    "supported": true
   }
 }

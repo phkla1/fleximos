@@ -18,6 +18,7 @@ const state = {
   deliveryCustomers: [],
   deliveryStops: [],
   deliverySummary: null,
+  vehiclePositions: { positions: [], no_feed: [] },
   operatingDate: null,
   dateFrom: null,
   dateTo: null
@@ -33,6 +34,10 @@ const el = Object.fromEntries([
   "deliveryList", "deliveryBatchForm", "deliverySummaryLabel",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
+  "boardListToggle", "boardMapToggle", "boardMapView", "vehicleMap",
+  "mapStatus", "mapPositionList", "mapNoFeed", "controlDialog",
+  "controlDialogTitle", "controlDialogContext", "controlReason",
+  "controlOverrideField", "controlOverride", "confirmControlButton",
   "kpiStrip", "driverTable", "vehicleTable", "exportDriversCsv",
   "exportVehiclesCsv", "incidentForm", "weeklySummary", "exportWeeklyCsv",
   "dialogCostField", "dialogCost"
@@ -545,6 +550,62 @@ function topActionCandidates(analysis) {
   return actions.sort((a, b) => b.weight - a.weight).slice(0, 3);
 }
 
+
+/* ---------- live vehicle map (Board · Map view) ---------- */
+
+let boardMapInstance = null;
+
+function positionPopup(row) {
+  const driver = row.person_id ? personName(row.person_id) : "Unassigned";
+  const battery = row.battery_state ? ` · battery ${escapeHtml(row.battery_state)}` : "";
+  const seen = row.position_age_minutes === null ? "" :
+    row.position_age_minutes === 0 ? "just now" : `${row.position_age_minutes} min ago`;
+  return `<strong>${escapeHtml(row.plate)}</strong> · ${escapeHtml(driver)}<br />
+    ${escapeHtml(String(row.movement))} · ${row.speed_kmh === null ? "—" : `${row.speed_kmh} km/h`}${battery}<br />
+    <small>${escapeHtml(row.provider)} · ${escapeHtml(seen)}</small><br />
+    ${row.controllable ? `
+      <button type="button" data-battery-control="0" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="${row.movement === "moving" ? "1" : "0"}">⛔ Power off</button>
+      <button type="button" data-battery-control="1" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="0">▶ Power on</button>` : ""}`;
+}
+
+function positionRow(row) {
+  const driver = row.person_id ? personName(row.person_id) : "Unassigned";
+  return `
+    <article class="mileage-row">
+      <div><strong>${escapeHtml(row.plate)}</strong><small>${escapeHtml(driver)} · ${escapeHtml(row.provider)}</small></div>
+      <dl>
+        <div><dt>State</dt><dd>${escapeHtml(String(row.movement))}</dd></div>
+        <div><dt>Speed</dt><dd>${row.speed_kmh === null ? "—" : `${row.speed_kmh} km/h`}</dd></div>
+        <div><dt>Battery</dt><dd>${escapeHtml(row.battery_state || "—")}</dd></div>
+        <div><dt>Seen</dt><dd>${row.position_age_minutes === null ? "—" : `${row.position_age_minutes} min ago`}</dd></div>
+      </dl>
+      <div class="row-actions">${row.controllable ? `
+        <button type="button" data-battery-control="0" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="${row.movement === "moving" ? "1" : "0"}">⛔ Power off</button>
+        <button type="button" class="secondary" data-battery-control="1" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="0">▶ Power on</button>` : ""}</div>
+    </article>`;
+}
+
+function renderVehicleMap() {
+  const { positions, no_feed: noFeed } = state.vehiclePositions;
+  const usingLeaflet = window.flexiMap?.available();
+  if (usingLeaflet && !boardMapInstance && !el.boardMapView.hidden) {
+    boardMapInstance = window.flexiMap.mount("vehicleMap");
+  }
+  if (boardMapInstance) {
+    boardMapInstance.update(positions, positionPopup);
+    boardMapInstance.invalidate();
+  }
+  el.mapStatus.textContent = positions.length
+    ? `${positions.length} vehicle${positions.length === 1 ? "" : "s"} reporting a position${usingLeaflet ? "" : " — map library unavailable, showing the list only"}.`
+    : "No vehicle in your team is reporting a position yet — tracker feeds appear here as they connect.";
+  el.mapPositionList.innerHTML = positions.map(positionRow).join("");
+  el.mapNoFeed.innerHTML = noFeed.length ? noFeed.map((row) => `
+    <article class="mileage-row">
+      <div><strong>${escapeHtml(row.plate)}</strong><small>${row.person_id ? escapeHtml(personName(row.person_id)) : "Unassigned"}</small></div>
+      <div class="mileage-status"><span class="pill pending">${escapeHtml(row.reason)}</span></div>
+    </article>`).join("") : `<div class="empty">Every active vehicle in scope has a position feed.</div>`;
+}
+
 /* ---------- renderers ---------- */
 
 function renderGauge(id, pct, valueText, subText, tone) {
@@ -1054,6 +1115,7 @@ function render() {
   renderFuel();
   renderCloseout(latestAnalysis);
   renderDeliveries();
+  renderVehicleMap();
   if (openOperatorId) renderOperatorDialog(openOperatorId);
 }
 
@@ -1175,7 +1237,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary] = await Promise.all([
+  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
@@ -1191,7 +1253,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/delivery-exceptions").catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
-    ops(`/ops/v1/delivery-summary?${range}`).catch(() => null)
+    ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
+    ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -1222,6 +1285,14 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     deliveryCustomers: deliveryCustomers.data,
     deliveryStops: deliveryStops.data,
     deliverySummary,
+    vehiclePositions: {
+      positions: (vehiclePositions.positions || []).filter((row) =>
+        (row.supervisor_person_id && row.supervisor_person_id === actorPersonId)
+        || assignedAmoebas.has(row.amoeba_id)),
+      no_feed: (vehiclePositions.no_feed || []).filter((row) =>
+        (row.supervisor_person_id && row.supervisor_person_id === actorPersonId)
+        || assignedAmoebas.has(row.amoeba_id))
+    },
     operatingDate,
     dateFrom,
     dateTo
@@ -1271,6 +1342,64 @@ el.exportWeeklyCsv.addEventListener("click", () => {
   const columns = ["team", "drivers", "earnings", "target", "targetPct", "trips", "km", "fuelCost", "maintenanceCost", "contribution", "absent", "incidents", "exceptions"]
     .map((key) => ({ key, label: key }));
   downloadCsv(`team-summary-${state.dateFrom}-to-${state.dateTo}.csv`, columns, teamSummaries(latestAnalysis));
+});
+
+
+/* ---------- map toggle + remote power control ---------- */
+
+function setBoardView(mode) {
+  const isMap = mode === "map";
+  el.boardMapView.hidden = !isMap;
+  el.teamBoard.hidden = isMap;
+  el.boardListToggle.classList.toggle("active", !isMap);
+  el.boardMapToggle.classList.toggle("active", isMap);
+  if (isMap) renderVehicleMap();
+}
+el.boardListToggle.addEventListener("click", () => setBoardView("list"));
+el.boardMapToggle.addEventListener("click", () => setBoardView("map"));
+
+let pendingControl = null;
+document.addEventListener("click", (event) => {
+  const controlButton = event.target.closest("[data-battery-control]");
+  if (!controlButton) return;
+  const command = Number(controlButton.dataset.batteryControl);
+  pendingControl = {
+    vehicleId: controlButton.dataset.controlVehicle,
+    plate: controlButton.dataset.controlPlate,
+    command
+  };
+  el.controlDialogTitle.textContent = command === 0 ? "Cut battery power" : "Restore battery power";
+  el.controlDialogContext.textContent = `${pendingControl.plate} — ${command === 0
+    ? "the bike will stop discharging and cannot be ridden until power is restored."
+    : "the bike will be able to discharge and ride again."}`;
+  el.controlReason.value = "";
+  el.controlOverride.checked = false;
+  // The override only appears when it might be needed: a power-off on a
+  // bike whose last reading shows movement.
+  el.controlOverrideField.hidden = !(command === 0 && controlButton.dataset.controlMoving === "1");
+  el.controlDialog.showModal();
+});
+
+el.controlDialog.addEventListener("close", async () => {
+  if (el.controlDialog.returnValue !== "default" || !pendingControl) return;
+  const control = pendingControl;
+  pendingControl = null;
+  const reason = el.controlReason.value.trim();
+  if (!reason) return showError(new Error("A reason is required for every remote power command."));
+  try {
+    const action = await ops(`/ops/v1/vehicles/${control.vehicleId}/battery-control`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key("vctrl") },
+      body: JSON.stringify({
+        command: control.command,
+        reason,
+        stolen_override: !el.controlOverrideField.hidden && el.controlOverride.checked
+      })
+    });
+    await refresh(action.succeeded
+      ? `${control.plate}: ${control.command === 0 ? "power cut" : "power restored"} — ${action.result_detail}`
+      : `${control.plate}: command sent but the tracker reported "${action.result_detail}" — check and retry.`);
+  } catch (error) { showError(error); }
 });
 
 el.alertFilter.addEventListener("change", renderAlerts);

@@ -237,6 +237,43 @@ export class OpsController {
 
   @ApiTags("Mileage")
   @ApiBearerAuth()
+  @ApiOperation({ summary: "Latest known position per vehicle (map view), scoped to the caller" })
+  @Get("ops/v1/vehicle-positions")
+  async vehiclePositions(@Req() req: Request) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    const [payload] = await this.trackerIngest.vehiclePositions(this.identity.dataScope(actor));
+    return payload;
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Remote battery power control (0 off / 1 on) with reason, interlock and audit" })
+  @Post("ops/v1/vehicles/:vehicleId/battery-control")
+  @HttpCode(HttpStatus.OK)
+  async controlVehicleBattery(
+    @Req() req: Request,
+    @Param("vehicleId") vehicleId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () =>
+      this.trackerIngest.controlBattery(vehicleId, body, actor.person_id, this.identity.dataScope(actor)));
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
+  @Get("ops/v1/vehicle-control-actions")
+  async listVehicleControlActions(@Req() req: Request) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return { data: await this.trackerIngest.listControlActions(), next_cursor: null };
+  }
+
+  @ApiTags("Mileage")
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Pull today's tracker distances now (same capture the scheduler runs hourly)" })
   @Post("ops/v1/tracker/ingest")
   @HttpCode(HttpStatus.OK)

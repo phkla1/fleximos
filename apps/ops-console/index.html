@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#12362f" />
     <title>Fleximotion Supervisor App</title>
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
     <link rel="stylesheet" href="./assets/styles.css" />
   </head>
   <body>
@@ -91,7 +92,17 @@
       <section id="board" class="tab-panel" data-tab="board">
         <div class="section-heading">
           <div><p class="eyebrow">Live operations</p><h2>Operator board</h2></div>
-          <span class="subtle">Grouped by state — tap an operator for detail</span>
+          <span class="board-view-toggle" role="tablist">
+            <button type="button" id="boardListToggle" class="active">List</button>
+            <button type="button" id="boardMapToggle">Map</button>
+          </span>
+        </div>
+        <div id="boardMapView" hidden>
+          <div id="vehicleMap" class="vehicle-map"></div>
+          <p id="mapStatus" class="subtle"></p>
+          <div id="mapPositionList" class="mileage-list"></div>
+          <div class="section-heading sub-section-heading"><div><p class="eyebrow">Honesty list</p><h2>No position feed</h2></div></div>
+          <div id="mapNoFeed" class="mileage-list"></div>
         </div>
         <div id="teamBoard" class="board-groups"></div>
 
@@ -288,7 +299,26 @@
       </form>
     </dialog>
 
+    <dialog id="controlDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="controlDialogTitle">Remote power control</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p id="controlDialogContext" class="subtle"></p>
+        <p class="subtle">Every command is recorded with your name and reason, and appears in the manager's view.</p>
+        <label>Reason (required)<textarea id="controlReason" rows="3" placeholder="Why is this necessary?"></textarea></label>
+        <label class="checkbox-line" id="controlOverrideField" hidden>
+          <input type="checkbox" id="controlOverride" />
+          <span>Stolen-vehicle override — cut power even though the bike appears to be moving. Use only for a genuine theft.</span>
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel" class="secondary">Cancel</button>
+          <button id="confirmControlButton" value="default">Send command</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="../role-console-assets/flexi-env.js"></script>
+    <script src="../role-console-assets/flexi-map.js"></script>
     <script src="./assets/app.js"></script>
   </body>
 </html>

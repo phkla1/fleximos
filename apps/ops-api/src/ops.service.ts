@@ -880,14 +880,15 @@ export class OpsService {
       status: body.status || "active",
       assigned_operator_id: body.assigned_operator_id || null,
       tracker_device_id: body.tracker_device_id || null,
+      tracker_provider: body.tracker_provider || null,
       created_at: timestamp,
       updated_at: timestamp
     };
     await this.db.exec(
       `INSERT INTO ops_vehicles
         (vehicle_id, plate, vehicle_type, amoeba_id, make_model, color, status,
-         assigned_operator_id, tracker_device_id, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         assigned_operator_id, tracker_device_id, tracker_provider, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       Object.values(vehicle)
     );
     await this.audit("vehicle.created", "vehicle", vehicle.vehicle_id, null, vehicle);
@@ -897,16 +898,17 @@ export class OpsService {
   async updateVehicle(vehicleId: string, body: RecordBody) {
     const current = await this.db.one<any>("SELECT * FROM ops_vehicles WHERE vehicle_id = $1", [vehicleId]);
     if (!current) throw new NotFoundException("Vehicle not found.");
-    const allowed = ["plate", "vehicle_type", "amoeba_id", "make_model", "color", "status", "assigned_operator_id", "tracker_device_id"];
+    const allowed = ["plate", "vehicle_type", "amoeba_id", "make_model", "color", "status", "assigned_operator_id", "tracker_device_id", "tracker_provider"];
     const updated = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
     updated.updated_at = this.now();
     await this.db.exec(
       `UPDATE ops_vehicles SET plate = $2, vehicle_type = $3, amoeba_id = $4,
        make_model = $5, color = $6, status = $7, assigned_operator_id = $8,
-       tracker_device_id = $9, updated_at = $10 WHERE vehicle_id = $1`,
+       tracker_device_id = $9, tracker_provider = $10, updated_at = $11 WHERE vehicle_id = $1`,
       [vehicleId, updated.plate, updated.vehicle_type, updated.amoeba_id, updated.make_model,
-       updated.color, updated.status, updated.assigned_operator_id, updated.tracker_device_id || null, updated.updated_at]
+       updated.color, updated.status, updated.assigned_operator_id, updated.tracker_device_id || null,
+       updated.tracker_provider || null, updated.updated_at]
     );
     await this.audit("vehicle.updated", "vehicle", vehicleId, current, updated);
     return updated;

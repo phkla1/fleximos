@@ -12,6 +12,13 @@ test.describe("role consoles", () => {
     await expect(page.getByRole("heading", { name: "Escalations" })).toBeVisible();
     await expect(page.locator("#escalationSummary article")).toHaveCount(6);
 
+    // Fleet map: fixture tracker reports one vehicle; the honesty list
+    // names those without a feed.
+    await expect(page.getByRole("heading", { name: "Fleet map" })).toBeVisible();
+    await expect(page.locator("#fleetMapStatus")).toContainText(/active vehicles reporting|No tracker connector/);
+    await page.getByText("Vehicles without a position feed", { exact: false }).click();
+    await expect(page.locator("#fleetNoFeed")).toBeVisible();
+
     // KPI tiles are links into their sections.
     await expect(page.locator(".metrics > a")).toHaveCount(5);
 
@@ -84,13 +91,9 @@ test.describe("role consoles", () => {
     await expect(page.locator("#paymentCsvStatus")).toContainText("✓ Imported", { timeout: 20000 });
     await expect(page.locator("#paymentCsvStatus")).toContainText("Unmatched");
 
-    // The imported day shows the dual-source basis in the review list.
-    // (Wait for the range to actually land before asserting — each date
-    // change fires its own refresh.)
-    await page.locator("#dateFrom").fill("2026-08-18");
-    await expect(page.locator("#revenueContext")).toContainText("2026-08-18", { timeout: 15000 });
-    await page.locator("#dateTo").fill("2026-08-18");
-    await page.locator("#refreshButton").click();
+    // The import auto-jumps the console to the imported day (2026-08-18,
+    // outside the rolling seed window — keepRange holds it against the
+    // data snap) and the review list shows the dual-source basis.
     await expect(page.locator("#revenueContext")).toContainText("for 2026-08-18", { timeout: 15000 });
     await expect(page.locator("#cashExceptionList")).toContainText("payment report", { timeout: 15000 });
 

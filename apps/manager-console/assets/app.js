@@ -8,7 +8,8 @@ const ids = [
   "grossPnl", "pnlContext", "escalationCount", "escalationContext", "notice", "updatedLabel", "teamPortfolio",
   "escalationSummary", "escalationList", "incidentList", "fleetFollowups",
   "pnlRangeLabel", "pnlTotals", "pnlList", "expenseForm", "expenseList",
-  "leaderboardList", "leaderboardIntro", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes"
+  "leaderboardList", "leaderboardIntro", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
+  "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
@@ -107,6 +108,39 @@ function renderPortfolio() {
       })()}
     </article>`;
   }).join("") : '<div class="empty">No teams are visible in this Manager scope.</div>';
+}
+
+
+/* ---------- fleet map ---------- */
+
+let fleetMapInstance = null;
+
+function renderFleetMap() {
+  const { positions, no_feed: noFeed } = state.vehiclePositions;
+  if (window.flexiMap?.available() && !fleetMapInstance) {
+    fleetMapInstance = window.flexiMap.mount("fleetMap");
+  }
+  if (fleetMapInstance) {
+    fleetMapInstance.update(positions, (row) => `
+      <strong>${escapeHtml(row.plate)}</strong> · ${row.person_id ? escapeHtml(personName(row.person_id)) : "Unassigned"}<br />
+      ${escapeHtml(String(row.movement))} · ${row.speed_kmh === null ? "—" : `${row.speed_kmh} km/h`}${row.battery_state ? ` · battery ${escapeHtml(row.battery_state)}` : ""}<br />
+      <small>${escapeHtml(row.provider)} · ${row.position_age_minutes === null ? "" : `${row.position_age_minutes} min ago`}</small>`);
+    fleetMapInstance.invalidate();
+  }
+  el.fleetMapStatus.textContent = positions.length
+    ? `${positions.length} of ${positions.length + noFeed.length} active vehicles reporting${window.flexiMap?.available() ? "" : " — map library unavailable"}`
+    : "No tracker connector is reporting positions yet.";
+  el.fleetNoFeed.innerHTML = noFeed.length ? noFeed.map((row) => `
+    <article class="data-row">
+      <div><strong>${escapeHtml(row.plate)}</strong><small>${row.person_id ? escapeHtml(personName(row.person_id)) : "Unassigned"} · ${escapeHtml(amoebaName(row.amoeba_id))}</small></div>
+      <span class="pill pending">${escapeHtml(row.reason)}</span>
+    </article>`).join("") : '<div class="empty">Every active vehicle has a position feed.</div>';
+  el.controlActionList.innerHTML = state.controlActions.length ? state.controlActions.slice(0, 12).map((action) => `
+    <article class="data-row ${action.succeeded ? "" : "critical"}">
+      <div><strong>${escapeHtml(action.plate)} · ${escapeHtml(label(action.command))}</strong><small>${escapeHtml(personName(action.requested_by_person_id))} · ${new Date(action.created_at).toLocaleString("en-NG")}${action.stolen_override ? " · STOLEN-VEHICLE OVERRIDE" : ""}</small></div>
+      <div><span class="row-label">Reason</span><strong>${escapeHtml(action.reason)}</strong></div>
+      <span class="pill ${action.succeeded ? "resolved" : "open"}">${action.succeeded ? "succeeded" : escapeHtml(action.result_detail || "failed")}</span>
+    </article>`).join("") : '<div class="empty">No remote power commands have been issued.</div>';
 }
 
 function renderEscalations() {
@@ -352,6 +386,7 @@ function render() {
   unlockSubmitButtons();
   renderPortfolio();
   renderEscalations();
+  renderFleetMap();
   renderPnl();
   renderLeaderboard();
   renderReports();
@@ -406,15 +441,18 @@ async function refresh() {
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
-  const [board, alerts, reports, escalations, deliveryBatches, deliveryExceptions] = await Promise.all([
+  const [board, alerts, reports, escalations, vehiclePositions, controlActions, deliveryBatches, deliveryExceptions] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`), ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations"),
+    ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
+    ops("/ops/v1/vehicle-control-actions").catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-batches?${range}`).catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-exceptions?status=open").catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     board: board.data, alerts: alerts.data, reports: reports.data, escalations,
-    deliveryBatches: deliveryBatches.data, deliveryExceptions: deliveryExceptions.data
+    deliveryBatches: deliveryBatches.data, deliveryExceptions: deliveryExceptions.data,
+    vehiclePositions, controlActions: controlActions.data
   });
   await loadPnlAndLeaderboard();
   render();

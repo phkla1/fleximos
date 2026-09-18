@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { OpsService } from "./ops.service.js";
-import { createTrackerConnector } from "./connectors/tracker.factory.js";
+import { createTrackerConnectors } from "./connectors/tracker.factory.js";
 
 type DueJob = {
   jobName: string;
@@ -47,7 +47,7 @@ export class SchedulerService {
     // cannot be relied on to serve past days, so today must be stored
     // before midnight, every day. Skipped entirely until a connector is
     // configured, so unconfigured servers don't queue failing runs.
-    if (createTrackerConnector()) {
+    if (createTrackerConnectors().length) {
       if (minute === 30 && hour >= 7 && hour <= 22) add("cartracker-daily-ingest");
       if (hour === 23 && minute === 30) add("cartracker-daily-ingest");
       // One last read of yesterday just after midnight, while it is

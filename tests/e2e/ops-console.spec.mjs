@@ -169,7 +169,7 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#notice")).toContainText("Connected");
     await expect(page.getByRole("heading", { name: "Fuel & charge" })).toBeVisible();
     await expect(page.locator('#fuelIssueForm select[name="unit"] option[value="kWh"]')).toHaveCount(1);
-    await expect(page.locator(".mileage-row").first()).toBeVisible();
+    await expect(page.locator("#mileageList .mileage-row").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Confirm fuel" })).toBeVisible();
   });
 
@@ -204,6 +204,43 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator(".count-ladder").first()).toBeVisible();
     await expect(page.locator(".source-chip").first()).toContainText("customer app manual");
     await expect(page.locator(".assignment-row").first()).toBeVisible();
+  });
+
+  test("shows the live vehicle map with remote power control", async ({ page }) => {
+    // person_founder_wole supervises the demo vehicle's operator, so the
+    // fixture-backed position is inside this actor's team scope.
+    await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+
+    await page.locator("#boardMapToggle").click();
+    await expect(page.locator("#boardMapView")).toBeVisible();
+    await expect(page.locator("#teamBoard")).toBeHidden();
+    await expect(page.locator("#mapStatus")).toContainText("reporting a position");
+    const row = page.locator("#mapPositionList .mileage-row").filter({ hasText: "FLEXI-001" });
+    await expect(row).toContainText("moving");
+    await expect(row).toContainText("discharging");
+    await expect(page.locator("#mapNoFeed")).toBeVisible();
+
+    // Power-off on a moving bike surfaces the stolen-vehicle override.
+    await row.getByRole("button", { name: "⛔ Power off" }).click();
+    await expect(page.locator("#controlDialog")).toBeVisible();
+    await expect(page.locator("#controlOverrideField")).toBeVisible();
+    await page.locator("#controlReason").fill("Bike reported stolen — e2e drill.");
+    await page.locator("#controlOverride").check();
+    await page.locator("#confirmControlButton").click();
+    await expect(page.locator("#notice")).toContainText("power cut");
+
+    // Restore needs no override.
+    await page.locator("#boardMapToggle").click();
+    const restoreRow = page.locator("#mapPositionList .mileage-row").filter({ hasText: "FLEXI-001" });
+    await restoreRow.getByRole("button", { name: "▶ Power on" }).click();
+    await expect(page.locator("#controlOverrideField")).toBeHidden();
+    await page.locator("#controlReason").fill("Recovered — e2e drill.");
+    await page.locator("#confirmControlButton").click();
+    await expect(page.locator("#notice")).toContainText("power restored");
+
+    await page.locator("#boardListToggle").click();
+    await expect(page.locator("#teamBoard")).toBeVisible();
   });
 
   test("has no page-level horizontal overflow on mobile", async ({ page }) => {

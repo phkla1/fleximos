@@ -4330,6 +4330,151 @@
           }
         }
       }
+    },
+    "/vehicle-positions": {
+      "get": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "Latest known position per vehicle (map view), scoped to the caller",
+        "description": "Aggregated across every configured tracker connector. Vehicles with no feed are listed separately — absence of a pin is shown, never hidden.",
+        "responses": {
+          "200": {
+            "description": "Positions and the no-feed list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "positions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VehiclePosition"
+                      }
+                    },
+                    "no_feed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "vehicle_id": {
+                            "type": "string"
+                          },
+                          "plate": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles/{vehicle_id}/battery-control": {
+      "post": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "Remote battery power control (Tankvolt) with reason, safety interlock and audit",
+        "description": "command 0 cuts power, 1 restores it. A power-off on a vehicle whose last reading shows movement is refused (409) unless stolen_override is true. Every command is recorded with actor and reason.",
+        "parameters": [
+          {
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "command",
+                  "reason"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "stolen_override": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded control action with the vendor's true result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleControlAction"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Blocked by the moving-vehicle safety interlock"
+          }
+        }
+      }
+    },
+    "/vehicle-control-actions": {
+      "get": {
+        "tags": [
+          "Mileage"
+        ],
+        "summary": "Recent remote power commands (audit view)",
+        "responses": {
+          "200": {
+            "description": "Actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VehicleControlAction"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4621,6 +4766,11 @@
             "type": "string",
             "nullable": true,
             "description": "Tracker device mapped to this vehicle; auto-mapped by plate when the device name contains it."
+          },
+          "tracker_provider": {
+            "type": "string",
+            "nullable": true,
+            "description": "Tracker vendor for this vehicle (cartracker, tankvolt)."
           }
         }
       },
@@ -7055,6 +7205,126 @@
           "notes": {
             "type": "string",
             "nullable": true
+          }
+        }
+      },
+      "VehiclePosition": {
+        "type": "object",
+        "properties": {
+          "vehicle_id": {
+            "type": "string"
+          },
+          "plate": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "type": "string"
+          },
+          "amoeba_id": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "person_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          },
+          "speed_kmh": {
+            "type": "number",
+            "nullable": true
+          },
+          "heading": {
+            "type": "number",
+            "nullable": true
+          },
+          "position_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "position_age_minutes": {
+            "type": "integer",
+            "nullable": true
+          },
+          "battery_sn": {
+            "type": "string",
+            "nullable": true
+          },
+          "battery_state": {
+            "type": "string",
+            "nullable": true
+          },
+          "movement": {
+            "type": "string",
+            "enum": [
+              "moving",
+              "idle",
+              "stale"
+            ]
+          },
+          "controllable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VehicleControlAction": {
+        "type": "object",
+        "properties": {
+          "control_action_id": {
+            "type": "string"
+          },
+          "vehicle_id": {
+            "type": "string"
+          },
+          "plate": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string",
+            "enum": [
+              "power_off",
+              "power_on"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "stolen_override": {
+            "type": "boolean"
+          },
+          "requested_by_person_id": {
+            "type": "string"
+          },
+          "result_code": {
+            "type": "integer",
+            "nullable": true
+          },
+          "result_detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "command_results": {
+            "nullable": true
+          },
+          "succeeded": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }

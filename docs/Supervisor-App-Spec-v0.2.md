@@ -62,6 +62,37 @@ top bar (defaults to today = today; targets scale by day count).
   jumps to the tab where the work happens.
 
 ### 2.2 Board
+
+The Board offers two views of the same team via a **List | Map** toggle:
+
+- **List** — the grouped tiles and comparison tables below.
+- **Map** — a live map (OpenStreetMap) with one pin per vehicle that has a
+  position feed (Car Tracker Nigeria devices, Tankvolt EV bikes). Pins are
+  coloured by state (moving / idle / stale / charging); tapping one shows
+  plate, driver, speed, battery state and last-seen, plus the remote power
+  controls where the vehicle supports them (see 2.2b). Below the map, an
+  **honesty list** names every active vehicle with NO position feed and
+  why ("no tracker fitted" / "no recent position") — absence of a pin is
+  shown, never hidden. Bolt provides driver status only, not coordinates,
+  so ride-hailing state comes from the Board groups, not the map.
+
+#### 2.2b Remote power control (Tankvolt EV bikes)
+
+Supervisors can cut and restore battery power on their own team's
+Tankvolt bikes directly from the map or position list (owner decision,
+18 Sep 2026). Guardrails, all enforced server-side:
+
+- A **reason is mandatory** on every command; actor, reason, timestamp
+  and the vendor's true per-battery result are recorded and appear in the
+  Manager console's control log and the audit trail.
+- **Safety interlock:** power-off is refused while the bike's last
+  reading (≤10 min old) shows movement above 5 km/h — cutting power under
+  a rider is dangerous. The only way past it is the explicit
+  **stolen-vehicle override**, which is flagged loudly on the record.
+- Commands work only inside the supervisor's own team scope.
+- Speed-gear limiting exists in the Tankvolt API but is deliberately not
+  exposed in v1.
+
 - Operators grouped by state — risky groups open first: not seen today ·
   late resumption · behind pace · offline after online · on delivery ·
   open alert · fuel/battery risk · vehicle issue · on track. Tiles show
@@ -221,6 +252,12 @@ operator detail with timeline; grouped alert queue with ack / resolve /
 escalate; deliveries incl. stops, manifests, POD and confirmations; fuel
 reconciliation; inspections and maintenance with photo evidence;
 incidents; closeout checklist; date ranges.
+
+**Trackers and positions:** distances are stored daily per vehicle from
+every configured tracker (Car Tracker Nigeria for the Qutes and Q-Links;
+Tankvolt for the EV bikes, whose daily KM is derived from the GPS trace
+because the vendor keeps no daily totals). The connector layer is
+vendor-neutral — adding a tracker is one connector class.
 
 **Building now (this slice):** cockpit KPI strip and quick-range chips;
 driver and vehicle comparison tables with CSV export; weekly team summary

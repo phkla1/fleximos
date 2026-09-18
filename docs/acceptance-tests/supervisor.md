@@ -211,6 +211,27 @@ screens; (5) the button locks on the first tap ("Saving…") and only one
 record exists afterwards; (6) the action either completes or asks you to
 reconnect — it is never silently lost.
 
+### SU-20 · See the team on the map
+1. Open **Board**, tap **Map**.
+
+**Expected:** a live map with a pin per vehicle that has a tracker feed,
+coloured by state (green moving, amber idle, grey stale). Tapping a pin
+shows plate, driver, speed, battery state (EV bikes) and last-seen. Below
+the map, the "No position feed" list names every vehicle without a pin
+and why — nothing is silently missing. Only your own team appears.
+
+### SU-21 · Cut and restore power on an EV bike (drill)
+1. On the Map view, pick a Tankvolt bike, tap **⛔ Power off**.
+2. Enter a reason and confirm. If the bike shows as moving, note the
+   command is refused unless you tick the stolen-vehicle override.
+3. Restore with **▶ Power on** and a reason.
+
+**Expected:** a reason is always required; the moving-bike interlock
+blocks a plain power-off; each command reports the tracker's true result
+("Command Succeeded" or "no response" — never a pretend success), and
+every command appears in the manager's control log with your name,
+reason, and any stolen-vehicle override flag.
+
 ## Results
 
 | Test | Pass/Fail | Notes |
@@ -234,5 +255,7 @@ reconnect — it is never silently lost.
 | SU-17 | | |
 | SU-18 | | |
 | SU-19 | | |
+| SU-20 | | |
+| SU-21 | | |
 
 Tester: ____________  Date: ____________  Device/browser: ____________
