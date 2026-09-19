@@ -1,6 +1,7 @@
 const state = {
   people: [], amoebas: [], operators: [], board: [], alerts: [], reports: [],
   escalations: null, pnl: null, expenses: [], leaderboard: null, leaderboardSort: "score",
+  vehiclePositions: { positions: [], no_feed: [] }, controlActions: [], integrationStatus: [],
   operatingDate: null
 };
 const ids = [
@@ -9,7 +10,8 @@ const ids = [
   "escalationSummary", "escalationList", "incidentList", "fleetFollowups",
   "pnlRangeLabel", "pnlTotals", "pnlList", "expenseForm", "expenseList",
   "leaderboardList", "leaderboardIntro", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
-  "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList"
+  "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList",
+  "integrationList", "integrationSummary"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
@@ -110,6 +112,29 @@ function renderPortfolio() {
   }).join("") : '<div class="empty">No teams are visible in this Manager scope.</div>';
 }
 
+
+
+/* ---------- integration status ---------- */
+
+function renderIntegrations() {
+  const rows = state.integrationStatus;
+  const dot = { ok: "🟢", degraded: "🟡", down: "🔴", not_configured: "⚪" };
+  const rank = { down: 0, degraded: 1, not_configured: 2, ok: 3 };
+  const down = rows.filter((row) => row.status === "down").length;
+  const degraded = rows.filter((row) => row.status === "degraded").length;
+  el.integrationSummary.textContent = rows.length
+    ? (down ? `${down} down` : degraded ? `${degraded} degraded` : "all systems reachable")
+    : "";
+  const sinceLabel = (row) => row.status !== "ok" && row.status !== "not_configured" && row.status_since
+    ? ` · since ${new Date(row.status_since).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+    : (row.status === "ok" && row.last_ok_at ? " · OK" : "");
+  el.integrationList.innerHTML = rows.length ? rows.slice().sort((a, b) => (rank[a.status] - rank[b.status]) || a.label.localeCompare(b.label)).map((row) => `
+    <article class="data-row integration-row status-${escapeHtml(row.status)}">
+      <div><strong>${dot[row.status] || "⚪"} ${escapeHtml(row.label)}</strong><small>${escapeHtml(label(row.category))}${escapeHtml(sinceLabel(row))}</small></div>
+      <div><span class="row-label">Status</span><strong>${escapeHtml(label(row.status))}</strong><small>${row.latency_ms === null ? "" : `${row.latency_ms} ms`}</small></div>
+      <div><span class="row-label">Detail</span><small>${escapeHtml(row.detail)}</small></div>
+    </article>`).join("") : '<div class="empty">Integration status is unavailable.</div>';
+}
 
 /* ---------- fleet map ---------- */
 
@@ -387,6 +412,7 @@ function render() {
   renderPortfolio();
   renderEscalations();
   renderFleetMap();
+  renderIntegrations();
   renderPnl();
   renderLeaderboard();
   renderReports();
@@ -441,18 +467,20 @@ async function refresh() {
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
-  const [board, alerts, reports, escalations, vehiclePositions, controlActions, deliveryBatches, deliveryExceptions] = await Promise.all([
+  const [board, alerts, reports, escalations, vehiclePositions, controlActions, integrationStatus, deliveryBatches, deliveryExceptions] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`), ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations"),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
     ops("/ops/v1/vehicle-control-actions").catch(() => ({ data: [] })),
+    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
     ops(`/ops/v1/delivery-batches?${range}`).catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-exceptions?status=open").catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     board: board.data, alerts: alerts.data, reports: reports.data, escalations,
     deliveryBatches: deliveryBatches.data, deliveryExceptions: deliveryExceptions.data,
-    vehiclePositions, controlActions: controlActions.data
+    vehiclePositions, controlActions: controlActions.data,
+    integrationStatus: integrationStatus.integrations || []
   });
   await loadPnlAndLeaderboard();
   render();

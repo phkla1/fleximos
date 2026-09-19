@@ -19,6 +19,11 @@ test.describe("role consoles", () => {
     await page.getByText("Vehicles without a position feed", { exact: false }).click();
     await expect(page.locator("#fleetNoFeed")).toBeVisible();
 
+    // Integration status monitor: lists every external dependency.
+    await expect(page.getByRole("heading", { name: "Integration status" })).toBeVisible();
+    await expect(page.locator("#integrationList .integration-row").first()).toBeVisible();
+    await expect(page.locator("#integrationList")).toContainText(/Payments|Identity|Tracker|Bolt/);
+
     // KPI tiles are links into their sections.
     await expect(page.locator(".metrics > a")).toHaveCount(5);
 

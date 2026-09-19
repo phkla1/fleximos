@@ -4475,6 +4475,47 @@
           }
         }
       }
+    },
+    "/integration-status": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Live health of every external integration (trackers, platforms, payments, core)",
+        "description": "Cached ~60s; pass refresh=true to force a fresh probe. Status transitions are persisted so status_since shows how long a provider has been down.",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Integration health snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "generated_at": {
+                      "type": "string"
+                    },
+                    "integrations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntegrationStatus"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7325,6 +7366,56 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "IntegrationStatus": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "tracker",
+              "platform",
+              "payments",
+              "core"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "down",
+              "not_configured"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "nullable": true
+          },
+          "last_ok_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "status_since": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_checked_at": {
+            "type": "string"
           }
         }
       }

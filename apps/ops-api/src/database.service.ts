@@ -118,6 +118,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_device_id TEXT;
       ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_provider TEXT;
 
+      CREATE TABLE IF NOT EXISTS ops_integration_health (
+        integration_key TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        detail TEXT,
+        last_ok_at TIMESTAMPTZ,
+        status_since TIMESTAMPTZ,
+        last_checked_at TIMESTAMPTZ NOT NULL,
+        latency_ms INTEGER
+      );
+
       CREATE TABLE IF NOT EXISTS ops_vehicle_control_actions (
         control_action_id TEXT PRIMARY KEY,
         vehicle_id TEXT NOT NULL REFERENCES ops_vehicles(vehicle_id),

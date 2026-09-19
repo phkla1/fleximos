@@ -38,9 +38,20 @@ export type TrackerControlResult = {
   command_results: unknown;
 };
 
+export type TrackerHealth = {
+  // ok = reachable and authenticated; degraded = reachable but the
+  // credentials/service aren't fully provisioned (e.g. key not enabled);
+  // down = unreachable.
+  status: "ok" | "degraded" | "down";
+  detail: string;
+  latency_ms: number | null;
+};
+
 export interface TrackerConnector {
   /** Human label used in provenance and admin surfaces. */
   readonly provider: string;
+  /** Display label for status surfaces (defaults to provider). */
+  readonly label?: string;
   /** True when the vendor cannot enumerate devices — the fleet roster
       (vehicles with this provider's tracker ids) IS the device list. */
   readonly registeredOnly?: boolean;
@@ -51,4 +62,6 @@ export interface TrackerConnector {
   latestPositions?(deviceIds: string[]): Promise<TrackerPosition[]>;
   /** Remote battery power control (0 = off, 1 = on), where supported. */
   controlBattery?(deviceId: string, command: 0 | 1): Promise<TrackerControlResult>;
+  /** Cheap reachability + auth probe for the status monitor. */
+  healthCheck?(): Promise<TrackerHealth>;
 }

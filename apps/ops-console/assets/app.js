@@ -19,6 +19,7 @@ const state = {
   deliveryStops: [],
   deliverySummary: null,
   vehiclePositions: { positions: [], no_feed: [] },
+  integrationStatus: [],
   operatingDate: null,
   dateFrom: null,
   dateTo: null
@@ -35,7 +36,7 @@ const el = Object.fromEntries([
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
   "boardListToggle", "boardMapToggle", "boardMapView", "vehicleMap",
-  "mapStatus", "mapPositionList", "mapNoFeed", "controlDialog",
+  "mapStatus", "mapPositionList", "mapNoFeed", "trackerSources", "controlDialog",
   "controlDialogTitle", "controlDialogContext", "controlReason",
   "controlOverrideField", "controlOverride", "confirmControlButton",
   "kpiStrip", "driverTable", "vehicleTable", "exportDriversCsv",
@@ -595,6 +596,13 @@ function renderVehicleMap() {
     boardMapInstance.update(positions, positionPopup);
     boardMapInstance.invalidate();
   }
+  const dot = { ok: "🟢", degraded: "🟡", down: "🔴", not_configured: "⚪" };
+  el.trackerSources.innerHTML = state.integrationStatus.length ? state.integrationStatus.map((row) => {
+    const since = row.status_since && row.status !== "ok"
+      ? ` since ${new Date(row.status_since).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}` : "";
+    return `<span class="provider-chip status-${escapeHtml(row.status)}" title="${escapeHtml(row.detail)}${escapeHtml(since)}">${dot[row.status] || "⚪"} ${escapeHtml(row.label)}</span>`;
+  }).join("") : "";
+
   el.mapStatus.textContent = positions.length
     ? `${positions.length} vehicle${positions.length === 1 ? "" : "s"} reporting a position${usingLeaflet ? "" : " — map library unavailable, showing the list only"}.`
     : "No vehicle in your team is reporting a position yet — tracker feeds appear here as they connect.";
@@ -1237,7 +1245,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions] = await Promise.all([
+  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
@@ -1254,7 +1262,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
-    ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))
+    ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
+    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -1285,6 +1294,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     deliveryCustomers: deliveryCustomers.data,
     deliveryStops: deliveryStops.data,
     deliverySummary,
+    integrationStatus: (integrationStatus.integrations || []).filter((row) => row.category === "tracker"),
     vehiclePositions: {
       positions: (vehiclePositions.positions || []).filter((row) =>
         (row.supervisor_person_id && row.supervisor_person_id === actorPersonId)

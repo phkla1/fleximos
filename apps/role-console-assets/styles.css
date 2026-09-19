@@ -387,3 +387,9 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
 
 /* ---------- fleet map (shared) ---------- */
 .vehicle-map { height: 420px; border-radius: 14px; border: 1px solid var(--line, #d8e2dd); background: #e8efec; margin-bottom: 12px; }
+
+/* ---------- integration status rows ---------- */
+.integration-row.status-down { border-left: 4px solid var(--red, #b3392b); }
+.integration-row.status-degraded { border-left: 4px solid var(--amber, #b97c10); }
+.integration-row.status-ok { border-left: 4px solid var(--green, #157a5c); }
+.integration-row.status-not_configured { border-left: 4px solid var(--line, #ccc); opacity: 0.75; }

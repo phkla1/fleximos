@@ -19,13 +19,15 @@ import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
 import { OpsService } from "./ops.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
+import { IntegrationStatusService } from "./integration-status.service.js";
 
 @Controller()
 export class OpsController {
   constructor(
     @Inject(OpsService) private readonly ops: OpsService,
     @Inject(AuthService) private readonly identity: AuthService,
-    @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService
+    @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
+    @Inject(IntegrationStatusService) private readonly integrationStatus: IntegrationStatusService
   ) {}
 
   private auth(req: Request) {
@@ -233,6 +235,16 @@ export class OpsController {
     const actor = await this.auth(req);
     this.identity.requireBusinessOversight(actor);
     return this.trackerIngest.deviceInventory();
+  }
+
+  @ApiTags("Status")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Live health of every external integration (trackers, platforms, payments, core)" })
+  @Get("ops/v1/integration-status")
+  async integrationStatusList(@Req() req: Request, @Query("refresh") refresh?: string) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.integrationStatus.snapshot(refresh === "true");
   }
 
   @ApiTags("Mileage")

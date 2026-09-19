@@ -1310,3 +1310,33 @@ test("maps live positions and enforces the power-cut safety interlock", async ()
   const commands = actions.body.data.filter((action) => action.vehicle_id === "vehicle_demo_001").map((action) => action.command);
   assert.deepEqual(commands.slice(0, 2), ["power_on", "power_off"], "both commands are on the audit record");
 });
+
+test("reports integration status for every external dependency", async () => {
+  const status = await request("/ops/v1/integration-status?refresh=true");
+  assert.equal(status.response.status, 200);
+  assert.ok(Array.isArray(status.body.integrations), "integrations array present");
+  const byKey = Object.fromEntries(status.body.integrations.map((row) => [row.key, row]));
+
+  // The fixture tracker is configured in this suite, so it probes ok.
+  const tracker = byKey["tracker:fixture"] || Object.values(byKey).find((row) => row.category === "tracker");
+  assert.ok(tracker, "a tracker integration is listed");
+
+  // Payments + foundation are always listed as core dependencies.
+  assert.ok(byKey["payments"], "payments integration listed");
+  assert.ok(byKey["foundation"], "foundation integration listed");
+  assert.ok(["ok", "degraded", "down", "not_configured"].includes(byKey["foundation"].status));
+
+  // Every row carries the fields the consoles render.
+  for (const row of status.body.integrations) {
+    assert.ok(row.label && row.category && row.status, "row has label/category/status");
+    assert.ok("last_checked_at" in row, "row has last_checked_at");
+  }
+
+  // status_since persists across probes for a stable status.
+  const again = await request("/ops/v1/integration-status?refresh=true");
+  const foundationFirst = byKey["foundation"];
+  const foundationAgain = again.body.integrations.find((row) => row.key === "foundation");
+  if (foundationFirst.status === foundationAgain.status) {
+    assert.equal(foundationFirst.status_since, foundationAgain.status_since, "status_since holds while status is stable");
+  }
+});

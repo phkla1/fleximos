@@ -1,7 +1,14 @@
 import { CartrackerConnector } from "./cartracker.connector.js";
 import { FixtureTrackerConnector } from "./fixture-tracker.connector.js";
+import { OrbitConnector } from "./orbit.connector.js";
 import { TankvoltConnector } from "./tankvolt.connector.js";
 import type { TrackerConnector } from "./tracker.types.js";
+
+// Orbit's Supabase project URL, as shipped in the portal frontend
+// (orbitconnect.ng, read 18 Sep 2026). Overridable if Orbit issues a new
+// project. The anon key is a publishable frontend token (not a secret)
+// but is long, so it stays in env and is documented in the deploy README.
+const ORBIT_DEFAULT_URL = "https://kwpjggqnjycyylwzbcot.supabase.co";
 
 // One place decides which trackers back the suite — several can run at
 // once (Qutes on Car Tracker Nigeria, EV bikes on Tankvolt):
@@ -31,6 +38,14 @@ export function createTrackerConnectors(env: NodeJS.ProcessEnv = process.env): T
     connectors.push(new TankvoltConnector({
       baseUrl: (env.TANKVOLT_API_BASE || "https://web.tankvolt.net").replace(/\/$/, ""),
       apiKey: env.TANKVOLT_API_KEY
+    }));
+  }
+  if (env.ORBIT_EMAIL && env.ORBIT_PASSWORD && env.ORBIT_SUPABASE_ANON_KEY) {
+    connectors.push(new OrbitConnector({
+      supabaseUrl: (env.ORBIT_SUPABASE_URL || ORBIT_DEFAULT_URL).replace(/\/$/, ""),
+      anonKey: env.ORBIT_SUPABASE_ANON_KEY,
+      email: env.ORBIT_EMAIL,
+      password: env.ORBIT_PASSWORD
     }));
   }
   return connectors;

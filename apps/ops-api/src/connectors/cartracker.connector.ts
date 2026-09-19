@@ -1,4 +1,4 @@
-import type { TrackerConnector, TrackerDailyDistance, TrackerDevice, TrackerPosition } from "./tracker.types.js";
+import type { TrackerConnector, TrackerDailyDistance, TrackerDevice, TrackerHealth, TrackerPosition } from "./tracker.types.js";
 
 // Car Tracker Nigeria (cartracker.com.ng — a GPSWOX-style platform).
 // Auth: POST /login (form fields email/password) → user_api_hash, which
@@ -29,9 +29,26 @@ async function retry<T>(factory: () => Promise<T>, attempts = 3) {
 
 export class CartrackerConnector implements TrackerConnector {
   readonly provider = "cartracker";
+  readonly label = "Car Tracker Nigeria";
   private hash: string | null = null;
 
   constructor(private readonly config: CartrackerConfig) {}
+
+  async healthCheck(): Promise<TrackerHealth> {
+    const started = Date.now();
+    try {
+      await this.login();
+      return { status: "ok", detail: "Signed in; device list reachable.", latency_ms: Date.now() - started };
+    } catch (error: any) {
+      const message = String(error?.message || error);
+      const down = /fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|getaddrinfo|network|timed out/i.test(message);
+      return {
+        status: down ? "down" : "degraded",
+        detail: down ? "Car Tracker backend unreachable." : `Reachable but sign-in failed: ${message.slice(0, 120)}`,
+        latency_ms: Date.now() - started
+      };
+    }
+  }
 
   private async login() {
     const body = new FormData();

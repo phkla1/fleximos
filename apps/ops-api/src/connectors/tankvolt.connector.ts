@@ -1,4 +1,4 @@
-import type { TrackerConnector, TrackerControlResult, TrackerDailyDistance, TrackerDevice, TrackerPosition } from "./tracker.types.js";
+import type { TrackerConnector, TrackerControlResult, TrackerDailyDistance, TrackerDevice, TrackerHealth, TrackerPosition } from "./tracker.types.js";
 
 // Tankvolt EV bikes (GPS protocol v1.0 + device control protocol v1.1).
 // Auth is a static api-key header; the host:port is assigned per partner.
@@ -34,9 +34,32 @@ function signed(value: number, hemisphere: string | undefined, negativeWhen: str
 
 export class TankvoltConnector implements TrackerConnector {
   readonly provider = "tankvolt";
+  readonly label = "Tankvolt EV";
   readonly registeredOnly = true;
 
   constructor(private readonly config: TankvoltConfig) {}
+
+  async healthCheck(): Promise<TrackerHealth> {
+    const started = Date.now();
+    try {
+      // A trivial GPS query: reachable + valid key -> code 0; reachable but
+      // key not enabled for GPS -> code 1 (auth failed) = degraded.
+      const response = await fetch(`${this.config.baseUrl}/iot-service/api/query-vehicle-gps`, {
+        method: "POST",
+        headers: { "api-key": this.config.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify([{ vin: "HEALTHCHECK", startTime: "2026-01-01 00:00:00", endTime: "2026-01-01 00:00:01" }])
+      });
+      const latency = Date.now() - started;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return { status: "down", detail: `HTTP ${response.status} from Tankvolt.`, latency_ms: latency };
+      if (Number(data.code) === 1) {
+        return { status: "degraded", detail: "Reachable, but the API key is not enabled for GPS query (control may still work).", latency_ms: latency };
+      }
+      return { status: "ok", detail: "GPS query interface reachable and authenticated.", latency_ms: latency };
+    } catch (error: any) {
+      return { status: "down", detail: `Tankvolt unreachable: ${String(error?.message).slice(0, 120)}`, latency_ms: Date.now() - started };
+    }
+  }
 
   private async post(path: string, body: unknown) {
     const response = await fetch(`${this.config.baseUrl}${path}`, {

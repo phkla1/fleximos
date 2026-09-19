@@ -69,6 +69,31 @@ TANKVOLT_API_KEY=<key assigned by Tankvolt>
 Register the bikes once with `node scripts/import-tankvolt-fleet.mjs`
 (after sourcing the env file). Both connectors run side by side.
 
+### Orbit e-bikes (orbitconnect.ng)
+
+Orbit's Fleet Manager Portal is a Supabase-backed API (GPS paired to the
+bike, battery %, remote lock). The connector is built and waiting; add
+when Orbit's backend is reachable and your login works:
+
+```bash
+ORBIT_EMAIL=<portal email>
+ORBIT_PASSWORD=<portal password>
+ORBIT_SUPABASE_ANON_KEY=<publishable anon key from the portal>
+# ORBIT_SUPABASE_URL=https://<project>.supabase.co   # default is the known project
+```
+
+As of 19 Sep 2026 Orbit's backend project did not resolve (their outage),
+so the Integration Status monitor will show Orbit "down" until they
+restore service — that is expected and visible to supervisors, not a
+FlexiMOS fault.
+
+### Integration status monitor
+
+`GET /ops/v1/integration-status` live-probes every configured provider
+(trackers, Bolt, payments, foundation) and is shown as a coloured grid in
+the Manager console and a source-status strip on the Supervisor map. No
+configuration needed; it reflects whatever `*_API_*` credentials are set.
+
 then `pm2 delete fleximos-ops-api && pm2 start` from the ecosystem file
 (a plain restart does not re-read the env file). Once configured, the
 embedded scheduler captures distances hourly 07:30–22:30, finalises the

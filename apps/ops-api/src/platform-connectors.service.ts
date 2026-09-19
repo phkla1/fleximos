@@ -83,6 +83,30 @@ export class PlatformConnectorsService {
     throw new Error(`No connector is registered for platform ${account.platform}.`);
   }
 
+  // Reachability + credential probe for the integration status monitor.
+  async platformHealth(account: PlatformAccount): Promise<{ status: "ok" | "degraded" | "down"; detail: string; latency_ms: number }> {
+    const started = Date.now();
+    if (this.env(account, "FIXTURE_FILE")) {
+      return { status: "ok", detail: "Fixture connector (test mode).", latency_ms: 0 };
+    }
+    try {
+      if (account.platform === "bolt") {
+        await this.boltToken(account);
+        return { status: "ok", detail: "OAuth token acquired.", latency_ms: Date.now() - started };
+      }
+      return { status: "degraded", detail: `No live health probe for ${account.platform}.`, latency_ms: Date.now() - started };
+    } catch (error: any) {
+      const message = String(error?.message || error);
+      const notConfigured = /not configured/i.test(message);
+      const down = /fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|network|timed out/i.test(message);
+      return {
+        status: down ? "down" : "degraded",
+        detail: notConfigured ? "Credentials not configured." : message.slice(0, 140),
+        latency_ms: Date.now() - started
+      };
+    }
+  }
+
   private async boltToken(account: PlatformAccount) {
     const cache = boltTokenCache.get(account.credentials_key);
     if (cache && cache.expiresAt > Date.now() + 30_000) return cache.token;
