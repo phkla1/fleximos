@@ -49,6 +49,8 @@
           <div><p class="eyebrow">Amoeba control room</p><h1>What needs my action now?</h1><p id="scopeLabel" class="subtle">Operators assigned to this supervisor</p></div>
         </div>
 
+        <div id="checkinApprovals" class="checkin-approvals"></div>
+
         <div class="gauge-row" aria-label="Team gauges">
           <figure class="gauge" id="paceGauge">
             <svg viewBox="0 0 120 120" role="img" aria-label="Net Earnings pace">
@@ -150,6 +152,18 @@
           <span id="deliverySummaryLabel" class="subtle"></span>
         </div>
         <p class="section-intro">Batch-level control: record what arrived, assign daily targets to drivers, keep progress and exceptions current. Every figure carries its source until customer APIs land.</p>
+
+        <details class="management-panel">
+          <summary>Import Speedaf export (.xlsx)</summary>
+          <p class="section-intro">Export "Delivery Waybill Inquiry" from the Speedaf portal, then drop the file here. Deliveries land on each rider automatically; anyone we can't match appears below to map once.</p>
+          <div class="fuel-form">
+            <label>Customer<select id="importCustomer"></select></label>
+            <label>Delivery date<input id="importDate" type="date" /></label>
+            <label>Export file<input id="importFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
+            <button type="button" id="importRun">Import export</button>
+          </div>
+          <div id="importResult" class="import-result"></div>
+        </details>
 
         <details class="management-panel">
           <summary>Create a delivery batch</summary>

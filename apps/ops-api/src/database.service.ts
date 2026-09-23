@@ -720,6 +720,77 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_by_person_id TEXT,
         updated_at TIMESTAMPTZ NOT NULL
       );
+
+      -- Phase-1 go-live: pay class splits riders (bikes) from drivers (Qute
+      -- cars, moved off ride-hailing into delivery). Allocated price becomes
+      -- class-aware: a class-specific row wins, else the global 'all' row.
+      ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS operator_class TEXT NOT NULL DEFAULT 'rider';
+      ALTER TABLE ops_delivery_allocated_prices ADD COLUMN IF NOT EXISTS operator_class TEXT NOT NULL DEFAULT 'all';
+      ALTER TABLE ops_delivery_allocated_prices ADD COLUMN IF NOT EXISTS daily_basic_ngn NUMERIC(12, 2) NOT NULL DEFAULT 0;
+
+      -- Speedaf (and future customers) name their courier as free text on the
+      -- export ("ODEH", "Uche"); map each to a real operator once, then every
+      -- import auto-resolves. Amoeba is never stored here — it comes from the
+      -- mapped operator (identity), the single source of org placement.
+      CREATE TABLE IF NOT EXISTS ops_delivery_courier_aliases (
+        alias_id TEXT PRIMARY KEY,
+        delivery_customer_id TEXT REFERENCES ops_delivery_customers(delivery_customer_id),
+        courier_norm TEXT NOT NULL,
+        display_seen TEXT NOT NULL,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(delivery_customer_id, courier_norm)
+      );
+
+      -- One row per Speedaf export ingested (manual upload or the scheduled
+      -- headless pull). The waybill rows land on the batch/assignment model;
+      -- this is the capture log + system-of-record trail.
+      CREATE TABLE IF NOT EXISTS ops_delivery_imports (
+        import_id TEXT PRIMARY KEY,
+        delivery_customer_id TEXT NOT NULL REFERENCES ops_delivery_customers(delivery_customer_id),
+        batch_date DATE NOT NULL,
+        capture_source TEXT NOT NULL DEFAULT 'manual_upload',
+        file_name TEXT,
+        row_count INTEGER NOT NULL DEFAULT 0,
+        matched_count INTEGER NOT NULL DEFAULT 0,
+        unmapped_count INTEGER NOT NULL DEFAULT 0,
+        delivered_count INTEGER NOT NULL DEFAULT 0,
+        unmapped_couriers JSONB NOT NULL DEFAULT '[]'::jsonb,
+        imported_by_person_id TEXT NOT NULL,
+        imported_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_delivery_imports_date ON ops_delivery_imports(batch_date DESC);
+
+      -- GPS + supervisor-confirmed operator check-in (resumption discipline).
+      -- Geofenced against the operator's approved Sites; approval is required
+      -- even when GPS passes, because an office-resident could pass from bed.
+      CREATE TABLE IF NOT EXISTS ops_operator_checkins (
+        checkin_id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        person_id TEXT NOT NULL,
+        amoeba_id TEXT NOT NULL,
+        check_in_date DATE NOT NULL,
+        requested_at TIMESTAMPTZ NOT NULL,
+        gps_lat NUMERIC(10, 6),
+        gps_lng NUMERIC(10, 6),
+        matched_site_id TEXT,
+        matched_site_name TEXT,
+        distance_m NUMERIC(10, 1),
+        geofence_ok BOOLEAN,
+        status TEXT NOT NULL DEFAULT 'pending',
+        decided_by_person_id TEXT,
+        decided_at TIMESTAMPTZ,
+        decision_note TEXT,
+        source TEXT NOT NULL DEFAULT 'operator_self',
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(operator_id, check_in_date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_operator_checkins_date ON ops_operator_checkins(check_in_date DESC, amoeba_id);
     `);
 
     await this.seed();

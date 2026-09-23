@@ -4,6 +4,7 @@ import { OpsService } from "./ops.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { NotificationService } from "./notification.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
+import { DeliveriesImportService } from "./deliveries-import.service.js";
 
 type JobRun = {
   scheduled_job_run_id: string;
@@ -20,7 +21,8 @@ export class JobRunnerService {
     @Inject(OpsService) private readonly ops: OpsService,
     @Inject(PlatformConnectorsService) private readonly connectors: PlatformConnectorsService,
     @Inject(NotificationService) private readonly notifications: NotificationService,
-    @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService
+    @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
+    @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService
   ) {}
 
   private recordDate(run: JobRun) {
@@ -82,6 +84,10 @@ export class JobRunnerService {
     }
     if (run.job_name === "alert-watchdog") return this.evaluateAlerts(date);
     if (run.job_name === "cartracker-daily-ingest") return this.trackerIngest.ingestDaily(date);
+    if (run.job_name === "speedaf-delivery-pull") {
+      const result = await this.deliveryImports.pullSpeedaf("person_system", date);
+      return { received: result.row_count, upserted: result.matched_count, rejected: result.unmapped_count };
+    }
     if (run.job_name === "distance-daily-retry") return this.trackerIngest.backfillMissing(date, 7);
     if (run.job_name === "notification-dispatch") {
       const deliveries = await this.notifications.deliverBatch();

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { OpsService } from "./ops.service.js";
 import { createTrackerConnectors } from "./connectors/tracker.factory.js";
+import { speedafConfigFromEnv } from "./connectors/speedaf.connector.js";
 
 type DueJob = {
   jobName: string;
@@ -55,6 +56,9 @@ export class SchedulerService {
       if (hour === 0 && minute === 10) add("cartracker-daily-ingest", previousDay);
       if (hour === 2 && minute === 15) add("distance-daily-retry");
     }
+    // Speedaf headless export pull: today, hourly through the working day, so
+    // we own the delivery history as system-of-record. Off unless configured.
+    if (speedafConfigFromEnv() && minute === 0 && hour >= 8 && hour <= 20) add("speedaf-delivery-pull");
     if (minute % 15 === 0 && hour >= 7 && hour <= 22) add("alert-watchdog");
     if (minute % 5 === 0) add("notification-dispatch");
     if (hour === 19 && minute === 15) add("daily-report-generate");

@@ -29,6 +29,14 @@ export class OpsService {
     }).format(date);
   }
 
+  // Pay class for delivery attribution. Explicit wins; otherwise a "driver"
+  // operator_type maps to driver, everything else (riders on bikes) to rider.
+  private operatorClassOf(explicit: unknown, operatorType: unknown): "rider" | "driver" {
+    const value = String(explicit || "").toLowerCase();
+    if (value === "rider" || value === "driver") return value;
+    return String(operatorType || "").toLowerCase() === "driver" ? "driver" : "rider";
+  }
+
   private date(value: unknown) {
     const text = String(value || "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00Z`))) {
@@ -246,6 +254,9 @@ export class OpsService {
       operator_id: this.id("operator"),
       person_id: body.person_id,
       operator_type: body.operator_type,
+      // Pay class (rider = bike, driver = Qute car). Explicit if given, else a
+      // sensible default from operator_type, else rider.
+      operator_class: this.operatorClassOf(body.operator_class, body.operator_type),
       operator_status: body.operator_status || "pending_activation",
       amoeba_id: body.amoeba_id,
       site_id: body.site_id,
@@ -259,10 +270,10 @@ export class OpsService {
     };
     await this.db.exec(
       `INSERT INTO ops_operators
-        (operator_id, person_id, operator_type, operator_status, amoeba_id, site_id,
+        (operator_id, person_id, operator_type, operator_class, operator_status, amoeba_id, site_id,
          supervisor_person_id, vehicle_id, daily_revenue_target_ngn, activated_at,
          deactivated_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       Object.values(operator)
     );
     await this.audit("operator.created", "operator", operator.operator_id, null, operator);
@@ -271,9 +282,10 @@ export class OpsService {
 
   async updateOperator(operatorId: string, body: RecordBody) {
     const current: any = await this.getOperator(operatorId);
-    const allowed = ["operator_type", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn"];
+    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn"];
     const updated: any = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
+    if ("operator_class" in body) updated.operator_class = this.operatorClassOf(body.operator_class, updated.operator_type);
     updated.updated_at = this.now();
     if (updated.operator_status === "active" && current.operator_status !== "active") updated.activated_at = updated.updated_at;
     if (["inactive", "suspended"].includes(updated.operator_status) && !["inactive", "suspended"].includes(current.operator_status)) {
@@ -283,7 +295,7 @@ export class OpsService {
       `UPDATE ops_operators SET
         operator_type = $2, operator_status = $3, amoeba_id = $4, site_id = $5,
         supervisor_person_id = $6, vehicle_id = $7, daily_revenue_target_ngn = $8,
-        activated_at = $9, deactivated_at = $10, updated_at = $11
+        activated_at = $9, deactivated_at = $10, operator_class = $12, updated_at = $11
        WHERE operator_id = $1`,
       [
         operatorId,
@@ -296,7 +308,8 @@ export class OpsService {
         updated.daily_revenue_target_ngn,
         updated.activated_at,
         updated.deactivated_at,
-        updated.updated_at
+        updated.updated_at,
+        updated.operator_class || "rider"
       ]
     );
     await this.audit("operator.updated", "operator", operatorId, current, body);

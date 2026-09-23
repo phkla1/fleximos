@@ -20,6 +20,7 @@ import { AuthService } from "./auth.service.js";
 import { OpsService } from "./ops.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
+import { AttendanceService } from "./attendance.service.js";
 
 @Controller()
 export class OpsController {
@@ -27,7 +28,8 @@ export class OpsController {
     @Inject(OpsService) private readonly ops: OpsService,
     @Inject(AuthService) private readonly identity: AuthService,
     @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
-    @Inject(IntegrationStatusService) private readonly integrationStatus: IntegrationStatusService
+    @Inject(IntegrationStatusService) private readonly integrationStatus: IntegrationStatusService,
+    @Inject(AttendanceService) private readonly attendance: AttendanceService
   ) {}
 
   private auth(req: Request) {
@@ -868,6 +870,60 @@ export class OpsController {
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.ops.resolveAlert(alertId, body, actor.person_id));
   }
 
+  /* ---------- operator check-in (attendance / resumption) ---------- */
+
+  @ApiTags("Attendance")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Operator files a GPS check-in (pending supervisor confirmation); supervisor may file for an operator" })
+  @Post("ops/v1/checkins")
+  async requestCheckin(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    // Self check-in is open to the operator; checking in for someone else needs supervisor rights.
+    const isSupervisor = this.canSupervise(actor);
+    if (body.operator_id && !isSupervisor) throw new UnauthorizedException("Only a supervisor may check in on behalf of an operator.");
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.attendance.requestCheckin(body, actor.person_id, isSupervisor));
+  }
+
+  @ApiTags("Attendance")
+  @ApiBearerAuth()
+  @Get("ops/v1/checkins")
+  async listCheckins(
+    @Req() req: Request,
+    @Query("check_in_date") checkInDate?: string,
+    @Query("status") status?: string
+  ) {
+    const actor = await this.auth(req);
+    return {
+      data: await this.attendance.listCheckins(
+        { check_in_date: checkInDate, status },
+        this.identity.dataScope(actor)
+      ),
+      next_cursor: null
+    };
+  }
+
+  @ApiTags("Attendance")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Supervisor approves or rejects an operator check-in (required even when GPS passes)" })
+  @Post("ops/v1/checkins/:checkinId/decision")
+  @HttpCode(HttpStatus.OK)
+  async decideCheckin(
+    @Req() req: Request,
+    @Param("checkinId") checkinId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    const visible = await this.attendance.listCheckins({}, this.identity.dataScope(actor));
+    if (!visible.some((checkin: any) => checkin.checkin_id === checkinId)) throw new UnauthorizedException("Check-in is outside your Ops scope.");
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.attendance.decideCheckin(checkinId, body, actor.person_id));
+  }
+
   @ApiTags("Audit")
   @ApiBearerAuth()
   @Get("ops/v1/audit")
@@ -875,5 +931,15 @@ export class OpsController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return { data: await this.ops.listAudit(), next_cursor: null };
+  }
+
+  // Does the actor hold supervisor-or-above rights (without throwing)?
+  private canSupervise(actor: any) {
+    try {
+      this.identity.requireSupervisor(actor);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

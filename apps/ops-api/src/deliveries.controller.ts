@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
   HttpStatus,
   Inject,
   Param,
@@ -16,12 +17,14 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
 import { DeliveriesService } from "./deliveries.service.js";
+import { DeliveriesImportService } from "./deliveries-import.service.js";
 import { OpsService } from "./ops.service.js";
 
 @Controller()
 export class DeliveriesController {
   constructor(
     @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
+    @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService,
     @Inject(OpsService) private readonly ops: OpsService,
     @Inject(AuthService) private readonly identity: AuthService
   ) {}
@@ -118,6 +121,75 @@ export class DeliveriesController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.deliveries.createAllocatedPrice(body, actor.person_id));
+  }
+
+  /* ---------- Speedaf import + courier mapping ---------- */
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @Get("ops/v1/delivery-courier-aliases")
+  async listCourierAliases(@Req() req: Request, @Query("customer_id") customerId?: string) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return { data: await this.deliveryImports.listAliases(customerId), next_cursor: null };
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Map a customer's free-text courier name to a real operator (used to resolve imports)" })
+  @Post("ops/v1/delivery-courier-aliases")
+  async upsertCourierAlias(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.deliveryImports.upsertAlias(body, actor.person_id));
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @Get("ops/v1/delivery-imports")
+  async listDeliveryImports(
+    @Req() req: Request,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return { data: await this.deliveryImports.listImports({ date_from: dateFrom, date_to: dateTo }), next_cursor: null };
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Ingest a Speedaf delivery-waybill export (parsed rows or .xlsx file_base64) onto batches/assignments" })
+  @Post("ops/v1/delivery-imports")
+  async importDelivery(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () =>
+      this.deliveryImports.importSpeedaf(body, actor.person_id, this.identity.dataScope(actor)));
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Run the headless Speedaf pull now (same job the scheduler runs hourly)" })
+  @Post("ops/v1/delivery-imports/pull")
+  @HttpCode(HttpStatus.OK)
+  async pullDelivery(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () =>
+      this.deliveryImports.pullSpeedaf(actor.person_id, body.batch_date ? String(body.batch_date) : undefined));
   }
 
   /* ---------- batches ---------- */

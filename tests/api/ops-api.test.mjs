@@ -1152,7 +1152,7 @@ test("deletes a daily report snapshot with audit and admin-only access", async (
 test("registers scheduled jobs and records replay lifecycle", async () => {
   const jobs = await request("/ops/v1/scheduled-jobs");
   assert.equal(jobs.response.status, 200);
-  assert.equal(jobs.body.data.length, 15);
+  assert.equal(jobs.body.data.length, 16);
   assert.ok(jobs.body.data.some((job) => job.job_name === "uber-distance-report-backfill"
     && job.freshness_status === "pending_source"));
 
@@ -1187,7 +1187,7 @@ test("registers scheduled jobs and records replay lifecycle", async () => {
 
   const health = await fetch(`${baseUrl}/health`).then((response) => response.json());
   assert.equal(health.database, "ok");
-  assert.equal(health.scheduled_jobs.total, 15);
+  assert.equal(health.scheduled_jobs.total, 16);
   assert.equal(health.queue_depths.reports, 0);
 });
 
@@ -1339,4 +1339,148 @@ test("reports integration status for every external dependency", async () => {
   if (foundationFirst.status === foundationAgain.status) {
     assert.equal(foundationFirst.status_since, foundationAgain.status_since, "status_since holds while status is stable");
   }
+});
+
+test("allocated price is class-aware: drivers earn a different rate plus a daily basic", async () => {
+  // A driver-class rate (Qute cars carry bigger parcels): higher per-parcel + a fixed daily basic.
+  const price = await request("/ops/v1/delivery-allocated-prices", {
+    method: "POST",
+    headers: { "Idempotency-Key": "alloc-driver-001" },
+    body: JSON.stringify({ price_ngn: 1200, operator_class: "driver", daily_basic_ngn: 2000, effective_from: "2026-01-01" })
+  });
+  assert.equal(price.response.status, 201);
+  assert.equal(price.body.operator_class, "driver");
+
+  const driverOperator = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "alloc-driver-operator" },
+    body: JSON.stringify({
+      person_id: "person_qute_driver", operator_type: "driver", operator_class: "driver",
+      operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1"
+    })
+  });
+  assert.equal(driverOperator.body.operator_class, "driver");
+
+  const customer = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "alloc-driver-customer" },
+    body: JSON.stringify({ name: "Speedaf Driver Test", contract_price_ngn: 1300 })
+  });
+  const batch = await request("/ops/v1/delivery-batches", {
+    method: "POST",
+    headers: { "Idempotency-Key": "alloc-driver-batch" },
+    body: JSON.stringify({ delivery_customer_id: customer.body.delivery_customer_id, amoeba_id: "amoeba_mainland", batch_date: "2026-06-14" })
+  });
+  const assignment = await request(`/ops/v1/delivery-batches/${batch.body.batch_id}/assignments`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "alloc-driver-assign" },
+    body: JSON.stringify({ operator_id: driverOperator.body.operator_id, assigned_count: 10 })
+  });
+  await request(`/ops/v1/delivery-assignments/${assignment.body.assignment_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "alloc-driver-progress" },
+    body: JSON.stringify({ delivered_count: 8, status: "out_for_delivery" })
+  });
+
+  const assignments = await request(`/ops/v1/delivery-assignments?date_from=2026-06-14&date_to=2026-06-14&operator_id=${driverOperator.body.operator_id}`);
+  const row = assignments.body.data.find((item) => item.assignment_id === assignment.body.assignment_id);
+  assert.equal(Number(row.allocated_price_ngn), 1200, "driver uses the driver-class rate, not the global rate");
+  assert.equal(Number(row.daily_basic_ngn), 2000, "driver daily basic is exposed");
+  assert.equal(Number(row.earned_value_allocated_ngn), 8 * 1200, "per-assignment earnings are parcels x rate (no double basic)");
+
+  // The daily basic is added once per delivery-day in the rollup (leaderboard).
+  const leaderboard = await request("/ops/v1/leaderboard?period_start=2026-06-14&period_end=2026-06-14");
+  const entry = leaderboard.body.entries.find((item) => item.operator_id === driverOperator.body.operator_id);
+  assert.equal(Number(entry.delivery_earnings_allocated_ngn), 8 * 1200 + 2000, "rollup adds the driver daily basic once");
+});
+
+test("imports a Speedaf delivery export onto batches, resolving couriers and flagging unmapped ones", async () => {
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) => row.operator_status === "active");
+
+  const customer = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "import-customer-001" },
+    body: JSON.stringify({ name: "Speedaf Import Test", contract_price_ngn: 1300 })
+  });
+  const customerId = customer.body.delivery_customer_id;
+
+  // Map the free-text courier "ODEH" (any casing) to a real operator.
+  const alias = await request("/ops/v1/delivery-courier-aliases", {
+    method: "POST",
+    headers: { "Idempotency-Key": "import-alias-001" },
+    body: JSON.stringify({ courier_name: "ODEH", operator_id: operator.operator_id, delivery_customer_id: customerId })
+  });
+  assert.equal(alias.response.status, 201);
+
+  const rows = [
+    { waybill_no: "NG1", waybill_status: "Signed", last_scan: "Signed", courier: "ODEH", attempts: 2 },
+    { waybill_no: "NG2", waybill_status: "Signed", last_scan: "Signed", courier: "odeh", attempts: 1 },
+    { waybill_no: "NG3", waybill_status: "Delivering", last_scan: "Delivery", courier: "ODEH", attempts: 2 },
+    { waybill_no: "NG4", waybill_status: "Signed", last_scan: "Signed", courier: "Stranger Danger", attempts: 1 }
+  ];
+  const imported = await request("/ops/v1/delivery-imports", {
+    method: "POST",
+    headers: { "Idempotency-Key": "import-run-001" },
+    body: JSON.stringify({ delivery_customer_id: customerId, batch_date: "2026-06-16", file_name: "speedaf.xlsx", rows })
+  });
+  assert.equal(imported.response.status, 201);
+  assert.equal(imported.body.matched_count, 1, "one courier resolved");
+  assert.equal(imported.body.unmapped_count, 1, "one courier unmapped");
+  assert.equal(imported.body.delivered_count, 2, "two waybills Signed for ODEH");
+  assert.equal(imported.body.unmapped_couriers[0].courier, "Stranger Danger");
+
+  const assignments = await request(`/ops/v1/delivery-assignments?date_from=2026-06-16&date_to=2026-06-16&operator_id=${operator.operator_id}`);
+  const row = assignments.body.data.find((item) => item.counts_source === "customer_app_import");
+  assert.ok(row, "an import-sourced assignment exists");
+  assert.equal(Number(row.assigned_count), 3, "assigned = all of the courier's waybills");
+  assert.equal(Number(row.delivered_count), 2, "delivered = Signed waybills");
+
+  // Re-importing the same export is idempotent — counts do not double.
+  await request("/ops/v1/delivery-imports", {
+    method: "POST",
+    headers: { "Idempotency-Key": "import-run-002" },
+    body: JSON.stringify({ delivery_customer_id: customerId, batch_date: "2026-06-16", rows })
+  });
+  const after = await request(`/ops/v1/delivery-assignments?date_from=2026-06-16&date_to=2026-06-16&operator_id=${operator.operator_id}`);
+  const afterRow = after.body.data.find((item) => item.counts_source === "customer_app_import");
+  assert.equal(Number(afterRow.delivered_count), 2, "re-import keeps delivered at 2, not 4");
+});
+
+test("operator check-in geofences against Sites and requires supervisor approval", async () => {
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) => row.operator_status === "active" && row.amoeba_id === "amoeba_island");
+  assert.ok(operator, "seeded island operator exists");
+
+  // GPS inside site_island_1's radius (seed: 6.44487546, 3.47798504, r=500m).
+  const inside = await request("/ops/v1/checkins", {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-inside-001" },
+    body: JSON.stringify({ operator_id: operator.operator_id, gps_lat: 6.44487, gps_lng: 3.47798, check_in_date: "2026-06-18" })
+  });
+  assert.equal(inside.response.status, 201);
+  assert.equal(inside.body.status, "pending", "starts pending supervisor confirmation");
+  assert.equal(inside.body.geofence_ok, true, "inside the site radius");
+  assert.equal(inside.body.matched_site_id, "site_island_1");
+
+  // Approval is required even though GPS passed.
+  const approved = await request(`/ops/v1/checkins/${inside.body.checkin_id}/decision`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-approve-001" },
+    body: JSON.stringify({ decision: "approve" })
+  });
+  assert.equal(approved.body.status, "approved");
+
+  // A far-away GPS is flagged outside the fence (Abuja, ~700km away).
+  const outsideOperator = await request("/ops/v1/operators");
+  const other = outsideOperator.body.data.find((row) => row.operator_status === "active" && row.amoeba_id === "amoeba_island");
+  const far = await request("/ops/v1/checkins", {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-far-001" },
+    body: JSON.stringify({ operator_id: other.operator_id, gps_lat: 9.05785, gps_lng: 7.49508, check_in_date: "2026-06-19" })
+  });
+  assert.equal(far.body.geofence_ok, false, "far GPS fails the geofence");
+
+  const list = await request("/ops/v1/checkins?check_in_date=2026-06-18");
+  assert.ok(list.body.data.some((row) => row.checkin_id === inside.body.checkin_id), "check-in is listable");
 });

@@ -87,6 +87,47 @@ so the Integration Status monitor will show Orbit "down" until they
 restore service — that is expected and visible to supervisors, not a
 FlexiMOS fault.
 
+### Speedaf scheduled-delivery pull (ope.speedaf.com)
+
+Speedaf has no API. Supervisors can always import the "Delivery Waybill
+Inquiry" export by hand in the Supervisor app (Deliver tab → Import Speedaf
+export). To pull it automatically, the ops-api runs a headless-browser export
+in-process — off unless these are set:
+
+```bash
+SPEEDAF_ACCOUNT=<portal account no.>
+SPEEDAF_PASSWORD=<portal password>
+# SPEEDAF_BASE_URL=https://ope.speedaf.com          # default
+# SPEEDAF_CUSTOMER_ID=<delivery_customer_id>        # else the active "Speedaf" customer
+```
+
+**To go live with the Speedaf auto-pull (checklist):**
+
+1. Install the headless browser on the host: `npx playwright install chromium`
+   (the pull loads Playwright lazily, so unconfigured servers never need it).
+2. Add `SPEEDAF_ACCOUNT` and `SPEEDAF_PASSWORD` (above) to
+   `~/fleximos-data/fleximos.env`, then `pm2 delete fleximos-ops-api && pm2 start`
+   from the ecosystem file (a plain restart does not re-read the env file).
+3. Create the **Speedaf** delivery customer in the Admin console → Deliveries with
+   its **contract price ≈ ₦1,300**/package (or set `SPEEDAF_CUSTOMER_ID`).
+4. Set the operator-facing **allocated price**: **rider ≈ ₦700**/package, and a
+   **driver** rate (higher per-package + a daily basic) once the driver policy is
+   agreed. Admin console → Deliveries → "Set an allocated price".
+5. Map each Speedaf courier name to an operator once (Supervisor app → Deliver →
+   Import Speedaf export → unmapped list). Mappings persist; later pulls resolve
+   automatically. The amoeba is taken from the mapped operator via identity.
+6. Confirm one live pull: `POST /ops/v1/delivery-imports/pull` (system admin), or
+   wait for the hourly `speedaf-delivery-pull` job (08:00–20:00). Watch it in the
+   Integration Status monitor (Speedaf row).
+7. Rotate the shared portal password once the integration is confirmed.
+
+Notes:
+- The portal click-path was built from a verified manual walkthrough but not run
+  with live credentials (sign-in is a human step); if Speedaf change their UI,
+  adjust the selectors in `apps/ops-api/src/connectors/speedaf.connector.ts`. The
+  **manual import** (drag the exported `.xlsx` into the Supervisor app) always
+  works as the fallback and needs none of the above except steps 3–5.
+
 ### Integration status monitor
 
 `GET /ops/v1/integration-status` live-probes every configured provider

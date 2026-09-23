@@ -562,11 +562,15 @@ function render() {
     </article>`).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
 
   el.allocatedPriceList.innerHTML = state.allocatedPrices.map((price) => {
-    const status = policyStatus({ effective_from: price.effective_from, effective_to: price.effective_to }, state.allocatedPrices);
+    const operatorClass = price.operator_class || "all";
+    const sameClass = state.allocatedPrices.filter((row) => (row.operator_class || "all") === operatorClass);
+    const status = policyStatus({ effective_from: price.effective_from, effective_to: price.effective_to }, sameClass);
+    const classLabel = operatorClass === "all" ? "All" : operatorClass === "driver" ? "Drivers" : "Riders";
+    const basic = Number(price.daily_basic_ngn || 0);
     return `
     <article class="policy-row ${status}">
-      <div><strong>₦${Number(price.price_ngn).toLocaleString()}/package allocated</strong><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
-      <div><small>Effective ${escapeHtml(effectiveWindow(price))}</small></div>
+      <div><strong>₦${Number(price.price_ngn).toLocaleString()}/package allocated</strong><span class="pill ${operatorClass === "driver" ? "open" : ""}">${classLabel}</span><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
+      <div><small>Effective ${escapeHtml(effectiveWindow(price))}${basic ? ` · ₦${basic.toLocaleString()} daily basic` : ""}</small></div>
     </article>`;
   }).join("") || `<div class="empty">No allocated price configured.</div>`;
 
@@ -990,7 +994,12 @@ el.allocatedPriceForm.addEventListener("submit", async (event) => {
     await ops("/ops/v1/delivery-allocated-prices", {
       method: "POST",
       headers: { "Idempotency-Key": key("allocated") },
-      body: JSON.stringify({ price_ngn: Number(values.price_ngn), effective_from: values.effective_from })
+      body: JSON.stringify({
+        price_ngn: Number(values.price_ngn),
+        operator_class: values.operator_class || "all",
+        daily_basic_ngn: Number(values.daily_basic_ngn || 0),
+        effective_from: values.effective_from
+      })
     });
     el.allocatedPriceForm.reset();
     el.allocatedPriceForm.elements.effective_from.value = todayLagos;

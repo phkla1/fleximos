@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { DeliveriesImportService } from "./deliveries-import.service.js";
 import { DatabaseService } from "./database.service.js";
 import { OpsService } from "./ops.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
@@ -33,7 +34,8 @@ export class IntegrationStatusService {
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(OpsService) private readonly ops: OpsService,
-    @Inject(PlatformConnectorsService) private readonly platforms: PlatformConnectorsService
+    @Inject(PlatformConnectorsService) private readonly platforms: PlatformConnectorsService,
+    @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService
   ) {}
 
   private async paymentsProbe(): Promise<Probe> {
@@ -127,6 +129,18 @@ export class IntegrationStatusService {
       }
     } catch {
       // platform account listing failed — non-fatal for the monitor
+    }
+
+    // Speedaf scheduled-delivery pull (headless portal export).
+    if (this.deliveryImports.speedafConfigured()) {
+      const probe = await this.deliveryImports.speedafHealth();
+      await record("speedaf", "Speedaf portal", "platform", probe as Probe);
+    } else {
+      rows.push({
+        key: "speedaf", label: "Speedaf portal", category: "platform", configured: false,
+        status: "not_configured", detail: "Manual import available; set SPEEDAF_ACCOUNT/PASSWORD to arm the scheduled pull.",
+        latency_ms: null, last_ok_at: null, status_since: null, last_checked_at: new Date().toISOString()
+      });
     }
 
     // Payments + foundation.

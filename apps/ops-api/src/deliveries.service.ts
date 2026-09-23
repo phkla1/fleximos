@@ -96,28 +96,45 @@ export class DeliveriesService {
     clauses.push(visible.length ? `(${visible.join(" OR ")})` : "FALSE");
   }
 
-  /* ---------------- allocated price ---------------- */
+  /* ---------------- allocated price (class-aware) ---------------- */
 
-  async allocatedPriceFor(date: string): Promise<number> {
+  // Riders and drivers earn on different allocated rates (drivers carry the
+  // bigger parcels). A class-specific row wins for its effective window; the
+  // global 'all' row is the fallback so pre-class data keeps its price.
+  private async allocatedRateFor(date: string, operatorClass = "all"): Promise<{ price_ngn: number; daily_basic_ngn: number }> {
     const row = await this.db.one<any>(
-      `SELECT price_ngn FROM ops_delivery_allocated_prices
+      `SELECT price_ngn, daily_basic_ngn FROM ops_delivery_allocated_prices
        WHERE effective_from <= $1 AND (effective_to IS NULL OR effective_to >= $1)
-       ORDER BY effective_from DESC LIMIT 1`,
-      [date]
+         AND operator_class IN ($2, 'all')
+       ORDER BY (operator_class = $2) DESC, effective_from DESC LIMIT 1`,
+      [date, operatorClass]
     );
-    return Number(row?.price_ngn || 0);
+    return { price_ngn: Number(row?.price_ngn || 0), daily_basic_ngn: Number(row?.daily_basic_ngn || 0) };
+  }
+
+  // Backward-compatible per-parcel rate (existing callers pass no class).
+  async allocatedPriceFor(date: string, operatorClass = "all"): Promise<number> {
+    return (await this.allocatedRateFor(date, operatorClass)).price_ngn;
   }
 
   async listAllocatedPrices() {
-    return this.db.many("SELECT * FROM ops_delivery_allocated_prices ORDER BY effective_from DESC");
+    return this.db.many("SELECT * FROM ops_delivery_allocated_prices ORDER BY effective_from DESC, operator_class ASC");
   }
 
   async createAllocatedPrice(body: RecordBody, actorPersonId: string) {
     const price = Number(body.price_ngn);
     if (!(price > 0)) throw new BadRequestException("price_ngn must be a positive amount.");
+    const operatorClass = String(body.operator_class || "all");
+    if (!["all", "rider", "driver"].includes(operatorClass)) {
+      throw new BadRequestException("operator_class must be one of: all, rider, driver.");
+    }
+    const dailyBasic = body.daily_basic_ngn === undefined ? 0 : Number(body.daily_basic_ngn);
+    if (!(dailyBasic >= 0)) throw new BadRequestException("daily_basic_ngn must be zero or a positive amount.");
     const record = {
       allocated_price_id: this.id("allocated"),
       price_ngn: price,
+      operator_class: operatorClass,
+      daily_basic_ngn: dailyBasic,
       effective_from: this.date(body.effective_from || this.now().slice(0, 10), "effective_from"),
       effective_to: body.effective_to ? this.date(body.effective_to, "effective_to") : null,
       created_by_person_id: actorPersonId,
@@ -125,8 +142,8 @@ export class DeliveriesService {
     };
     await this.db.exec(
       `INSERT INTO ops_delivery_allocated_prices
-        (allocated_price_id, price_ngn, effective_from, effective_to, created_by_person_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+        (allocated_price_id, price_ngn, operator_class, daily_basic_ngn, effective_from, effective_to, created_by_person_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       Object.values(record)
     );
     await this.audit("delivery_allocated_price.created", "delivery_allocated_price", record.allocated_price_id, null, record, actorPersonId);
@@ -581,7 +598,7 @@ export class DeliveriesService {
     }
     const rows = await this.db.many<any>(
       `SELECT a.*, b.batch_date, b.status AS batch_status, b.amoeba_id, c.name AS customer_name,
-        o.person_id
+        o.person_id, o.operator_class
        FROM ops_delivery_assignments a
        JOIN ops_delivery_batches b ON b.batch_id = a.batch_id
        JOIN ops_delivery_customers c ON c.delivery_customer_id = b.delivery_customer_id
@@ -592,10 +609,15 @@ export class DeliveriesService {
     );
     const enriched = [];
     for (const row of rows) {
-      const allocated = await this.allocatedPriceFor(this.dayKey(row.batch_date));
+      const operatorClass = String(row.operator_class || "rider");
+      const { price_ngn: allocated, daily_basic_ngn: basic } = await this.allocatedRateFor(this.dayKey(row.batch_date), operatorClass);
       enriched.push({
         ...row,
         allocated_price_ngn: allocated,
+        // Exposed for display; the fixed basic is applied once per operator-day
+        // in the rollups (operatorAllocatedTotals), not per-assignment, so a
+        // driver on two batches is not paid the basic twice.
+        daily_basic_ngn: basic,
         target_value_allocated_ngn: Math.round(Number(row.assigned_count) * allocated * 100) / 100,
         earned_value_allocated_ngn: Math.round(Number(row.delivered_count) * allocated * 100) / 100
       });
@@ -687,23 +709,26 @@ export class DeliveriesService {
   // leaderboard so delivery days score like on-demand days (spec §5 D2).
   async operatorAllocatedTotals(periodStart: string, periodEnd: string) {
     const rows = await this.db.many<any>(
-      `SELECT a.operator_id, b.batch_date,
+      `SELECT a.operator_id, o.operator_class, b.batch_date,
         SUM(a.assigned_count) AS assigned_count,
-        SUM(a.delivered_count) AS delivered_count,
-        COUNT(DISTINCT b.batch_date) AS delivery_days
+        SUM(a.delivered_count) AS delivered_count
        FROM ops_delivery_assignments a
        JOIN ops_delivery_batches b ON b.batch_id = a.batch_id
+       JOIN ops_operators o ON o.operator_id = a.operator_id
        WHERE b.batch_date BETWEEN $1 AND $2
-       GROUP BY a.operator_id, b.batch_date`,
+       GROUP BY a.operator_id, o.operator_class, b.batch_date`,
       [periodStart, periodEnd]
     );
     const totals = new Map<string, { earned: number; target: number; days: Set<string> }>();
     for (const row of rows) {
       const date = this.dayKey(row.batch_date);
-      const allocated = await this.allocatedPriceFor(date);
+      const operatorClass = String(row.operator_class || "rider");
+      const { price_ngn: allocated, daily_basic_ngn: basic } = await this.allocatedRateFor(date, operatorClass);
       const entry = totals.get(row.operator_id) || { earned: 0, target: 0, days: new Set<string>() };
-      entry.earned += Number(row.delivered_count) * allocated;
-      entry.target += Number(row.assigned_count) * allocated;
+      // Fixed daily basic (drivers) is added once per delivery-day.
+      const firstBatchOfDay = !entry.days.has(date);
+      entry.earned += Number(row.delivered_count) * allocated + (firstBatchOfDay ? basic : 0);
+      entry.target += Number(row.assigned_count) * allocated + (firstBatchOfDay ? basic : 0);
       entry.days.add(date);
       totals.set(row.operator_id, entry);
     }

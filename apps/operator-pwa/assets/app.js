@@ -11,7 +11,7 @@ const ids = [
   "supportDialog", "incidentNote", "explainDialog", "explainContext", "explainReason",
   "explainNote", "alertDockBadge", "deliveryCard", "dispatchList", "dispatchSummary",
   "dispatchDockBadge", "podDialog", "podContext", "podSignature", "podSignatureClear",
-  "failDialog", "failContext", "failReason", "failNote"
+  "failDialog", "failContext", "failReason", "failNote", "checkinCard"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 let token = localStorage.getItem(storageKey);
@@ -193,6 +193,80 @@ function renderTimeline() {
 
 /* ---------- main load ---------- */
 
+/* ---------- daily check-in (GPS + supervisor confirmation) ---------- */
+let currentCheckin = null;
+
+function fenceText(checkin) {
+  if (checkin.geofence_ok === true) return `At ${escapeHtml(checkin.matched_site_name || "an approved site")}`;
+  if (checkin.geofence_ok === false) return `Outside the office${checkin.distance_m ? ` · ${Math.round(checkin.distance_m)}m away` : ""}`;
+  return "Location recorded";
+}
+
+function renderCheckin() {
+  const checkin = currentCheckin;
+  if (checkin && checkin.status === "approved") {
+    el.checkinCard.className = "checkin-card approved";
+    el.checkinCard.innerHTML = `<div class="checkin-status"><strong>✓ Checked in</strong>
+      <span>Approved${checkin.matched_site_name ? ` · ${escapeHtml(checkin.matched_site_name)}` : ""} · ${timeOf(checkin.decided_at || checkin.requested_at)}</span></div>`;
+    return;
+  }
+  if (checkin && checkin.status === "pending") {
+    el.checkinCard.className = "checkin-card pending";
+    el.checkinCard.innerHTML = `<div class="checkin-status"><strong>⏳ Waiting for supervisor</strong><span>${fenceText(checkin)}</span></div>
+      <button type="button" id="checkinButton" class="checkin-button ghost">Re-send location</button>`;
+    return;
+  }
+  if (checkin && checkin.status === "rejected") {
+    el.checkinCard.className = "checkin-card rejected";
+    el.checkinCard.innerHTML = `<div class="checkin-status"><strong>✕ Check-in rejected</strong><span>${escapeHtml(checkin.decision_note || "Speak to your supervisor")}</span></div>
+      <button type="button" id="checkinButton" class="checkin-button">Check in again</button>`;
+    return;
+  }
+  el.checkinCard.className = "checkin-card";
+  el.checkinCard.innerHTML = `<div class="checkin-status"><strong>Start your day</strong><span>Check in at the office to resume</span></div>
+    <button type="button" id="checkinButton" class="checkin-button">Check in</button>`;
+}
+
+async function refreshCheckin() {
+  if (!currentOperator) return;
+  try {
+    const result = await api(opsBase, `/ops/v1/checkins?check_in_date=${today}`);
+    currentCheckin = (result.data || []).find((row) => row.operator_id === currentOperator.operator_id) || null;
+  } catch {
+    currentCheckin = null;
+  }
+  renderCheckin();
+}
+
+async function doCheckin() {
+  const button = el.checkinCard.querySelector("#checkinButton");
+  if (button) button.disabled = true;
+  appMessage("Getting your location…");
+  const coords = await new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  });
+  try {
+    await api(opsBase, "/ops/v1/checkins", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey("checkin") },
+      body: JSON.stringify({ check_in_date: today, gps_lat: coords?.lat ?? null, gps_lng: coords?.lng ?? null })
+    });
+    appMessage(coords ? "Checked in — waiting for your supervisor to confirm." : "Checked in without GPS — waiting for your supervisor.");
+  } catch (error) {
+    appMessage(error.message, true);
+  }
+  await refreshCheckin();
+}
+
+el.checkinCard.addEventListener("click", (event) => {
+  if (event.target.closest("#checkinButton")) doCheckin();
+});
+
 async function load() {
   if (!token) return showLogin();
   el.connectionStatus.textContent = "Loading";
@@ -202,6 +276,7 @@ async function load() {
   if (!operator) throw new Error("No active Ops assignment is linked to this account.");
 
   currentOperator = operator;
+  void refreshCheckin();
   let dateFrom = el.dateFrom.value || el.dateTo.value || today;
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];

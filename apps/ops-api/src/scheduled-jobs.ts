@@ -42,6 +42,7 @@ export const scheduledJobs: ScheduledJobDefinition[] = [
   job("bolt-operational-ingest", "IngestModule", "external_cron", "Hourly 07:00-21:00", "platform-ingest", 900, 4, 300, "job/date/hour/account", 75, [], ["admin"], "provisional"),
   job("uber-operational-ingest", "IngestModule", "external_cron", "Hourly 07:00-21:00", "platform-ingest", 900, 4, 300, "job/date/hour/account", 75, [], ["admin"], "provisional"),
   job("cartracker-daily-ingest", "MileageModule", "external_cron", "Hourly 07:00-22:00; 23:30 final", "distance-ingest", 900, 4, 300, "job/date/hour/account", 75, [], ["admin"], "provisional"),
+  job("speedaf-delivery-pull", "DeliveriesModule", "external_cron", "Hourly 08:00-20:00 (headless portal export)", "platform-ingest", 1800, 3, 600, "job/date/hour", 120, [], ["supervisor", "admin"], "provisional"),
   job("distance-daily-retry", "MileageModule", "external_cron", "Daily 02:00; previous 7 days", "distance-ingest", 1800, 4, 900, "job/window", 1440, ["platform-ingest"], ["admin"], "pending_source"),
   job("uber-distance-report-backfill", "MileageModule", "external_cron", "Monday 03:00; previous week", "distance-ingest", 3600, 4, 1800, "job/window/account", 10080, [], ["admin"], "pending_source"),
   job("mileage-reconcile-provisional", "MileageModule", "event_trigger", "After distance or fuel update", "mileage-reconcile", 600, 3, 120, "job/date/operator", 120, ["distance-ingest"], ["admin"], "provisional"),

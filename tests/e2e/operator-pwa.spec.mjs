@@ -25,6 +25,22 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator("#timeline li").first()).toBeVisible();
   });
 
+  test("files a daily check-in from the Today tab", async ({ page }) => {
+    await signIn(page);
+    const card = page.locator("#checkinCard");
+    await expect(card).toBeVisible();
+    // Fresh or already-handled today: either the check-in button or a status.
+    const button = card.getByRole("button", { name: /check in|re-send location/i });
+    if (await button.count()) {
+      await button.first().click();
+      // Geolocation is unavailable in headless, so it files without GPS and
+      // lands pending supervisor confirmation (or already approved earlier).
+      await expect(card).toContainText(/Waiting for supervisor|Checked in/i, { timeout: 10000 });
+    } else {
+      await expect(card).toContainText(/Checked in|rejected/i);
+    }
+  });
+
   test("dock tabs switch between cockpit sections", async ({ page }) => {
     await signIn(page);
     await page.locator("[data-tab-link='rank']").click();

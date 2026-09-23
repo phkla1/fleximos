@@ -1,10 +1,33 @@
 # Scheduled Deliveries — Spec v0.3
 
-**Status:** Approved model (owner decisions 2 Aug 2026 folded in); build pending final go
+**Status:** Built. Batch/assignment model, two-price economics, stops/POD and
+exceptions shipped earlier; the **Speedaf import, courier→operator mapping,
+class-aware allocated price, and the operator GPS check-in** landed in the
+Phase-1 go-live slice (see `docs/Ops-Go-Live-Phase-1-Spec.md`).
 **Derived from:** `docs/Supervisor-App-Frontend-Brief.md` §7 + owner
 clarifications (2 Aug 2026): supervisors manually scan/record and assign
 daily targets today; customers (Speedaf, Konga, …) have no API yet but are
 expected to provide them later.
+
+## 0. Phase-1 go-live additions (Sept 2026) — real numbers and the import
+
+- **Speedaf has no API but exports a per-waybill status .xlsx** with a
+  free-text "Delivery Courier". FlexiMOS ingests it (manual upload of the file,
+  or a scheduled headless portal pull) via `POST /ops/v1/delivery-imports`,
+  parsing the sheet with a dependency-free reader and folding the rows onto the
+  existing batch/assignment model (`counts_source = customer_app_import`). Re-
+  import is idempotent. Unmapped couriers surface for one-time mapping
+  (`/ops/v1/delivery-courier-aliases`); amoeba is derived from the mapped
+  operator via identity.
+- **Real prices:** Speedaf contract ≈ **₦1,300**/package (earned, finance/
+  manager only); allocated ≈ **₦700**/package for **riders** (operator-facing).
+- **Allocated price is class-aware:** riders vs **drivers** (Qute cars, moved
+  off ride-hailing into delivery) earn different rates; drivers also carry a
+  fixed **daily basic**. A class-specific effective-dated rate wins over the
+  global one; the daily basic is applied once per delivery-day in the rollups.
+- **Operator daily check-in:** GPS-geofenced against the amoeba's Sites, filed
+  from the operator PWA, **confirmed by the supervisor** (required even when GPS
+  passes, since an office-resident could pass the fence from bed).
 
 ## 1. What v1 is (and is not)
 

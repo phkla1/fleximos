@@ -3,6 +3,8 @@ import { AuthService } from "./auth.service.js";
 import { DatabaseService } from "./database.service.js";
 import { DeliveriesController } from "./deliveries.controller.js";
 import { DeliveriesService } from "./deliveries.service.js";
+import { DeliveriesImportService } from "./deliveries-import.service.js";
+import { AttendanceService } from "./attendance.service.js";
 import { DepthController } from "./depth.controller.js";
 import { DepthService } from "./depth.service.js";
 import { JobRunnerService } from "./job-runner.service.js";
@@ -22,6 +24,8 @@ import { IntegrationStatusService } from "./integration-status.service.js";
     OpsService,
     DepthService,
     DeliveriesService,
+    DeliveriesImportService,
+    AttendanceService,
     PlatformConnectorsService,
     NotificationService,
     TrackerIngestService,

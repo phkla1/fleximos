@@ -77,6 +77,10 @@
     },
     {
       "name": "Escalations"
+    },
+    {
+      "name": "Attendance",
+      "description": "Operator check-in / resumption discipline."
     }
   ],
   "paths": {
@@ -4337,7 +4341,7 @@
           "Mileage"
         ],
         "summary": "Latest known position per vehicle (map view), scoped to the caller",
-        "description": "Aggregated across every configured tracker connector. Vehicles with no feed are listed separately — absence of a pin is shown, never hidden.",
+        "description": "Aggregated across every configured tracker connector. Vehicles with no feed are listed separately \u2014 absence of a pin is shown, never hidden.",
         "responses": {
           "200": {
             "description": "Positions and the no-feed list",
@@ -4513,6 +4517,367 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/delivery-courier-aliases": {
+      "get": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "List courier-name aliases",
+        "description": "Free-text customer courier names mapped to real operators.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Map a courier name to an operator",
+        "description": "Supervisor. Used to resolve delivery imports to the roster.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
+    },
+    "/delivery-imports": {
+      "get": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "List delivery-export imports",
+        "description": "Capture log of Speedaf exports ingested (manual or scheduled pull).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Ingest a Speedaf delivery-waybill export",
+        "description": "Supervisor. Parsed rows fold onto batches/assignments (counts_source=customer_app_import); unmapped couriers are returned for mapping.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
+    },
+    "/checkins": {
+      "get": {
+        "tags": [
+          "Attendance"
+        ],
+        "summary": "List operator check-ins",
+        "description": "Scoped to the caller; supervisors see their team, operators their own.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "check_in_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Attendance"
+        ],
+        "summary": "File a GPS operator check-in",
+        "description": "Operator self-check-in (pending supervisor confirmation), or a supervisor filing for an operator. Geofenced against amoeba Sites.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
+    },
+    "/checkins/{checkin_id}/decision": {
+      "post": {
+        "tags": [
+          "Attendance"
+        ],
+        "summary": "Approve or reject a check-in",
+        "description": "Supervisor. Required even when GPS passes (an office-resident could pass from bed).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          },
+          {
+            "name": "checkin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
+    },
+    "/delivery-imports/pull": {
+      "post": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Run the headless Speedaf pull now",
+        "description": "System admin. Logs into the Speedaf portal, exports today's waybills and ingests them \u2014 the same job the scheduler runs hourly when configured.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "description": "Client-generated key; replays return the first response."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Not configured / validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
           }
         }
       }

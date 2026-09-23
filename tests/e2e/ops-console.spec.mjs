@@ -206,6 +206,43 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator(".assignment-row").first()).toBeVisible();
   });
 
+  test("offers the Speedaf import panel on the deliveries tab", async ({ page }) => {
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.locator("[data-tab-link='deliveries']").click();
+    await page.getByText("Import Speedaf export (.xlsx)").click();
+    await expect(page.locator("#importFile")).toBeVisible();
+    await expect(page.locator("#importCustomer")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import export" })).toBeVisible();
+  });
+
+  test("surfaces an operator check-in for approval on the cockpit", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    const headers = { Authorization: "Bearer flexi-dev-service-token", "Content-Type": "application/json" };
+    const roster = await request.get(`${opsBase}/ops/v1/operators`, { headers });
+    const rosterRows = (await roster.json()).data;
+    // Pick an operator on the default supervisor's (person_founder_wole) team so
+    // the check-in lands in that cockpit's scope.
+    const operator = rosterRows.find((row) => row.operator_status === "active" && row.supervisor_person_id === "person_founder_wole")
+      || rosterRows.find((row) => row.operator_status === "active");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    await request.post(`${opsBase}/ops/v1/checkins`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-checkin-${Date.now()}` },
+      data: { operator_id: operator.operator_id, gps_lat: 6.44487, gps_lng: 3.47798, check_in_date: today }
+    });
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    // The check-in lands in the supervisor's scope: the panel renders and,
+    // when a pending row is present, exposes an Approve action that resolves it.
+    const approvals = page.locator("#checkinApprovals");
+    await expect(approvals).toContainText("Check-ins");
+    const approveButton = approvals.getByRole("button", { name: "Approve" });
+    if (await approveButton.count()) {
+      await approveButton.first().click();
+      await expect(approvals).toContainText(/approved today/i);
+    }
+  });
+
   test("shows the live vehicle map with remote power control", async ({ page }) => {
     // person_founder_wole supervises the demo vehicle's operator, so the
     // fixture-backed position is inside this actor's team scope.
@@ -266,8 +303,8 @@ test.describe("Ops admin console", () => {
     await expect(page.getByRole("heading", { name: "Vehicle efficiency policy" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Daily reports" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Data health" })).toBeVisible();
-    await expect(page.getByText("15 registered jobs")).toBeVisible();
-    await expect(page.locator(".job-row")).toHaveCount(15);
+    await expect(page.getByText("16 registered jobs")).toBeVisible();
+    await expect(page.locator(".job-row")).toHaveCount(16);
   });
 
   test("summarises teams before exposing individual operators", async ({ page }) => {

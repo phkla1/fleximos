@@ -343,11 +343,17 @@
             </details>
             <div id="allocatedPriceList" class="data-list compact-list"></div>
             <details class="management-panel">
-              <summary>Set the global allocated price</summary>
+              <summary>Set an allocated price</summary>
               <form id="allocatedPriceForm" class="entry-form compact-form">
+                <label>Applies to<select name="operator_class">
+                  <option value="all">All (global default)</option>
+                  <option value="rider">Riders (bikes)</option>
+                  <option value="driver">Drivers (Qute cars)</option>
+                </select></label>
                 <label>Price ₦/package<input name="price_ngn" type="number" min="1" step="10" required /></label>
+                <label>Daily basic ₦<input name="daily_basic_ngn" type="number" min="0" step="10" value="0" /></label>
                 <label>Effective from<input name="effective_from" type="date" required /></label>
-                <p class="form-hint">One global value across all customers, versioned by date like other policies.</p>
+                <p class="form-hint">Choose <strong>All</strong> for the global default, or set a <strong>Driver</strong> rate (usually a higher per-package fee plus a fixed daily basic) — a class-specific rate wins over the global one. Versioned by date like other policies.</p>
                 <button type="submit">Save allocated price</button>
               </form>
             </details>

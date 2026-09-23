@@ -277,3 +277,24 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .count-steppers label { display: grid; gap: 2px; font-size: 10px; font-weight: 800; color: var(--muted); }
 .count-steppers input { width: 72px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
 #podSignature { width: 100%; height: 140px; border: 1px dashed var(--line); border-radius: 10px; background: #fff; touch-action: none; }
+
+/* ---------- daily check-in card ---------- */
+.checkin-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 14px; padding: 14px 16px; border-radius: var(--radius, 14px);
+  background: var(--surface); border: 1px solid var(--line, #d9e4dd); box-shadow: var(--shadow-soft, 0 1px 2px rgba(13,38,30,.05));
+}
+.checkin-card .checkin-status { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.checkin-card .checkin-status strong { font-size: 15px; }
+.checkin-card .checkin-status span { font-size: 12.5px; color: var(--muted); }
+.checkin-button {
+  flex: 0 0 auto; padding: 11px 18px; border: 0; border-radius: 11px;
+  background: var(--green); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer;
+}
+.checkin-button:disabled { opacity: .6; }
+.checkin-button.ghost { background: #fff; color: var(--green-dark); border: 1px solid var(--line, #d9e4dd); }
+.checkin-card.approved { background: var(--green-bg); border-color: #bcd9cc; }
+.checkin-card.approved .checkin-status strong { color: var(--green-dark); }
+.checkin-card.pending { border-color: #e4c98a; background: #fbf4e2; }
+.checkin-card.rejected { border-color: #e2b3ab; background: #fbeae7; }
+.checkin-card.rejected .checkin-status strong { color: #a53e32; }

@@ -18,6 +18,7 @@ const state = {
   deliveryCustomers: [],
   deliveryStops: [],
   deliverySummary: null,
+  checkins: [],
   vehiclePositions: { positions: [], no_feed: [] },
   integrationStatus: [],
   operatingDate: null,
@@ -41,7 +42,8 @@ const el = Object.fromEntries([
   "controlOverrideField", "controlOverride", "confirmControlButton",
   "kpiStrip", "driverTable", "vehicleTable", "exportDriversCsv",
   "exportVehiclesCsv", "incidentForm", "weeklySummary", "exportWeeklyCsv",
-  "dialogCostField", "dialogCost"
+  "dialogCostField", "dialogCost", "checkinApprovals", "importCustomer",
+  "importDate", "importFile", "importRun", "importResult"
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
@@ -1123,9 +1125,155 @@ function render() {
   renderFuel();
   renderCloseout(latestAnalysis);
   renderDeliveries();
+  renderCheckinApprovals();
+  renderImportControls();
   renderVehicleMap();
   if (openOperatorId) renderOperatorDialog(openOperatorId);
 }
+
+/* ---------- operator check-in approvals ---------- */
+
+function checkinFence(checkin) {
+  if (checkin.geofence_ok === true) return `<span class="pill resolved">Inside ${escapeHtml(checkin.matched_site_name || "site")}${checkin.distance_m != null ? ` · ${Math.round(checkin.distance_m)}m` : ""}</span>`;
+  if (checkin.geofence_ok === false) return `<span class="pill open">Outside${checkin.distance_m != null ? ` · ${(Number(checkin.distance_m) / 1000).toFixed(1)}km` : ""}</span>`;
+  return `<span class="pill pending">No GPS</span>`;
+}
+
+function renderCheckinApprovals() {
+  if (!el.checkinApprovals) return;
+  const checkins = state.checkins || [];
+  const pending = checkins.filter((checkin) => checkin.status === "pending");
+  const approved = checkins.filter((checkin) => checkin.status === "approved").length;
+  if (!checkins.length) { el.checkinApprovals.innerHTML = ""; return; }
+  el.checkinApprovals.innerHTML = `
+    <div class="checkin-approvals-head">
+      <strong>Check-ins</strong>
+      <span class="subtle">${pending.length} awaiting you · ${approved} approved today</span>
+    </div>
+    ${pending.length ? pending.map((checkin) => `
+      <div class="checkin-approval-row">
+        <div class="checkin-approval-who">
+          <strong>${escapeHtml(personName(checkin.person_id))}</strong>
+          <small>${timeOf(checkin.requested_at)} · ${checkinFence(checkin)}</small>
+        </div>
+        <div class="checkin-approval-actions">
+          <button type="button" class="linklike" data-reject-checkin="${escapeHtml(checkin.checkin_id)}">Reject</button>
+          <button type="button" class="primary" data-approve-checkin="${escapeHtml(checkin.checkin_id)}">Approve</button>
+        </div>
+      </div>`).join("") : `<div class="checkin-approval-clear">All check-ins handled ✓</div>`}`;
+}
+
+async function decideCheckin(checkinId, decision) {
+  try {
+    await ops(`/ops/v1/checkins/${checkinId}/decision`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key("checkin-decision") },
+      body: JSON.stringify({ decision })
+    });
+    setNotice(decision === "approve" ? "Check-in approved." : "Check-in rejected.");
+    await refresh().catch(showError);
+  } catch (error) {
+    showError(error);
+  }
+}
+
+/* ---------- Speedaf import ---------- */
+
+let lastImportUnmapped = [];
+
+function renderImportControls() {
+  if (!el.importCustomer) return;
+  const customers = state.deliveryCustomers.filter((customer) => customer.status === "active");
+  const current = el.importCustomer.value;
+  el.importCustomer.innerHTML = customers.map((customer) =>
+    `<option value="${escapeHtml(customer.delivery_customer_id)}">${escapeHtml(customer.name)}</option>`).join("");
+  if (current) el.importCustomer.value = current;
+  if (!el.importDate.value) el.importDate.value = state.dateTo || todayLagos;
+  if (!el.importResult.dataset.rendered) renderImportResult();
+}
+
+function renderImportResult(result) {
+  el.importResult.dataset.rendered = "1";
+  if (!result && !lastImportUnmapped.length) { el.importResult.innerHTML = ""; return; }
+  const operators = state.operators;
+  const operatorOptions = operators.map((operator) =>
+    `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))} · ${escapeHtml(String(operator.amoeba_id).replace("amoeba_", ""))}</option>`).join("");
+  el.importResult.innerHTML = `
+    ${result ? `<p class="import-summary">${result.matched_count} rider${result.matched_count === 1 ? "" : "s"} matched · ${result.delivered_count} delivered · ${result.unmapped_count} unmapped</p>` : ""}
+    ${lastImportUnmapped.length ? `
+      <p class="section-intro">Map these couriers once — then re-import to apply their deliveries:</p>
+      <div class="unmapped-list">
+        ${lastImportUnmapped.map((row) => `
+          <div class="unmapped-row" data-unmapped="${escapeHtml(row.courier)}">
+            <strong>${escapeHtml(row.courier)}</strong><small>${Number(row.waybills)} waybill${Number(row.waybills) === 1 ? "" : "s"}</small>
+            <select data-map-operator="${escapeHtml(row.courier)}">${operatorOptions}</select>
+            <button type="button" class="linklike" data-map-courier="${escapeHtml(row.courier)}">Map</button>
+          </div>`).join("")}
+      </div>` : (result ? `<p class="import-clear">Every courier matched a rider ✓</p>` : "")}`;
+}
+
+async function runImport() {
+  const file = el.importFile.files?.[0];
+  const customerId = el.importCustomer.value;
+  const batchDate = el.importDate.value;
+  if (!file) { setNotice("Choose a Speedaf .xlsx export first.", true); return; }
+  if (!customerId) { setNotice("Pick the delivery customer for this export.", true); return; }
+  el.importRun.disabled = true;
+  el.importRun.textContent = "Importing…";
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = () => reject(new Error("Could not read the file."));
+      reader.readAsDataURL(file);
+    });
+    const result = await ops("/ops/v1/delivery-imports", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("delivery-import") },
+      body: JSON.stringify({ delivery_customer_id: customerId, batch_date: batchDate, file_name: file.name, file_base64: base64 })
+    });
+    lastImportUnmapped = result.unmapped_couriers || [];
+    setNotice(`Imported: ${result.matched_count} matched, ${result.delivered_count} delivered, ${result.unmapped_count} unmapped.`);
+    await refresh().catch(showError);
+    renderImportResult(result);
+  } catch (error) {
+    showError(error);
+  } finally {
+    el.importRun.disabled = false;
+    el.importRun.textContent = "Import export";
+  }
+}
+
+async function mapCourier(courier, operatorId, customerId) {
+  try {
+    await ops("/ops/v1/delivery-courier-aliases", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("courier-alias") },
+      body: JSON.stringify({ courier_name: courier, operator_id: operatorId, delivery_customer_id: customerId })
+    });
+    lastImportUnmapped = lastImportUnmapped.filter((row) => row.courier !== courier);
+    setNotice(`Mapped "${courier}". Re-import to apply their deliveries.`);
+    renderImportResult();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+if (el.importRun) el.importRun.addEventListener("click", runImport);
+if (el.importResult) el.importResult.addEventListener("click", (event) => {
+  const map = event.target.closest("[data-map-courier]");
+  if (map) {
+    const courier = map.dataset.mapCourier;
+    const operatorId = el.importResult.querySelector(`[data-map-operator="${CSS.escape(courier)}"]`)?.value;
+    if (operatorId) mapCourier(courier, operatorId, el.importCustomer.value);
+  }
+});
+if (el.checkinApprovals) el.checkinApprovals.addEventListener("click", (event) => {
+  const approve = event.target.closest("[data-approve-checkin]");
+  const reject = event.target.closest("[data-reject-checkin]");
+  if (approve) decideCheckin(approve.dataset.approveCheckin, "approve");
+  if (reject) decideCheckin(reject.dataset.rejectCheckin, "reject");
+});
 
 /* ---------- operator detail sheet ---------- */
 
@@ -1245,7 +1393,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus] = await Promise.all([
+  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, checkins] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
@@ -1263,7 +1411,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops(`/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
-    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] }))
+    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
+    ops(`/ops/v1/checkins?check_in_date=${dateTo}`).catch(() => ({ data: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -1294,6 +1443,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     deliveryCustomers: deliveryCustomers.data,
     deliveryStops: deliveryStops.data,
     deliverySummary,
+    checkins: (checkins.data || []).filter((row) => assignedIds.has(row.operator_id) || assignedAmoebas.has(row.amoeba_id)),
     integrationStatus: (integrationStatus.integrations || []).filter((row) => row.category === "tracker"),
     vehiclePositions: {
       positions: (vehiclePositions.positions || []).filter((row) =>
