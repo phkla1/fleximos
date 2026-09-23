@@ -576,7 +576,8 @@ function render() {
     <article class="policy-row ${customer.status === "active" ? "" : "superseded"}">
       <div><strong>${escapeHtml(customer.name)}</strong><small>${escapeHtml(customer.contact || "No contact")}</small><span class="pill ${customer.status === "active" ? "" : "superseded"}">${escapeHtml(customer.status)}</span></div>
       <div><strong>₦${Number(customer.contract_price_ngn).toLocaleString()}/package contract</strong><small>Finance-facing; operators see the allocated price only</small>
-        <button type="button" class="linklike" data-edit-customer="${escapeHtml(customer.delivery_customer_id)}">Edit</button></div>
+        <span class="row-actions"><button type="button" class="linklike" data-edit-customer="${escapeHtml(customer.delivery_customer_id)}">Edit</button>
+        <button type="button" class="linklike danger" data-delete-customer="${escapeHtml(customer.delivery_customer_id)}" data-customer-name="${escapeHtml(customer.name)}">Delete</button></span></div>
     </article>`;
   }).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
 
@@ -1011,8 +1012,21 @@ el.deliveryCustomerList.addEventListener("click", async (event) => {
   const edit = event.target.closest("[data-edit-customer]");
   const cancel = event.target.closest("[data-cancel-customer]");
   const save = event.target.closest("[data-save-customer]");
+  const del = event.target.closest("[data-delete-customer]");
   if (edit) { editingCustomerId = edit.dataset.editCustomer; render(); return; }
   if (cancel) { editingCustomerId = null; render(); return; }
+  if (del) {
+    const name = del.dataset.customerName || "this customer";
+    if (!window.confirm(`Delete "${name}"? This cannot be undone. (Customers with delivery batches or import history can't be deleted — set them inactive instead.)`)) return;
+    try {
+      await ops(`/ops/v1/delivery-customers/${del.dataset.deleteCustomer}`, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": key("dcustomer-del") }
+      });
+      await refresh(`Deleted "${name}".`);
+    } catch (error) { showError(error); }
+    return;
+  }
   if (save) {
     const row = save.closest("[data-customer-row]");
     const field = (name) => row.querySelector(`[data-field="${name}"]`);

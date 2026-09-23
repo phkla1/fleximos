@@ -4881,6 +4881,53 @@
           }
         }
       }
+    },
+    "/delivery-customers/{customerId}": {
+      "delete": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Delete a delivery customer",
+        "description": "System admin. Only when it has no batches or imports; otherwise set it inactive.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Has batches/imports"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
     }
   },
   "components": {

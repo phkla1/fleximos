@@ -207,6 +207,23 @@ export class DeliveriesService {
     return updated;
   }
 
+  // Hard-delete a delivery customer — only when nothing references it (a
+  // mis-named or duplicate entry). If batches or imports exist, the history
+  // must be preserved, so we refuse and point the admin at "set inactive".
+  async deleteCustomer(customerId: string, actorPersonId: string) {
+    const existing = await this.db.one<any>("SELECT * FROM ops_delivery_customers WHERE delivery_customer_id=$1", [customerId]);
+    if (!existing) throw new NotFoundException("Delivery customer not found.");
+    const batch = await this.db.one<any>("SELECT batch_id FROM ops_delivery_batches WHERE delivery_customer_id=$1 LIMIT 1", [customerId]);
+    if (batch) throw new ConflictException("This customer has delivery batches; set it inactive instead of deleting.");
+    const imported = await this.db.one<any>("SELECT import_id FROM ops_delivery_imports WHERE delivery_customer_id=$1 LIMIT 1", [customerId]);
+    if (imported) throw new ConflictException("This customer has import history; set it inactive instead of deleting.");
+    // Courier aliases point at the customer optionally — clear them first.
+    await this.db.exec("DELETE FROM ops_delivery_courier_aliases WHERE delivery_customer_id=$1", [customerId]);
+    await this.db.exec("DELETE FROM ops_delivery_customers WHERE delivery_customer_id=$1", [customerId]);
+    await this.audit("delivery_customer.deleted", "delivery_customer", customerId, existing, null, actorPersonId);
+    return { delivery_customer_id: customerId, deleted: true };
+  }
+
   /* ---------------- batches ---------------- */
 
   private async loadBatch(batchId: string) {

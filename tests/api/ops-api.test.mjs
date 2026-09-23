@@ -1484,3 +1484,37 @@ test("operator check-in geofences against Sites and requires supervisor approval
   const list = await request("/ops/v1/checkins?check_in_date=2026-06-18");
   assert.ok(list.body.data.some((row) => row.checkin_id === inside.body.checkin_id), "check-in is listable");
 });
+
+test("deletes an unreferenced delivery customer but refuses one with history", async () => {
+  // A throwaway customer with nothing referencing it deletes cleanly.
+  const spare = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "del-cust-spare" },
+    body: JSON.stringify({ name: "Deletable Co", contract_price_ngn: 900 })
+  });
+  const del = await request(`/ops/v1/delivery-customers/${spare.body.delivery_customer_id}`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "del-cust-spare-go" }
+  });
+  assert.equal(del.response.status, 200);
+  assert.equal(del.body.deleted, true);
+  const after = await request("/ops/v1/delivery-customers");
+  assert.ok(!after.body.data.some((c) => c.delivery_customer_id === spare.body.delivery_customer_id), "customer is gone");
+
+  // A customer that already has a batch cannot be hard-deleted.
+  const used = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "del-cust-used" },
+    body: JSON.stringify({ name: "Has Batches Co", contract_price_ngn: 1200 })
+  });
+  await request("/ops/v1/delivery-batches", {
+    method: "POST",
+    headers: { "Idempotency-Key": "del-cust-used-batch" },
+    body: JSON.stringify({ delivery_customer_id: used.body.delivery_customer_id, amoeba_id: "amoeba_mainland", batch_date: "2026-06-20" })
+  });
+  const refused = await request(`/ops/v1/delivery-customers/${used.body.delivery_customer_id}`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "del-cust-used-go" }
+  });
+  assert.equal(refused.response.status, 409, "a customer with batches can't be deleted");
+});

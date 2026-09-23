@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -98,6 +99,21 @@ export class DeliveriesController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.deliveries.updateCustomer(customerId, body, actor.person_id));
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a delivery customer (only when it has no batches or imports; otherwise set it inactive)" })
+  @Delete("ops/v1/delivery-customers/:customerId")
+  @HttpCode(HttpStatus.OK)
+  async deleteCustomer(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("customerId") customerId: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.deliveries.deleteCustomer(customerId, actor.person_id));
   }
 
   @ApiTags("Deliveries")
