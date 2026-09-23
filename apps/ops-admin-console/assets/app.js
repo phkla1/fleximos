@@ -564,7 +564,7 @@ function render() {
     <article class="policy-row" data-customer-row="${escapeHtml(customer.delivery_customer_id)}">
       <div><strong>${escapeHtml(customer.name)}</strong></div>
       <div class="inline-edit">
-        <label>Contract ₦/pkg<input type="number" min="1" step="10" value="${Number(customer.contract_price_ngn)}" data-field="contract_price_ngn" /></label>
+        <label>Contract ₦/pkg<input type="number" min="1" step="any" value="${Number(customer.contract_price_ngn)}" data-field="contract_price_ngn" /></label>
         <label>Contact<input value="${escapeHtml(customer.contact || "")}" data-field="contact" placeholder="Optional" /></label>
         <label>Status<select data-field="status"><option value="active"${customer.status === "active" ? " selected" : ""}>active</option><option value="inactive"${customer.status !== "active" ? " selected" : ""}>inactive</option></select></label>
         <button type="button" class="primary" data-save-customer="${escapeHtml(customer.delivery_customer_id)}">Save</button>
