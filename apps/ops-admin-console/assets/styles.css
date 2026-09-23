@@ -274,3 +274,10 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
 .missing-record td { color: #8a5a16; background: #fdf6ea; font-size: 13px; }
 button.danger { border-color: #d9b3ad; color: #9c2d1f; background: #fdf1ef; }
 button.danger:hover { background: #f9e3df; }
+
+/* ---------- inline edit (delivery customers) ---------- */
+button.linklike { min-height: auto; padding: 4px 6px; background: none; box-shadow: none; color: var(--green-dark); font-weight: 700; }
+button.linklike:hover { background: none; filter: none; text-decoration: underline; }
+.inline-edit { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }
+.inline-edit label { display: grid; gap: 3px; font-size: 11px; font-weight: 700; color: var(--muted); }
+.inline-edit input, .inline-edit select { min-height: 38px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; max-width: 150px; }

@@ -26,6 +26,9 @@ const state = {
   jobFilter: ""
 };
 
+// Row currently in inline-edit mode in the delivery-customer list.
+let editingCustomerId = null;
+
 const el = Object.fromEntries(
   [
     "notice", "connectionText", "activeOperatorCount", "openAlertCount",
@@ -555,11 +558,27 @@ function render() {
     </article>`;
   }).join("") || `<div class="empty">No economics policies configured.</div>`;
 
-  el.deliveryCustomerList.innerHTML = state.deliveryCustomers.length ? state.deliveryCustomers.map((customer) => `
+  el.deliveryCustomerList.innerHTML = state.deliveryCustomers.length ? state.deliveryCustomers.map((customer) => {
+    if (editingCustomerId === customer.delivery_customer_id) {
+      return `
+    <article class="policy-row" data-customer-row="${escapeHtml(customer.delivery_customer_id)}">
+      <div><strong>${escapeHtml(customer.name)}</strong></div>
+      <div class="inline-edit">
+        <label>Contract ₦/pkg<input type="number" min="1" step="10" value="${Number(customer.contract_price_ngn)}" data-field="contract_price_ngn" /></label>
+        <label>Contact<input value="${escapeHtml(customer.contact || "")}" data-field="contact" placeholder="Optional" /></label>
+        <label>Status<select data-field="status"><option value="active"${customer.status === "active" ? " selected" : ""}>active</option><option value="inactive"${customer.status !== "active" ? " selected" : ""}>inactive</option></select></label>
+        <button type="button" class="primary" data-save-customer="${escapeHtml(customer.delivery_customer_id)}">Save</button>
+        <button type="button" class="linklike" data-cancel-customer>Cancel</button>
+      </div>
+    </article>`;
+    }
+    return `
     <article class="policy-row ${customer.status === "active" ? "" : "superseded"}">
       <div><strong>${escapeHtml(customer.name)}</strong><small>${escapeHtml(customer.contact || "No contact")}</small><span class="pill ${customer.status === "active" ? "" : "superseded"}">${escapeHtml(customer.status)}</span></div>
-      <div><strong>₦${Number(customer.contract_price_ngn).toLocaleString()}/package contract</strong><small>Finance-facing; operators see the allocated price only</small></div>
-    </article>`).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
+      <div><strong>₦${Number(customer.contract_price_ngn).toLocaleString()}/package contract</strong><small>Finance-facing; operators see the allocated price only</small>
+        <button type="button" class="linklike" data-edit-customer="${escapeHtml(customer.delivery_customer_id)}">Edit</button></div>
+    </article>`;
+  }).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
 
   el.allocatedPriceList.innerHTML = state.allocatedPrices.map((price) => {
     const operatorClass = price.operator_class || "all";
@@ -985,6 +1004,33 @@ el.deliveryCustomerForm.addEventListener("submit", async (event) => {
     el.deliveryCustomerForm.reset();
     await refresh("Delivery customer added.");
   } catch (error) { showError(error); }
+});
+
+// Inline edit for delivery customers (contract price / contact / status).
+el.deliveryCustomerList.addEventListener("click", async (event) => {
+  const edit = event.target.closest("[data-edit-customer]");
+  const cancel = event.target.closest("[data-cancel-customer]");
+  const save = event.target.closest("[data-save-customer]");
+  if (edit) { editingCustomerId = edit.dataset.editCustomer; render(); return; }
+  if (cancel) { editingCustomerId = null; render(); return; }
+  if (save) {
+    const row = save.closest("[data-customer-row]");
+    const field = (name) => row.querySelector(`[data-field="${name}"]`);
+    const body = {
+      contract_price_ngn: Number(field("contract_price_ngn").value),
+      contact: field("contact").value.trim() || null,
+      status: field("status").value
+    };
+    try {
+      await ops(`/ops/v1/delivery-customers/${save.dataset.saveCustomer}`, {
+        method: "PATCH",
+        headers: { "Idempotency-Key": key("dcustomer-edit") },
+        body: JSON.stringify(body)
+      });
+      editingCustomerId = null;
+      await refresh("Delivery customer updated.");
+    } catch (error) { showError(error); }
+  }
 });
 
 el.allocatedPriceForm.addEventListener("submit", async (event) => {
