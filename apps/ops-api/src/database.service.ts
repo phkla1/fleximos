@@ -764,6 +764,30 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       CREATE INDEX IF NOT EXISTS idx_delivery_imports_date ON ops_delivery_imports(batch_date DESC);
 
+      -- Raw Speedaf waybills — the system of record, stored on EVERY import
+      -- regardless of whether the courier is mapped to an operator yet.
+      -- Ingestion (get the data in) is deliberately separate from attribution
+      -- (which operator gets credit). Re-import updates each waybill in place.
+      CREATE TABLE IF NOT EXISTS ops_speedaf_waybills (
+        waybill_row_id TEXT PRIMARY KEY,
+        delivery_customer_id TEXT NOT NULL REFERENCES ops_delivery_customers(delivery_customer_id),
+        batch_date DATE NOT NULL,
+        waybill_no TEXT NOT NULL,
+        waybill_status TEXT,
+        status_class TEXT NOT NULL DEFAULT 'unknown',
+        courier_norm TEXT,
+        courier_display TEXT,
+        attempts INTEGER,
+        last_scan TEXT,
+        last_scan_at TIMESTAMPTZ,
+        site_of_last_scan TEXT,
+        import_id TEXT,
+        captured_at TIMESTAMPTZ NOT NULL,
+        UNIQUE(delivery_customer_id, batch_date, waybill_no)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_speedaf_waybills_courier ON ops_speedaf_waybills(batch_date DESC, courier_norm);
+
       -- GPS + supervisor-confirmed operator check-in (resumption discipline).
       -- Geofenced against the operator's approved Sites; approval is required
       -- even when GPS passes, because an office-resident could pass from bed.

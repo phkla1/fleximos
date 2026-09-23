@@ -1427,7 +1427,7 @@ test("imports a Speedaf delivery export onto batches, resolving couriers and fla
   assert.equal(imported.response.status, 201);
   assert.equal(imported.body.matched_count, 1, "one courier resolved");
   assert.equal(imported.body.unmapped_count, 1, "one courier unmapped");
-  assert.equal(imported.body.delivered_count, 2, "two waybills Signed for ODEH");
+  assert.equal(imported.body.delivered_count, 3, "total delivered across ALL couriers ingested (ODEH 2 + Stranger 1)");
   assert.equal(imported.body.unmapped_couriers[0].courier, "Stranger Danger");
 
   const assignments = await request(`/ops/v1/delivery-assignments?date_from=2026-06-16&date_to=2026-06-16&operator_id=${operator.operator_id}`);
@@ -1545,4 +1545,49 @@ test("deletes an allocated-price version but keeps the last one", async () => {
     });
     assert.equal(refused.response.status, 409, "can't delete the only allocated price");
   }
+});
+
+test("stores raw Speedaf waybills and reports per-courier with ZERO mappings", async () => {
+  const customer = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "raw-cust" },
+    body: JSON.stringify({ name: "Speedaf Raw Test", contract_price_ngn: 1300 })
+  });
+  const customerId = customer.body.delivery_customer_id;
+  // Import with NO courier aliases at all — attribution impossible, but the
+  // data must still land in the database.
+  const rows = [
+    { waybill_no: "RAW1", waybill_status: "Signed", last_scan: "Signed", courier: "Uche", attempts: 1 },
+    { waybill_no: "RAW2", waybill_status: "Delivering", last_scan: "Delivery", courier: "Uche", attempts: 2 },
+    { waybill_no: "RAW3", waybill_status: "Signed", last_scan: "Signed", courier: "Francis", attempts: 1 }
+  ];
+  const imported = await request("/ops/v1/delivery-imports", {
+    method: "POST",
+    headers: { "Idempotency-Key": "raw-import-1" },
+    body: JSON.stringify({ delivery_customer_id: customerId, batch_date: "2026-07-01", rows })
+  });
+  assert.equal(imported.response.status, 201);
+  assert.equal(imported.body.matched_count, 0, "nothing attributed (no mappings)");
+  assert.equal(imported.body.unmapped_count, 2, "both couriers unmapped");
+  assert.equal(imported.body.row_count, 3, "all 3 waybills ingested");
+  assert.equal(imported.body.delivered_count, 2, "2 Signed stored regardless of mapping");
+
+  // The raw data is queryable per courier WITHOUT any mapping.
+  const couriers = await request(`/ops/v1/delivery-imports/couriers?date_from=2026-07-01&date_to=2026-07-01&customer_id=${customerId}`);
+  const uche = couriers.body.data.find((c) => c.courier_display === "Uche");
+  const francis = couriers.body.data.find((c) => c.courier_display === "Francis");
+  assert.ok(uche && francis, "both couriers appear in the raw summary");
+  assert.equal(Number(uche.waybills), 2, "Uche has 2 waybills stored");
+  assert.equal(Number(uche.delivered), 1, "Uche 1 delivered");
+  assert.equal(uche.operator_id, null, "Uche is unattributed (no mapping)");
+  assert.equal(Number(francis.delivered), 1, "Francis 1 delivered");
+
+  // Re-import is idempotent at the raw level (no doubling).
+  await request("/ops/v1/delivery-imports", {
+    method: "POST",
+    headers: { "Idempotency-Key": "raw-import-2" },
+    body: JSON.stringify({ delivery_customer_id: customerId, batch_date: "2026-07-01", rows })
+  });
+  const again = await request(`/ops/v1/delivery-imports/couriers?date_from=2026-07-01&date_to=2026-07-01&customer_id=${customerId}`);
+  assert.equal(Number(again.body.data.find((c) => c.courier_display === "Uche").waybills), 2, "still 2, not 4");
 });

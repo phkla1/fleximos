@@ -1179,7 +1179,8 @@ async function decideCheckin(checkinId, decision) {
 
 /* ---------- Speedaf import ---------- */
 
-let lastImportUnmapped = [];
+let lastImportResult = null;
+let lastImportCouriers = [];
 
 function renderImportControls() {
   if (!el.importCustomer) return;
@@ -1194,22 +1195,32 @@ function renderImportControls() {
 
 function renderImportResult(result) {
   el.importResult.dataset.rendered = "1";
-  if (!result && !lastImportUnmapped.length) { el.importResult.innerHTML = ""; return; }
-  const operators = state.operators;
-  const operatorOptions = operators.map((operator) =>
+  const summary = result || lastImportResult;
+  if (!summary && !lastImportCouriers.length) { el.importResult.innerHTML = ""; return; }
+  const operatorOptions = state.operators.map((operator) =>
     `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))} · ${escapeHtml(String(operator.amoeba_id).replace("amoeba_", ""))}</option>`).join("");
+  const couriers = lastImportCouriers;
+  const attributed = couriers.filter((c) => c.operator_id).length;
   el.importResult.innerHTML = `
-    ${result ? `<p class="import-summary">${result.matched_count} rider${result.matched_count === 1 ? "" : "s"} matched · ${result.delivered_count} delivered · ${result.unmapped_count} unmapped</p>` : ""}
-    ${lastImportUnmapped.length ? `
-      <p class="section-intro">Map these couriers once — then re-import to apply their deliveries:</p>
+    ${summary ? `<p class="import-summary">${Number(summary.row_count)} waybills stored · ${Number(summary.delivered_count)} delivered</p>
+      <p class="section-intro">All ${couriers.length} couriers are saved to the database. Mapping a courier to a rider is <strong>optional</strong> — it just attributes their deliveries to that rider's targets. ${attributed} of ${couriers.length} mapped so far.</p>` : ""}
+    ${couriers.length ? `
       <div class="unmapped-list">
-        ${lastImportUnmapped.map((row) => `
-          <div class="unmapped-row" data-unmapped="${escapeHtml(row.courier)}">
-            <strong>${escapeHtml(row.courier)}</strong><small>${Number(row.waybills)} waybill${Number(row.waybills) === 1 ? "" : "s"}</small>
-            <select data-map-operator="${escapeHtml(row.courier)}">${operatorOptions}</select>
-            <button type="button" class="linklike" data-map-courier="${escapeHtml(row.courier)}">Map</button>
+        ${couriers.map((c) => `
+          <div class="unmapped-row" data-unmapped="${escapeHtml(c.courier_display || "")}">
+            <strong>${escapeHtml(c.courier_display || "(no courier)")}</strong>
+            <small>${Number(c.delivered)}/${Number(c.waybills)} delivered</small>
+            ${c.operator_id
+              ? `<span class="pill resolved">→ ${escapeHtml(personName(c.person_id))}</span>`
+              : `<select data-map-operator="${escapeHtml(c.courier_display || "")}">${operatorOptions}</select>
+                 <button type="button" class="linklike" data-map-courier="${escapeHtml(c.courier_display || "")}">Map</button>`}
           </div>`).join("")}
-      </div>` : (result ? `<p class="import-clear">Every courier matched a rider ✓</p>` : "")}`;
+      </div>` : ""}`;
+}
+
+async function loadImportCouriers(customerId, date) {
+  const couriers = await ops(`/ops/v1/delivery-imports/couriers?date_from=${date}&date_to=${date}&customer_id=${encodeURIComponent(customerId)}`).catch(() => ({ data: [] }));
+  lastImportCouriers = couriers.data || [];
 }
 
 async function runImport() {
@@ -1232,8 +1243,9 @@ async function runImport() {
       headers: { "Idempotency-Key": key("delivery-import") },
       body: JSON.stringify({ delivery_customer_id: customerId, batch_date: batchDate, file_name: file.name, file_base64: base64 })
     });
-    lastImportUnmapped = result.unmapped_couriers || [];
-    setNotice(`Imported: ${result.matched_count} matched, ${result.delivered_count} delivered, ${result.unmapped_count} unmapped.`);
+    lastImportResult = result;
+    await loadImportCouriers(customerId, batchDate);
+    setNotice(`Imported ${Number(result.row_count)} waybills (${Number(result.delivered_count)} delivered). Data is stored; mapping couriers to riders is optional.`);
     await refresh().catch(showError);
     renderImportResult(result);
   } catch (error) {
@@ -1251,9 +1263,10 @@ async function mapCourier(courier, operatorId, customerId) {
       headers: { "Idempotency-Key": key("courier-alias") },
       body: JSON.stringify({ courier_name: courier, operator_id: operatorId, delivery_customer_id: customerId })
     });
-    lastImportUnmapped = lastImportUnmapped.filter((row) => row.courier !== courier);
-    setNotice(`Mapped "${courier}". Re-import to apply their deliveries.`);
-    renderImportResult();
+    setNotice(`Mapped "${courier}" to a rider — their stored deliveries now attribute to that rider.`);
+    // The courier summary resolves the operator via the new alias immediately.
+    await loadImportCouriers(customerId, el.importDate.value);
+    renderImportResult(lastImportResult);
   } catch (error) {
     showError(error);
   }

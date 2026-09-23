@@ -4975,6 +4975,56 @@
           }
         }
       }
+    },
+    "/delivery-imports/couriers": {
+      "get": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Per-courier summary from raw imported waybills",
+        "description": "Works with zero mappings. Each courier's delivered/attempted counts plus the operator it maps to (if any).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
     }
   },
   "components": {

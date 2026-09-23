@@ -230,6 +230,79 @@ export class DeliveriesImportService {
     );
   }
 
+  private parseAttempts(value: unknown): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  }
+
+  // Speedaf's "Last Scan Time" is an Excel serial (e.g. 46287.43, GMT+1). Turn
+  // it into an ISO timestamp; fall back to Date.parse for real date strings.
+  private excelToIso(value: unknown): string | null {
+    const text = String(value ?? "").trim();
+    if (!text) return null;
+    const serial = Number(text);
+    if (Number.isFinite(serial) && serial > 1) {
+      const ms = Math.round((serial - 25569) * 86400 * 1000); // Excel epoch 1899-12-30 -> Unix
+      const date = new Date(ms);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+    const parsed = Date.parse(text);
+    return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+  }
+
+  private async upsertRawWaybill(raw: {
+    customerId: string; batchDate: string; importId: string; capturedAt: string;
+    waybillNo: string; waybillStatus: string | null; statusClass: string;
+    courierNorm: string | null; courierDisplay: string | null; attempts: number | null;
+    lastScan: string | null; lastScanAt: string | null; siteOfLastScan: string | null;
+  }) {
+    await this.db.exec(
+      `INSERT INTO ops_speedaf_waybills
+        (waybill_row_id, delivery_customer_id, batch_date, waybill_no, waybill_status, status_class,
+         courier_norm, courier_display, attempts, last_scan, last_scan_at, site_of_last_scan, import_id, captured_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (delivery_customer_id, batch_date, waybill_no) DO UPDATE SET
+        waybill_status = EXCLUDED.waybill_status, status_class = EXCLUDED.status_class,
+        courier_norm = EXCLUDED.courier_norm, courier_display = EXCLUDED.courier_display,
+        attempts = EXCLUDED.attempts, last_scan = EXCLUDED.last_scan, last_scan_at = EXCLUDED.last_scan_at,
+        site_of_last_scan = EXCLUDED.site_of_last_scan, import_id = EXCLUDED.import_id, captured_at = EXCLUDED.captured_at`,
+      [
+        this.id("wb"), raw.customerId, raw.batchDate, raw.waybillNo, raw.waybillStatus, raw.statusClass,
+        raw.courierNorm, raw.courierDisplay, raw.attempts, raw.lastScan, raw.lastScanAt, raw.siteOfLastScan,
+        raw.importId, raw.capturedAt
+      ]
+    );
+  }
+
+  // Per-courier reporting straight from the raw store — works with ZERO
+  // mappings. Shows every courier's delivered/attempted counts and, where a
+  // mapping exists, the operator it attributes to.
+  async courierSummary(filters: { date_from?: string; date_to?: string; customer_id?: string } = {}) {
+    const to = this.date(filters.date_to || this.now().slice(0, 10), "date_to");
+    const from = this.date(filters.date_from || to, "date_from");
+    const params: unknown[] = [from, to];
+    const clauses = ["w.batch_date BETWEEN $1 AND $2"];
+    if (filters.customer_id) { params.push(filters.customer_id); clauses.push(`w.delivery_customer_id = $${params.length}`); }
+    return this.db.many(
+      `SELECT w.courier_norm, MAX(w.courier_display) AS courier_display,
+        COUNT(*) AS waybills,
+        SUM(CASE WHEN w.status_class='delivered' THEN 1 ELSE 0 END) AS delivered,
+        SUM(CASE WHEN w.status_class='exception' THEN 1 ELSE 0 END) AS exceptions,
+        SUM(CASE WHEN w.status_class='returned' THEN 1 ELSE 0 END) AS returned,
+        SUM(CASE WHEN w.status_class='out' THEN 1 ELSE 0 END) AS out_for_delivery,
+        al.operator_id, o.person_id, o.amoeba_id
+       FROM ops_speedaf_waybills w
+       LEFT JOIN ops_delivery_courier_aliases al
+         ON al.courier_norm = w.courier_norm
+         AND (al.delivery_customer_id = w.delivery_customer_id OR al.delivery_customer_id IS NULL)
+       LEFT JOIN ops_operators o ON o.operator_id = al.operator_id
+       WHERE ${clauses.join(" AND ")}
+       GROUP BY w.courier_norm, al.operator_id, o.person_id, o.amoeba_id
+       ORDER BY delivered DESC, waybills DESC`,
+      params
+    );
+  }
+
   async importSpeedaf(body: RecordBody, actorPersonId: string, scope: OpsDataScope = {}) {
     if (!body.delivery_customer_id) throw new BadRequestException("delivery_customer_id is required.");
     const customer = await this.db.one<any>(
@@ -249,15 +322,31 @@ export class DeliveriesImportService {
     }
     if (!rows.length) throw new BadRequestException("Provide export rows or an .xlsx file (file_base64).");
     const captureSource = String(body.capture_source || "manual_upload");
+    const importId = this.id("dimport");
+    const capturedAt = this.now();
 
-    // Group waybills by normalised courier and tally each status bucket.
+    // STORAGE (always): persist every waybill raw — the system of record —
+    // and build per-courier tallies. This does NOT depend on any courier being
+    // mapped to an operator; ingestion is separate from attribution.
     type Tally = { assigned: number; delivered: number; failed: number; returned: number; display: string };
     const byCourier = new Map<string, Tally>();
+    let deliveredTotal = 0;
     for (const row of rows) {
       const display = String(row.courier ?? "").trim();
       const norm = normaliseCourier(display);
-      if (!norm) continue;
       const bucket = classifyStatus(String(row.waybill_status ?? ""), String(row.last_scan ?? ""));
+      if (bucket === "delivered") deliveredTotal += 1;
+      const waybillNo = String(row.waybill_no ?? "").trim();
+      if (waybillNo) {
+        await this.upsertRawWaybill({
+          customerId: customer.delivery_customer_id, batchDate, importId, capturedAt,
+          waybillNo, waybillStatus: String(row.waybill_status ?? "") || null, statusClass: bucket,
+          courierNorm: norm || null, courierDisplay: display || null,
+          attempts: this.parseAttempts(row.attempts), lastScan: String(row.last_scan ?? "") || null,
+          lastScanAt: this.excelToIso(row.last_scan_time), siteOfLastScan: String(row.site_of_last_scan ?? "") || null
+        });
+      }
+      if (!norm) continue;
       const tally = byCourier.get(norm) || { assigned: 0, delivered: 0, failed: 0, returned: 0, display };
       tally.assigned += 1;
       if (bucket === "delivered") tally.delivered += 1;
@@ -266,10 +355,11 @@ export class DeliveriesImportService {
       byCourier.set(norm, tally);
     }
 
+    // ATTRIBUTION (optional): only couriers already mapped to an operator flow
+    // into the operator batch/assignment model (for pay/performance). Unmapped
+    // couriers are listed for later mapping — their raw data is already stored.
     let matched = 0;
-    let deliveredTotal = 0;
     const unmapped: { courier: string; waybills: number }[] = [];
-    // amoeba -> received count, so each import batch shows what landed for it.
     const amoebaReceived = new Map<string, number>();
     const amoebaBatch = new Map<string, string>();
 
@@ -289,7 +379,6 @@ export class DeliveriesImportService {
       await this.upsertAssignment(batchId, String(resolved.operator_id), tally, actorPersonId);
       amoebaReceived.set(amoebaId, (amoebaReceived.get(amoebaId) || 0) + tally.assigned);
       matched += 1;
-      deliveredTotal += tally.delivered;
     }
 
     // Roll the received/sorted counts up onto each import batch.
@@ -305,7 +394,7 @@ export class DeliveriesImportService {
     }
 
     const importRecord = {
-      import_id: this.id("dimport"),
+      import_id: importId,
       delivery_customer_id: customer.delivery_customer_id,
       batch_date: batchDate,
       capture_source: captureSource,

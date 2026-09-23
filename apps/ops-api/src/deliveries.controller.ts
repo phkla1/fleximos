@@ -194,6 +194,21 @@ export class DeliveriesController {
 
   @ApiTags("Deliveries")
   @ApiBearerAuth()
+  @ApiOperation({ summary: "Per-courier summary from the raw imported waybills (works with zero mappings)" })
+  @Get("ops/v1/delivery-imports/couriers")
+  async deliveryImportCouriers(
+    @Req() req: Request,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("customer_id") customerId?: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return { data: await this.deliveryImports.courierSummary({ date_from: dateFrom, date_to: dateTo, customer_id: customerId }), next_cursor: null };
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Ingest a Speedaf delivery-waybill export (parsed rows or .xlsx file_base64) onto batches/assignments" })
   @Post("ops/v1/delivery-imports")
   async importDelivery(
