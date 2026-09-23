@@ -200,7 +200,7 @@ Then in a browser (`http://<linode-ip>:8080` or your domain):
 - `…/apps/finance-console/` — finance console
 - `…/apps/analytics-console/` — analytics control room
 - `…/apps/operator-pwa/` — operator app (login: phone + PIN `000000` for seeded users)
-- `…/apps/admin-console/` — Identity/Amoeba admin
+- `…/apps/hr-admin-console/` — Identity/Amoeba admin
 
 **Console access tokens:** the deployed server uses the random service token
 in `~/fleximos-data/fleximos.env`, so consoles opened bare will show

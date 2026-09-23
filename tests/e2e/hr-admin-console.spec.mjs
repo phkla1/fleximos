@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("admin console", () => {
-  const adminUrl = "/apps/admin-console/?apiBase=http://127.0.0.1:4510";
+test.describe("hr-admin console", () => {
+  const adminUrl = "/apps/hr-admin-console/?apiBase=http://127.0.0.1:4510";
 
   test("loads foundation data and reads cleanly (no raw IDs, no dev chrome)", async ({ page }) => {
     await page.goto(adminUrl);

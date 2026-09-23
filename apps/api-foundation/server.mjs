@@ -1257,7 +1257,7 @@ const server = http.createServer(async (req, res) => {
           service_accounts: "/identity/v1/service-accounts",
           amoebas: "/amoeba/v1/amoebas",
           sites: "/amoeba/v1/sites",
-          admin_console: "http://127.0.0.1:4173/apps/admin-console/",
+          admin_console: "http://127.0.0.1:4173/apps/hr-admin-console/",
           developer_portal: "http://127.0.0.1:4173/apps/developer-portal/"
         },
         examples: [

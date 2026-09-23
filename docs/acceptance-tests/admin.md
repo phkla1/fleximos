@@ -3,7 +3,7 @@
 **Who this is for:** system administrators and data-operations staff.
 **Where:**
 - Administrator Console (ops): `https://<host>/apps/ops-admin-console/`
-- Identity/Amoeba admin: `https://<host>/apps/admin-console/`
+- Identity/Amoeba admin: `https://<host>/apps/hr-admin-console/`
 
 Admin surfaces are for configuration, roster, policies and data health — not
 day-to-day operations (that lives with supervisors and managers).

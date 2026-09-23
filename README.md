@@ -21,7 +21,7 @@ http://localhost:4173/apps/developer-portal/
 The first admin frontend is available at:
 
 ```text
-http://localhost:4173/apps/admin-console/
+http://localhost:4173/apps/hr-admin-console/
 ```
 
 Validate the OpenAPI contract files:
