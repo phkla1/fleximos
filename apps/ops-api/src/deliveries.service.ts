@@ -150,6 +150,19 @@ export class DeliveriesService {
     return record;
   }
 
+  // Delete an allocated-price version (config; e.g. clearing a stale seed).
+  // Refuse to delete the last remaining price so operators always resolve a
+  // rate — set a replacement first.
+  async deleteAllocatedPrice(priceId: string, actorPersonId: string) {
+    const existing = await this.db.one<any>("SELECT * FROM ops_delivery_allocated_prices WHERE allocated_price_id=$1", [priceId]);
+    if (!existing) throw new NotFoundException("Allocated price not found.");
+    const remaining = await this.db.one<any>("SELECT COUNT(*)::int AS n FROM ops_delivery_allocated_prices");
+    if (Number(remaining?.n) <= 1) throw new ConflictException("This is the only allocated price; set a replacement before deleting it.");
+    await this.db.exec("DELETE FROM ops_delivery_allocated_prices WHERE allocated_price_id=$1", [priceId]);
+    await this.audit("delivery_allocated_price.deleted", "delivery_allocated_price", priceId, existing, null, actorPersonId);
+    return { allocated_price_id: priceId, deleted: true };
+  }
+
   /* ---------------- customers ---------------- */
 
   async listCustomers() {

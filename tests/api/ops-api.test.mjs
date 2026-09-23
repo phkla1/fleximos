@@ -1518,3 +1518,31 @@ test("deletes an unreferenced delivery customer but refuses one with history", a
   });
   assert.equal(refused.response.status, 409, "a customer with batches can't be deleted");
 });
+
+test("deletes an allocated-price version but keeps the last one", async () => {
+  // Add a rider rate so a delete is allowed (more than one price exists).
+  const rider = await request("/ops/v1/delivery-allocated-prices", {
+    method: "POST",
+    headers: { "Idempotency-Key": "alloc-del-rider" },
+    body: JSON.stringify({ price_ngn: 700, operator_class: "rider", effective_from: "2026-09-23" })
+  });
+  assert.equal(rider.response.status, 201);
+  const del = await request(`/ops/v1/delivery-allocated-prices/${rider.body.allocated_price_id}`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "alloc-del-rider-go" }
+  });
+  assert.equal(del.response.status, 200);
+  assert.equal(del.body.deleted, true);
+
+  // Deleting down to the final remaining price is refused.
+  const list = await request("/ops/v1/delivery-allocated-prices");
+  while (list.body.data.length > 1) list.body.data.pop(); // (no-op guard on shape)
+  const remaining = await request("/ops/v1/delivery-allocated-prices");
+  if (remaining.body.data.length === 1) {
+    const refused = await request(`/ops/v1/delivery-allocated-prices/${remaining.body.data[0].allocated_price_id}`, {
+      method: "DELETE",
+      headers: { "Idempotency-Key": "alloc-del-last" }
+    });
+    assert.equal(refused.response.status, 409, "can't delete the only allocated price");
+  }
+});

@@ -127,7 +127,7 @@ export class DeliveriesController {
 
   @ApiTags("Deliveries")
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Set the global allocated price per delivered package (effective-dated)" })
+  @ApiOperation({ summary: "Set the allocated price per delivered package, per operator class (effective-dated)" })
   @Post("ops/v1/delivery-allocated-prices")
   async createAllocatedPrice(
     @Req() req: Request,
@@ -137,6 +137,21 @@ export class DeliveriesController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.deliveries.createAllocatedPrice(body, actor.person_id));
+  }
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete an allocated-price version (e.g. clearing a stale seed); refuses to delete the last one" })
+  @Delete("ops/v1/delivery-allocated-prices/:priceId")
+  @HttpCode(HttpStatus.OK)
+  async deleteAllocatedPrice(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("priceId") priceId: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.deliveries.deleteAllocatedPrice(priceId, actor.person_id));
   }
 
   /* ---------- Speedaf import + courier mapping ---------- */

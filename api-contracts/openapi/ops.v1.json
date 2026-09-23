@@ -4928,6 +4928,53 @@
           }
         }
       }
+    },
+    "/delivery-allocated-prices/{priceId}": {
+      "delete": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "Delete an allocated-price version",
+        "description": "System admin. Clears a stale/seed rate; refuses to delete the last remaining price.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            }
+          },
+          {
+            "name": "priceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Only price remaining"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
     }
   },
   "components": {

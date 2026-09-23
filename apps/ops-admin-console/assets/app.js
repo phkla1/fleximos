@@ -581,16 +581,28 @@ function render() {
     </article>`;
   }).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
 
+  const hasClassRate = { rider: false, driver: false };
+  for (const row of state.allocatedPrices) {
+    if ((row.operator_class || "all") === "rider") hasClassRate.rider = true;
+    if ((row.operator_class || "all") === "driver") hasClassRate.driver = true;
+  }
   el.allocatedPriceList.innerHTML = state.allocatedPrices.map((price) => {
     const operatorClass = price.operator_class || "all";
     const sameClass = state.allocatedPrices.filter((row) => (row.operator_class || "all") === operatorClass);
     const status = policyStatus({ effective_from: price.effective_from, effective_to: price.effective_to }, sameClass);
     const classLabel = operatorClass === "all" ? "All" : operatorClass === "driver" ? "Drivers" : "Riders";
     const basic = Number(price.daily_basic_ngn || 0);
+    // Make the override relationship explicit so "All" + "Riders" doesn't look
+    // like a conflict: All is the fallback for classes without their own rate.
+    const covered = ["rider", "driver"].filter((cls) => !hasClassRate[cls]);
+    const scopeNote = operatorClass === "all"
+      ? (covered.length ? `Fallback for ${covered.map((c) => c === "rider" ? "riders" : "drivers").join(" & ")} (no own rate)` : "Fallback (overridden for every class)")
+      : `Overrides the global rate for ${classLabel.toLowerCase()}`;
     return `
     <article class="policy-row ${status}">
       <div><strong>₦${Number(price.price_ngn).toLocaleString()}/package allocated</strong><span class="pill ${operatorClass === "driver" ? "open" : ""}">${classLabel}</span><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
-      <div><small>Effective ${escapeHtml(effectiveWindow(price))}${basic ? ` · ₦${basic.toLocaleString()} daily basic` : ""}</small></div>
+      <div><small>${escapeHtml(scopeNote)} · effective ${escapeHtml(effectiveWindow(price))}${basic ? ` · ₦${basic.toLocaleString()} daily basic` : ""}</small>
+        <button type="button" class="linklike danger" data-delete-allocated="${escapeHtml(price.allocated_price_id)}" data-price-label="${escapeHtml(classLabel)} ₦${Number(price.price_ngn).toLocaleString()}">Delete</button></div>
     </article>`;
   }).join("") || `<div class="empty">No allocated price configured.</div>`;
 
@@ -1004,6 +1016,20 @@ el.deliveryCustomerForm.addEventListener("submit", async (event) => {
     });
     el.deliveryCustomerForm.reset();
     await refresh("Delivery customer added.");
+  } catch (error) { showError(error); }
+});
+
+// Delete an allocated-price version (e.g. clearing the stale seed).
+el.allocatedPriceList.addEventListener("click", async (event) => {
+  const del = event.target.closest("[data-delete-allocated]");
+  if (!del) return;
+  if (!window.confirm(`Delete the ${del.dataset.priceLabel} allocated price? (You can't delete the last remaining price.)`)) return;
+  try {
+    await ops(`/ops/v1/delivery-allocated-prices/${del.dataset.deleteAllocated}`, {
+      method: "DELETE",
+      headers: { "Idempotency-Key": key("allocated-del") }
+    });
+    await refresh("Allocated price deleted.");
   } catch (error) { showError(error); }
 });
 
