@@ -71,7 +71,9 @@ export class SpeedafConnector {
 
       // --- Open Delivery Waybill Inquiry (⋯ → Waybill Manage → …) ---
       await this.openModule(page, "Waybill Manage");
-      await page.getByText("Delivery Waybill Inquiry", { exact: false }).first().click();
+      const inquiry = page.getByText("Delivery Waybill Inquiry", { exact: false }).first();
+      await inquiry.waitFor({ state: "visible", timeout: 10000 });
+      await inquiry.click();
       // Date range defaults to today, which is exactly what we pull.
       await page.getByRole("button", { name: /^Search$/ }).first().click();
       await page.waitForLoadState("networkidle", { timeout: 20000 });
@@ -88,11 +90,19 @@ export class SpeedafConnector {
       await page.getByRole("button", { name: /^Export$/ }).last().click();
 
       // --- Download from the Download Center ---
+      // System Setup module → the left sidebar's "Download Center" group (a
+      // collapsible el-sub-menu) → its "Download Center" page (a level-3 item).
       await this.openModule(page, "System Setup");
-      await page.getByText("Download Center", { exact: false }).first().click();
+      await page.locator(".el-sub-menu__title").filter({ hasText: /^Download Center$/ }).first().click().catch(() => undefined);
+      const downloadCenterPage = page.locator(".el-menu-item").filter({ hasText: /^Download Center$/ }).first();
+      await downloadCenterPage.waitFor({ state: "visible", timeout: 10000 });
+      await downloadCenterPage.click();
+      // Newest export is the top row; its Operate cell holds a Download button.
+      const downloadButton = page.locator('button[title="Download"]').first();
+      await downloadButton.waitFor({ state: "visible", timeout: 15000 });
       const [download] = await Promise.all([
         page.waitForEvent("download", { timeout: 30000 }),
-        page.locator("a,button,[class*=download],[class*=operate] i, .anticon-download").last().click()
+        downloadButton.click()
       ]);
       const stream = await download.createReadStream();
       const chunks: Buffer[] = [];
@@ -107,38 +117,22 @@ export class SpeedafConnector {
   }
 
   // Open a top-level module (Waybill Manage, System Setup, …) from the "⋯"
-  // menu. Items carry class "topmenu--text" but sit in a dropdown that the ⋯
-  // trigger toggles; open the menu, wait for the item to be visible, retry.
+  // menu. Confirmed live: the ⋯ is an Element-Plus sub-menu
+  // (.el-sub-menu__hide-arrow) that opens its popup on HOVER (not click); the
+  // items are .el-menu-item inside .el-menu--popup.
   private async openModule(page: any, label: string) {
-    const item = page.locator(".topmenu--text", { hasText: label }).first();
-    let lastError: unknown = null;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      if (await item.isVisible().catch(() => false)) {
-        try { await item.click({ timeout: 5000 }); return; } catch (error) { lastError = error; }
-      }
-      await this.triggerModuleMenu(page);
-      await page.waitForTimeout(500);
-    }
-    // One last forced attempt so the caller sees a precise failure.
-    await item.click({ force: true, timeout: 5000 }).catch((error: unknown) => { lastError = error; });
-    if (await item.isVisible().catch(() => false)) return;
-    throw new Error(`Could not open module "${label}" from the ⋯ menu: ${String((lastError as any)?.message || lastError).slice(0, 160)}`);
-  }
-
-  // Toggle the "⋯" module dropdown. Its exact handle isn't documented, so try a
-  // few element candidates (hover + click), then a viewport-relative click on
-  // the header where the ⋯ sits.
-  private async triggerModuleMenu(page: any) {
-    for (const selector of [".topmenu__more", ".topmenu-more", ".topmenu .anticon", "header [class*='more']", "header [class*='topmenu']", "[class*='top-menu']"]) {
-      const handle = page.locator(selector).first();
-      if (await handle.count().catch(() => 0)) {
-        await handle.hover().catch(() => undefined);
-        await handle.click({ force: true }).catch(() => undefined);
-        if (await page.locator(".topmenu--text").first().isVisible().catch(() => false)) return;
+    const trigger = page.locator(".el-sub-menu__hide-arrow").first();
+    const item = page.locator(".el-menu--popup .el-menu-item").filter({ hasText: label }).first();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await trigger.hover({ timeout: 5000 }).catch(() => undefined);
+      try {
+        await item.waitFor({ state: "visible", timeout: 3000 });
+        await item.click();
+        return;
+      } catch {
+        await page.waitForTimeout(400);
       }
     }
-    const viewport = page.viewportSize() || { width: 1366, height: 900 };
-    // The ⋯ sits just right of the brand in the header (~21% across, ~30px down).
-    await page.mouse.click(Math.round(viewport.width * 0.21), 30).catch(() => undefined);
+    throw new Error(`Could not open module "${label}" from the ⋯ menu (hover popup did not appear).`);
   }
 }
