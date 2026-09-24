@@ -58,7 +58,7 @@ export class SpeedafConnector {
   async pullTodayRows(): Promise<{ rows: ParsedDeliveryRow[]; file_name: string }> {
     const { chromium } = await import("playwright");
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ acceptDownloads: true });
+    const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1366, height: 900 } });
     const page = await context.newPage();
     try {
       await page.goto(this.config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -70,8 +70,7 @@ export class SpeedafConnector {
       await page.waitForLoadState("networkidle", { timeout: 30000 });
 
       // --- Open Delivery Waybill Inquiry (⋯ → Waybill Manage → …) ---
-      await this.openModuleMenu(page);
-      await page.getByText("Waybill Manage", { exact: false }).first().click();
+      await this.openModule(page, "Waybill Manage");
       await page.getByText("Delivery Waybill Inquiry", { exact: false }).first().click();
       // Date range defaults to today, which is exactly what we pull.
       await page.getByRole("button", { name: /^Search$/ }).first().click();
@@ -89,8 +88,7 @@ export class SpeedafConnector {
       await page.getByRole("button", { name: /^Export$/ }).last().click();
 
       // --- Download from the Download Center ---
-      await this.openModuleMenu(page);
-      await page.getByText("System Setup", { exact: false }).first().click();
+      await this.openModule(page, "System Setup");
       await page.getByText("Download Center", { exact: false }).first().click();
       const [download] = await Promise.all([
         page.waitForEvent("download", { timeout: 30000 }),
@@ -108,12 +106,39 @@ export class SpeedafConnector {
     }
   }
 
-  private async openModuleMenu(page: any) {
-    // The top "⋯" opens the module menu; click it, tolerating either an icon
-    // button or its container.
-    const menu = page.locator("header .anticon-more, header [class*='more'], .header-more, .top-nav .more").first();
-    if (await menu.count()) { await menu.click().catch(() => undefined); return; }
-    // Fallback: the ⋯ sits just right of the brand in the top bar.
-    await page.mouse.click(270, 31);
+  // Open a top-level module (Waybill Manage, System Setup, …) from the "⋯"
+  // menu. Items carry class "topmenu--text" but sit in a dropdown that the ⋯
+  // trigger toggles; open the menu, wait for the item to be visible, retry.
+  private async openModule(page: any, label: string) {
+    const item = page.locator(".topmenu--text", { hasText: label }).first();
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (await item.isVisible().catch(() => false)) {
+        try { await item.click({ timeout: 5000 }); return; } catch (error) { lastError = error; }
+      }
+      await this.triggerModuleMenu(page);
+      await page.waitForTimeout(500);
+    }
+    // One last forced attempt so the caller sees a precise failure.
+    await item.click({ force: true, timeout: 5000 }).catch((error: unknown) => { lastError = error; });
+    if (await item.isVisible().catch(() => false)) return;
+    throw new Error(`Could not open module "${label}" from the ⋯ menu: ${String((lastError as any)?.message || lastError).slice(0, 160)}`);
+  }
+
+  // Toggle the "⋯" module dropdown. Its exact handle isn't documented, so try a
+  // few element candidates (hover + click), then a viewport-relative click on
+  // the header where the ⋯ sits.
+  private async triggerModuleMenu(page: any) {
+    for (const selector of [".topmenu__more", ".topmenu-more", ".topmenu .anticon", "header [class*='more']", "header [class*='topmenu']", "[class*='top-menu']"]) {
+      const handle = page.locator(selector).first();
+      if (await handle.count().catch(() => 0)) {
+        await handle.hover().catch(() => undefined);
+        await handle.click({ force: true }).catch(() => undefined);
+        if (await page.locator(".topmenu--text").first().isVisible().catch(() => false)) return;
+      }
+    }
+    const viewport = page.viewportSize() || { width: 1366, height: 900 };
+    // The ⋯ sits just right of the brand in the header (~21% across, ~30px down).
+    await page.mouse.click(Math.round(viewport.width * 0.21), 30).catch(() => undefined);
   }
 }
