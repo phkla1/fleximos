@@ -117,22 +117,24 @@ export class SpeedafConnector {
   }
 
   // Open a top-level module (Waybill Manage, System Setup, …) from the "⋯"
-  // menu. Confirmed live: the ⋯ is an Element-Plus sub-menu
-  // (.el-sub-menu__hide-arrow) that opens its popup on HOVER (not click); the
-  // items are .el-menu-item inside .el-menu--popup.
+  // menu. Confirmed against the live portal: the ⋯ is an Element-Plus sub-menu
+  // (.el-sub-menu__hide-arrow) whose popup opens on mouseenter. A real hover
+  // does not fire that in headless Chromium, so we dispatch the events
+  // directly — mouseenter to open, then click the .el-menu--popup item.
   private async openModule(page: any, label: string) {
     const trigger = page.locator(".el-sub-menu__hide-arrow").first();
     const item = page.locator(".el-menu--popup .el-menu-item").filter({ hasText: label }).first();
+    await trigger.waitFor({ state: "attached", timeout: 15000 });
     for (let attempt = 0; attempt < 5; attempt++) {
-      await trigger.hover({ timeout: 5000 }).catch(() => undefined);
-      try {
-        await item.waitFor({ state: "visible", timeout: 3000 });
-        await item.click();
+      await trigger.dispatchEvent("mouseenter").catch(() => undefined);
+      await page.waitForTimeout(350);
+      if (await item.count().catch(() => 0)) {
+        await item.dispatchEvent("click");
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
         return;
-      } catch {
-        await page.waitForTimeout(400);
       }
+      await page.waitForTimeout(350);
     }
-    throw new Error(`Could not open module "${label}" from the ⋯ menu (hover popup did not appear).`);
+    throw new Error(`Could not open module "${label}" from the ⋯ menu.`);
   }
 }
