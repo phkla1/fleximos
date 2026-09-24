@@ -67,13 +67,21 @@ export class SpeedafConnector {
       await page.getByPlaceholder(/Account/i).first().fill(this.config.account);
       await page.getByPlaceholder(/Password/i).first().fill(this.config.password);
       await page.getByRole("button", { name: /login/i }).click();
-      await page.waitForLoadState("networkidle", { timeout: 30000 });
+      // Wait until the session token is actually persisted — a hard-load of an
+      // inner route before this redirects to Home (no session yet).
+      await page.waitForFunction(() => !!window.localStorage.getItem("ACCESS_TOKEN"), undefined, { timeout: 25000 });
+      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
 
       // --- Delivery Waybill Inquiry (direct route — avoids the fragile ⋯ menu;
       // both module routes navigate cleanly while authenticated) ---
-      await page.goto(`${this.config.baseUrl}/waybillManage/deliveryWaybillQuery`, { waitUntil: "networkidle", timeout: 30000 });
       const searchButton = page.getByRole("button", { name: /^Search$/ }).first();
-      await searchButton.waitFor({ state: "visible", timeout: 20000 });
+      let onInquiry = false;
+      for (let attempt = 0; attempt < 3 && !onInquiry; attempt++) {
+        await page.goto(`${this.config.baseUrl}/waybillManage/deliveryWaybillQuery`, { waitUntil: "networkidle", timeout: 30000 });
+        try { await searchButton.waitFor({ state: "visible", timeout: 8000 }); onInquiry = true; }
+        catch { await page.waitForTimeout(1000); }
+      }
+      if (!onInquiry) throw new Error(`Delivery Waybill Inquiry did not load (ended at ${page.url()}).`);
       // Date range defaults to today, which is exactly what we pull.
       await searchButton.click();
       await page.waitForLoadState("networkidle", { timeout: 20000 });
