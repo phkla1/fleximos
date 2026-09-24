@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { OpsDataScope } from "./auth.service.js";
 import { DatabaseService } from "./database.service.js";
@@ -450,7 +450,19 @@ export class DeliveriesImportService {
     if (!config) throw new BadRequestException("Speedaf pull is not configured (SPEEDAF_ACCOUNT/SPEEDAF_PASSWORD).");
     const customerId = await this.speedafCustomerId();
     if (!customerId) throw new BadRequestException("No active 'Speedaf' delivery customer found (set SPEEDAF_CUSTOMER_ID or create the customer).");
-    const { rows, file_name } = await new SpeedafConnector(config).pullTodayRows();
+    // Surface the real failure (missing browser, login/selector drift, timeout)
+    // instead of a bare 500 so it can be diagnosed from the API response.
+    let pulled: { rows: any[]; file_name: string };
+    try {
+      pulled = await new SpeedafConnector(config).pullTodayRows();
+    } catch (error: any) {
+      const detail = String(error?.message || error).slice(0, 400);
+      const hint = /Executable doesn'?t exist|install|ENOENT/i.test(detail)
+        ? " — run `npx playwright install chromium` on the host."
+        : "";
+      throw new ServiceUnavailableException(`Speedaf pull failed: ${detail}${hint}`);
+    }
+    const { rows, file_name } = pulled;
     return this.importSpeedaf(
       { delivery_customer_id: customerId, batch_date: date || this.now().slice(0, 10), file_name, capture_source: "auto_pull", rows },
       actorPersonId
