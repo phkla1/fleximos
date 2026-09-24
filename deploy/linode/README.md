@@ -138,9 +138,12 @@ Notes:
 - Steps 1–2 are all you need to get data flowing; 3–4 are optional enrichment and
   5–6 are the automation. The **manual import** always works as the fallback and
   needs only step 1 (the customer).
-- The portal click-path was built from a verified manual walkthrough but not run
-  with live credentials (sign-in is a human step); if Speedaf change their UI,
-  adjust the selectors in `apps/ops-api/src/connectors/speedaf.connector.ts`.
+- The headless pull is confirmed working end-to-end (24 Sep 2026). It signs in,
+  then navigates via the portal's own Vue router (client-side `router.push` —
+  the ⋯ Element-Plus menu and hard route reloads are unreliable in headless),
+  runs the export, waits for it to finish, downloads the file and parses it. If
+  Speedaf change their routes/UI, adjust `apps/ops-api/src/connectors/speedaf.connector.ts`
+  (routes: `/waybillManage/deliveryWaybillQuery`, `/systemSetting/download/downloadCenter`).
 
 ### Integration status monitor
 
