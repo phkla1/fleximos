@@ -312,6 +312,9 @@ export class DeliveriesImportService {
     if (!customer) throw new BadRequestException("Choose an active delivery customer.");
     const batchDate = this.date(body.batch_date || this.now().slice(0, 10));
     // Accept already-parsed rows, or an .xlsx as base64 (manual upload / pull).
+    // An input given but parsing to zero rows is a VALID empty day (no
+    // deliveries yet) — not an error; only a missing input is rejected.
+    const hasInput = Array.isArray(body.rows) || body.file_base64 !== undefined;
     let rows: SpeedafRow[] = Array.isArray(body.rows) ? (body.rows as SpeedafRow[]) : [];
     if (!rows.length && body.file_base64) {
       try {
@@ -320,7 +323,7 @@ export class DeliveriesImportService {
         throw new BadRequestException(`Could not read the export file: ${String(error?.message).slice(0, 160)}`);
       }
     }
-    if (!rows.length) throw new BadRequestException("Provide export rows or an .xlsx file (file_base64).");
+    if (!rows.length && !hasInput) throw new BadRequestException("Provide export rows or an .xlsx file (file_base64).");
     const captureSource = String(body.capture_source || "manual_upload");
     const importId = this.id("dimport");
     const capturedAt = this.now();
