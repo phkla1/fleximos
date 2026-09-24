@@ -87,12 +87,18 @@ so the Integration Status monitor will show Orbit "down" until they
 restore service — that is expected and visible to supervisors, not a
 FlexiMOS fault.
 
-### Speedaf scheduled-delivery pull (ope.speedaf.com)
+### Speedaf scheduled deliveries (ope.speedaf.com)
 
-Speedaf has no API. Supervisors can always import the "Delivery Waybill
-Inquiry" export by hand in the Supervisor app (Deliver tab → Import Speedaf
-export). To pull it automatically, the ops-api runs a headless-browser export
-in-process — off unless these are set:
+Speedaf has no API. FlexiMOS ingests the "Delivery Waybill Inquiry" export —
+either by hand (Supervisor app → Deliver → Import Speedaf export) or via an
+in-process headless-browser pull. **Ingestion and attribution are separate:**
+an import stores *every* waybill raw (`ops_speedaf_waybills`, the system of
+record) **regardless of whether any courier is mapped to an operator**, so you
+can prove the pull works and see every courier's delivered counts before mapping
+anyone. Mapping only decides which operator a courier's deliveries are credited
+to (targets/pay) and can be done later, at your pace.
+
+Env for the automated pull (off unless set):
 
 ```bash
 SPEEDAF_ACCOUNT=<portal account no.>
@@ -101,32 +107,40 @@ SPEEDAF_PASSWORD=<portal password>
 # SPEEDAF_CUSTOMER_ID=<delivery_customer_id>        # else the active "Speedaf" customer
 ```
 
-**To go live with the Speedaf auto-pull (checklist):**
+**The 7-step setup:**
 
-1. Install the headless browser on the host: `npx playwright install chromium`
-   (the pull loads Playwright lazily, so unconfigured servers never need it).
-2. Add `SPEEDAF_ACCOUNT` and `SPEEDAF_PASSWORD` (above) to
-   `~/fleximos-data/fleximos.env`, then `pm2 delete fleximos-ops-api && pm2 start`
-   from the ecosystem file (a plain restart does not re-read the env file).
-3. Create the **Speedaf** delivery customer in the Admin console → Deliveries with
-   its **contract price ≈ ₦1,300**/package (or set `SPEEDAF_CUSTOMER_ID`).
-4. Set the operator-facing **allocated price**: **rider ≈ ₦700**/package, and a
-   **driver** rate (higher per-package + a daily basic) once the driver policy is
-   agreed. Admin console → Deliveries → "Set an allocated price".
-5. Map each Speedaf courier name to an operator once (Supervisor app → Deliver →
-   Import Speedaf export → unmapped list). Mappings persist; later pulls resolve
-   automatically. The amoeba is taken from the mapped operator via identity.
-6. Confirm one live pull: `POST /ops/v1/delivery-imports/pull` (system admin), or
-   wait for the hourly `speedaf-delivery-pull` job (08:00–20:00). Watch it in the
-   Integration Status monitor (Speedaf row).
-7. Rotate the shared portal password once the integration is confirmed.
+1. **Create the Speedaf customer** — the one prerequisite to import at all.
+   ops-admin-console (Administrator Console) → Controls → *Delivery customers &
+   pricing* → contract price ≈ **₦1,300**/package. (Or set `SPEEDAF_CUSTOMER_ID`.)
+2. **Import once and confirm the data lands.** Manual: Supervisor app → Deliver →
+   Import Speedaf export (drop the `.xlsx`). Or trigger the pull:
+   `POST /ops/v1/delivery-imports/pull` (system admin). Every waybill and all
+   ~20 couriers land in the database immediately — you'll see each courier's
+   delivered/waybill counts. **No mapping needed to confirm the pull works.**
+3. **Set the allocated price** *(optional; for operator earnings, not for storage)* —
+   same panel → "Set an allocated price": rider ≈ **₦700**/package; add a
+   **driver** rate (higher per-package + a daily basic) when that policy is agreed.
+4. **Map courier names to operators** *(optional, ongoing)* — Supervisor app →
+   Deliver → Import → each courier row has a dropdown + Map. This only attributes
+   that courier's stored deliveries to a rider's targets/pay; the raw data is
+   already saved. Mappings persist; the amoeba comes from the mapped operator.
+5. **(Automate) Install the headless browser:** `npx playwright install chromium`
+   on the host (the pull loads Playwright lazily, so unconfigured servers skip it).
+6. **(Automate) Arm the scheduled pull:** add `SPEEDAF_ACCOUNT`/`SPEEDAF_PASSWORD`
+   to `~/fleximos-data/fleximos.env`, then
+   `pm2 delete fleximos-ops-api && pm2 start deploy/linode/ecosystem.config.cjs --only fleximos-ops-api --update-env && pm2 save`
+   (a plain restart does not re-read the env file). The scheduler then runs
+   `speedaf-delivery-pull` hourly 08:00–20:00; watch the Integration Status
+   monitor (Speedaf row).
+7. **Rotate the shared portal password** once the integration is confirmed.
 
 Notes:
+- Steps 1–2 are all you need to get data flowing; 3–4 are optional enrichment and
+  5–6 are the automation. The **manual import** always works as the fallback and
+  needs only step 1 (the customer).
 - The portal click-path was built from a verified manual walkthrough but not run
   with live credentials (sign-in is a human step); if Speedaf change their UI,
-  adjust the selectors in `apps/ops-api/src/connectors/speedaf.connector.ts`. The
-  **manual import** (drag the exported `.xlsx` into the Supervisor app) always
-  works as the fallback and needs none of the above except steps 3–5.
+  adjust the selectors in `apps/ops-api/src/connectors/speedaf.connector.ts`.
 
 ### Integration status monitor
 
