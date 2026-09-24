@@ -93,17 +93,26 @@ export class SpeedafConnector {
       }
       await page.getByRole("button", { name: /New/ }).first().click().catch(() => undefined);
       await page.getByRole("button", { name: /^Export$/ }).last().click();
-      // Give the export task a moment to finish so it's the newest completed row.
-      await page.waitForTimeout(5000);
 
-      // --- Download Center (client-side route) → newest export's Download button ---
+      // --- Download Center (client-side route) ---
       await this.spaNavigate(page, "/systemSetting/download/downloadCenter");
-      const downloadButton = page.locator('button[title="Download"]').first();
-      await downloadButton.waitFor({ state: "visible", timeout: 20000 });
-      const [download] = await Promise.all([
-        page.waitForEvent("download", { timeout: 30000 }),
-        downloadButton.click()
-      ]);
+      // The export runs server-side for several seconds; the list auto-refreshes,
+      // so poll the top row until it reads "Export completed" (clicking a row
+      // that is still exporting does nothing). Then download that newest export.
+      const topRow = page.locator("tbody tr").first();
+      await topRow.waitFor({ state: "visible", timeout: 20000 });
+      let ready = false;
+      for (let i = 0; i < 24 && !ready; i++) {
+        const status = await topRow.innerText().catch(() => "");
+        if (/completed/i.test(status)) ready = true;
+        else await page.waitForTimeout(1500);
+      }
+      const downloadButton = topRow.locator('button[title="Download"]').first();
+      await downloadButton.waitFor({ state: "visible", timeout: 10000 });
+      // Capture the download at the context level (covers popup/target variance).
+      const downloadPromise = context.waitForEvent("download", { timeout: 45000 });
+      await downloadButton.click();
+      const download = await downloadPromise;
       const stream = await download.createReadStream();
       const chunks: Buffer[] = [];
       for await (const chunk of stream) chunks.push(Buffer.from(chunk));
