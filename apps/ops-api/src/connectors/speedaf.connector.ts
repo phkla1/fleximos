@@ -69,13 +69,13 @@ export class SpeedafConnector {
       await page.getByRole("button", { name: /login/i }).click();
       await page.waitForLoadState("networkidle", { timeout: 30000 });
 
-      // --- Open Delivery Waybill Inquiry (⋯ → Waybill Manage → …) ---
-      await this.openModule(page, "Waybill Manage");
-      const inquiry = page.getByText("Delivery Waybill Inquiry", { exact: false }).first();
-      await inquiry.waitFor({ state: "visible", timeout: 10000 });
-      await inquiry.click();
+      // --- Delivery Waybill Inquiry (direct route — avoids the fragile ⋯ menu;
+      // both module routes navigate cleanly while authenticated) ---
+      await page.goto(`${this.config.baseUrl}/waybillManage/deliveryWaybillQuery`, { waitUntil: "networkidle", timeout: 30000 });
+      const searchButton = page.getByRole("button", { name: /^Search$/ }).first();
+      await searchButton.waitFor({ state: "visible", timeout: 20000 });
       // Date range defaults to today, which is exactly what we pull.
-      await page.getByRole("button", { name: /^Search$/ }).first().click();
+      await searchButton.click();
       await page.waitForLoadState("networkidle", { timeout: 20000 });
 
       // --- Export the chosen columns ---
@@ -88,21 +88,13 @@ export class SpeedafConnector {
       }
       await page.getByRole("button", { name: /New/ }).first().click().catch(() => undefined);
       await page.getByRole("button", { name: /^Export$/ }).last().click();
-      // The "export completed" toast pops over the ⋯ menu; let it clear (and the
-      // export finish) before reopening the menu for the Download Center.
-      await page.waitForTimeout(4000);
+      // Give the export task a moment to finish so it's the newest completed row.
+      await page.waitForTimeout(5000);
 
-      // --- Download from the Download Center ---
-      // System Setup module → the left sidebar's "Download Center" group (a
-      // collapsible el-sub-menu) → its "Download Center" page (a level-3 item).
-      await this.openModule(page, "System Setup");
-      await page.locator(".el-sub-menu__title").filter({ hasText: /^Download Center$/ }).first().click().catch(() => undefined);
-      const downloadCenterPage = page.locator(".el-menu-item").filter({ hasText: /^Download Center$/ }).first();
-      await downloadCenterPage.waitFor({ state: "visible", timeout: 10000 });
-      await downloadCenterPage.click();
-      // Newest export is the top row; its Operate cell holds a Download button.
+      // --- Download Center (direct route) → newest export's Download button ---
+      await page.goto(`${this.config.baseUrl}/systemSetting/download/downloadCenter`, { waitUntil: "networkidle", timeout: 30000 });
       const downloadButton = page.locator('button[title="Download"]').first();
-      await downloadButton.waitFor({ state: "visible", timeout: 15000 });
+      await downloadButton.waitFor({ state: "visible", timeout: 20000 });
       const [download] = await Promise.all([
         page.waitForEvent("download", { timeout: 30000 }),
         downloadButton.click()
@@ -119,36 +111,4 @@ export class SpeedafConnector {
     }
   }
 
-  // Open a top-level module (Waybill Manage, System Setup, …) from the "⋯"
-  // menu. Confirmed against the live portal: the ⋯ is an Element-Plus sub-menu
-  // (.el-sub-menu__hide-arrow) whose popup opens on mouseenter. A real hover
-  // does not fire that in headless Chromium, so we dispatch the events
-  // directly — mouseenter to open, then click the .el-menu--popup item.
-  private async openModule(page: any, label: string) {
-    const trigger = page.locator(".el-sub-menu__hide-arrow").first();
-    const item = page.locator(".el-menu--popup .el-menu-item").filter({ hasText: label }).first();
-    await trigger.waitFor({ state: "visible", timeout: 15000 });
-    for (let attempt = 0; attempt < 5; attempt++) {
-      // A genuine pointer move+click is what actually opens Element Plus's
-      // popup in headless (dispatched/hover events do not mount the lazy
-      // popper). Click the ⋯ at its real on-screen centre.
-      const box = await trigger.boundingBox();
-      if (box) {
-        const cx = box.x + box.width / 2;
-        const cy = box.y + box.height / 2;
-        await page.mouse.move(cx, cy);
-        await page.waitForTimeout(200);
-        await page.mouse.click(cx, cy);
-      }
-      try {
-        await item.waitFor({ state: "visible", timeout: 2500 });
-        await item.click();
-        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
-        return;
-      } catch {
-        await page.waitForTimeout(400);
-      }
-    }
-    throw new Error(`Could not open module "${label}" from the ⋯ menu.`);
-  }
 }
