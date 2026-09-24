@@ -3,6 +3,7 @@ const state = {
   operators: [],
   alerts: [],
   teamBoard: [],
+  pacing: [],
   dailyPerformance: [],
   fuelIssues: [],
   mileageReconciliations: [],
@@ -36,7 +37,8 @@ const el = Object.fromEntries([
   "deliveryList", "deliveryBatchForm", "deliverySummaryLabel",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
-  "boardListToggle", "boardMapToggle", "boardMapView", "vehicleMap",
+  "boardListToggle", "boardMapToggle", "boardPaceToggle", "boardMapView",
+  "boardPaceView", "paceBoard", "vehicleMap",
   "mapStatus", "mapPositionList", "mapNoFeed", "trackerSources", "controlDialog",
   "controlDialogTitle", "controlDialogContext", "controlReason",
   "controlOverrideField", "controlOverride", "confirmControlButton",
@@ -765,6 +767,8 @@ function renderBoard(analysis) {
       </details>`).join("")
     : `<div class="empty">No assigned operators match this view.</div>`;
 
+  if (!el.boardPaceView.hidden) renderPaceBoard();
+
   el.performanceList.innerHTML = state.dailyPerformance.length ? state.dailyPerformance.map((record) => `
     <article class="performance-row">
       <div class="performance-person"><strong>${escapeHtml(personName(record.person_id))}</strong><small>${escapeHtml(record.platform_vehicle_type === "car" ? "Car" : "Bike")} · ${escapeHtml(record.platform_display_name)}${state.dateFrom !== state.dateTo ? ` · ${escapeHtml(String(record.record_date).slice(0, 10))}` : ""}</small></div>
@@ -777,6 +781,56 @@ function renderBoard(analysis) {
       <span class="pill">${escapeHtml(String(record.current_status).replaceAll("_", " "))}</span>
     </article>
   `).join("") : `<div class="empty">No performance records for this range.</div>`;
+}
+
+const PACE_TONE = { at_risk: "red", behind: "yellow", on_track: "green", ahead: "green", not_available: "grey" };
+const PACE_ORDER = { at_risk: 0, behind: 1, not_available: 2, on_track: 3, ahead: 4 };
+
+function pacePill(status) {
+  const label = String(status || "not_available").replaceAll("_", " ");
+  return `<span class="pace-pill tone-${PACE_TONE[status] || "grey"}">${escapeHtml(label)}</span>`;
+}
+
+function pct(part, whole) {
+  const w = Number(whole || 0);
+  if (w <= 0) return part > 0 ? 100 : 0;
+  return Math.round((Number(part || 0) / w) * 100);
+}
+
+function paceTile(row) {
+  const scheduled = Number(row.scheduled_assigned || 0) > 0
+    ? `${row.scheduled_delivered}/${row.scheduled_assigned} · ${pct(row.scheduled_delivered, row.scheduled_assigned)}%${row.behind_schedule ? ` <span class="pace-flag">behind</span>` : ""}`
+    : "—";
+  const resumption = row.checked_in
+    ? `✓ ${escapeHtml(row.resumption_time)}`
+    : `<span class="pace-flag">not in</span>`;
+  const deadline = row.resumption_deadline ? ` · online by ${escapeHtml(row.resumption_deadline)}` : "";
+  const online = `${money(row.online_earned_ngn)} / ${money(row.online_target_ngn)} · ${pct(row.online_earned_ngn, row.online_target_ngn)}%`;
+  const combined = `${money(row.combined_earned_ngn)} / ${money(row.daily_revenue_target_ngn)} · ${pct(row.combined_earned_ngn, row.daily_revenue_target_ngn)}%`;
+  return `
+    <article class="pace-tile tone-${PACE_TONE[row.combined_pace_status] || "grey"}">
+      <div class="pace-head">
+        <strong>${escapeHtml(personName(row.person_id))}</strong>
+        ${pacePill(row.combined_pace_status)}
+      </div>
+      <dl class="pace-metrics">
+        <div><dt>Resumed</dt><dd>${resumption}${deadline}</dd></div>
+        <div><dt>Scheduled</dt><dd>${scheduled}</dd></div>
+        <div><dt>Online</dt><dd>${online}</dd></div>
+        <div><dt>Combined vs target</dt><dd>${combined}</dd></div>
+      </dl>
+    </article>`;
+}
+
+function renderPaceBoard() {
+  const rows = [...state.pacing].sort((a, b) => {
+    const byStatus = (PACE_ORDER[a.combined_pace_status] ?? 5) - (PACE_ORDER[b.combined_pace_status] ?? 5);
+    if (byStatus !== 0) return byStatus;
+    return (a.combined_pace_variance_pct ?? 0) - (b.combined_pace_variance_pct ?? 0);
+  });
+  el.paceBoard.innerHTML = rows.length
+    ? `<div class="team-board">${rows.map((row) => paceTile(row)).join("")}</div>`
+    : `<div class="empty">No pacing data for this day yet.</div>`;
 }
 
 function renderAlerts() {
@@ -1406,8 +1460,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, checkins] = await Promise.all([
+  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, checkins] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
+    ops(`/ops/v1/pacing?record_date=${operatingDate}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/fuel-issues?${range}`),
     ops(`/ops/v1/mileage-reconciliations?${range}`),
@@ -1435,6 +1490,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     operators: assigned,
     alerts: alerts.data.filter((alert) => assignedIds.has(alert.operator_id)),
     teamBoard: teamBoard.data.filter((item) => assignedIds.has(item.operator_id)),
+    pacing: (pacing.data || []).filter((item) => assignedIds.has(item.operator_id)),
     dailyPerformance: allPerformance.data.filter((record) => {
       const recordDate = String(record.record_date).slice(0, 10);
       return assignedIds.has(record.operator_id) && recordDate >= dateFrom && recordDate <= dateTo;
@@ -1522,14 +1578,20 @@ el.exportWeeklyCsv.addEventListener("click", () => {
 
 function setBoardView(mode) {
   const isMap = mode === "map";
+  const isPace = mode === "pace";
+  const isList = !isMap && !isPace;
   el.boardMapView.hidden = !isMap;
-  el.teamBoard.hidden = isMap;
-  el.boardListToggle.classList.toggle("active", !isMap);
+  el.boardPaceView.hidden = !isPace;
+  el.teamBoard.hidden = !isList;
+  el.boardListToggle.classList.toggle("active", isList);
   el.boardMapToggle.classList.toggle("active", isMap);
+  el.boardPaceToggle.classList.toggle("active", isPace);
   if (isMap) renderVehicleMap();
+  if (isPace) renderPaceBoard();
 }
 el.boardListToggle.addEventListener("click", () => setBoardView("list"));
 el.boardMapToggle.addEventListener("click", () => setBoardView("map"));
+el.boardPaceToggle.addEventListener("click", () => setBoardView("pace"));
 
 let pendingControl = null;
 document.addEventListener("click", (event) => {

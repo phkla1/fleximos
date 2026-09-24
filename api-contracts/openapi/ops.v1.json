@@ -675,6 +675,36 @@
         }
       }
     },
+    "/pacing": {
+      "get": {
+        "tags": [
+          "Performance"
+        ],
+        "summary": "Get the resumption-aware pacing board (online target, delivery pacing, combined pace)",
+        "parameters": [
+          {
+            "name": "record_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "amoeba_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-operator pacing snapshot: scheduled attributed earnings, online target, resumption deadline, delivery behind-schedule flag, and the combined (online + scheduled) pace"
+          }
+        }
+      }
+    },
     "/daily-reports": {
       "get": {
         "tags": [

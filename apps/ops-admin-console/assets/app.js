@@ -235,6 +235,10 @@ function syncPaceProfileForm() {
   el.paceProfileForm.elements.evening_pct.value = Number(checkpoints["19:00"] ?? 0);
   el.paceProfileForm.elements.warning_tolerance_pct.value = Number(profile.warning_tolerance_pct);
   el.paceProfileForm.elements.critical_tolerance_pct.value = Number(profile.critical_tolerance_pct);
+  if (el.paceProfileForm.elements.delivery_parcels_per_hour) {
+    el.paceProfileForm.elements.delivery_parcels_per_hour.value = Number(profile.delivery_parcels_per_hour ?? 5);
+    el.paceProfileForm.elements.delivery_journey_buffer_hours.value = Number(profile.delivery_journey_buffer_hours ?? 1);
+  }
   el.paceProfileForm.elements.effective_from.value = String(profile.effective_from).slice(0, 10);
 }
 
@@ -581,6 +585,17 @@ function render() {
     </article>`;
   }).join("") : `<div class="empty">No delivery customers defined yet.</div>`;
 
+  // Keep the allocated-price form's customer selector in sync with the roster.
+  const customerName = new Map(state.deliveryCustomers.map((c) => [c.delivery_customer_id, c.name]));
+  const customerSelect = el.allocatedPriceForm.elements.delivery_customer_id;
+  if (customerSelect) {
+    const current = customerSelect.value;
+    customerSelect.innerHTML = `<option value="">Any customer (default)</option>`
+      + state.deliveryCustomers.map((c) =>
+        `<option value="${escapeHtml(c.delivery_customer_id)}">${escapeHtml(c.name)}</option>`).join("");
+    customerSelect.value = current;
+  }
+
   const hasClassRate = { rider: false, driver: false };
   for (const row of state.allocatedPrices) {
     if ((row.operator_class || "all") === "rider") hasClassRate.rider = true;
@@ -591,6 +606,7 @@ function render() {
     const sameClass = state.allocatedPrices.filter((row) => (row.operator_class || "all") === operatorClass);
     const status = policyStatus({ effective_from: price.effective_from, effective_to: price.effective_to }, sameClass);
     const classLabel = operatorClass === "all" ? "All" : operatorClass === "driver" ? "Drivers" : "Riders";
+    const customerLabel = price.delivery_customer_id ? (customerName.get(price.delivery_customer_id) || "customer") : null;
     const basic = Number(price.daily_basic_ngn || 0);
     // Make the override relationship explicit so "All" + "Riders" doesn't look
     // like a conflict: All is the fallback for classes without their own rate.
@@ -600,7 +616,7 @@ function render() {
       : `Overrides the global rate for ${classLabel.toLowerCase()}`;
     return `
     <article class="policy-row ${status}">
-      <div><strong>₦${Number(price.price_ngn).toLocaleString()}/package allocated</strong><span class="pill ${operatorClass === "driver" ? "open" : ""}">${classLabel}</span><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
+      <div><strong>₦${Number(price.price_ngn).toLocaleString()}/package allocated</strong><span class="pill ${operatorClass === "driver" ? "open" : ""}">${classLabel}</span>${customerLabel ? `<span class="pill">${escapeHtml(customerLabel)}</span>` : ""}<span class="pill ${status === "active" ? "" : status}">${status}</span></div>
       <div><small>${escapeHtml(scopeNote)} · effective ${escapeHtml(effectiveWindow(price))}${basic ? ` · ₦${basic.toLocaleString()} daily basic` : ""}</small>
         <button type="button" class="linklike danger" data-delete-allocated="${escapeHtml(price.allocated_price_id)}" data-price-label="${escapeHtml(classLabel)} ₦${Number(price.price_ngn).toLocaleString()}">Delete</button></div>
     </article>`;
@@ -917,6 +933,8 @@ el.paceProfileForm.addEventListener("submit", async (event) => {
         ],
         warning_tolerance_pct: Number(values.warning_tolerance_pct),
         critical_tolerance_pct: Number(values.critical_tolerance_pct),
+        delivery_parcels_per_hour: Number(values.delivery_parcels_per_hour),
+        delivery_journey_buffer_hours: Number(values.delivery_journey_buffer_hours),
         effective_from: values.effective_from
       })
     });
@@ -1084,6 +1102,7 @@ el.allocatedPriceForm.addEventListener("submit", async (event) => {
         price_ngn: Number(values.price_ngn),
         operator_class: values.operator_class || "all",
         daily_basic_ngn: Number(values.daily_basic_ngn || 0),
+        delivery_customer_id: values.delivery_customer_id || null,
         effective_from: values.effective_from
       })
     });

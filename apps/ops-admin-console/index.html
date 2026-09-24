@@ -264,6 +264,8 @@
               <label>19:00 expected %<input name="evening_pct" type="number" min="0" max="100" value="90" required /></label>
               <label>Warning tolerance %<input name="warning_tolerance_pct" type="number" min="0" value="10" required /></label>
               <label>Critical tolerance %<input name="critical_tolerance_pct" type="number" min="0" value="20" required /></label>
+              <label>Delivery parcels / hour<input name="delivery_parcels_per_hour" type="number" min="0.1" step="any" value="5" required /></label>
+              <label>Delivery journey buffer (hrs)<input name="delivery_journey_buffer_hours" type="number" min="0" step="any" value="1" required /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
               <button type="submit">Add pace profile</button>
               </form>
@@ -350,10 +352,11 @@
                   <option value="rider">Riders (bikes)</option>
                   <option value="driver">Drivers (Qute cars)</option>
                 </select></label>
+                <label>Customer<select name="delivery_customer_id"><option value="">Any customer (default)</option></select></label>
                 <label>Price ₦/package<input name="price_ngn" type="number" min="1" step="any" required /></label>
                 <label>Daily basic ₦<input name="daily_basic_ngn" type="number" min="0" step="any" value="0" /></label>
                 <label>Effective from<input name="effective_from" type="date" required /></label>
-                <p class="form-hint">Choose <strong>All</strong> for the global default, or set a <strong>Driver</strong> rate (usually a higher per-package fee plus a fixed daily basic) — a class-specific rate wins over the global one. Versioned by date like other policies.</p>
+                <p class="form-hint">Choose <strong>All</strong> for the global default, or a <strong>Driver</strong>/<strong>Rider</strong> rate. Optionally pin it to one <strong>Customer</strong> (e.g. Konga vs Speedaf). Most specific wins: customer + class beats customer, beats class, beats the global default. Versioned by date.</p>
                 <button type="submit">Save allocated price</button>
               </form>
             </details>

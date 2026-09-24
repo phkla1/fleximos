@@ -1485,6 +1485,103 @@ test("operator check-in geofences against Sites and requires supervisor approval
   assert.ok(list.body.data.some((row) => row.checkin_id === inside.body.checkin_id), "check-in is listable");
 });
 
+test("pacing snapshot: scheduled earnings set the online target, deadline, and combined pace", async () => {
+  const PACE_DATE = "2026-06-25";
+
+  // Rider-class allocated rate ₦700 (the owner's Speedaf example).
+  const riderRate = await request("/ops/v1/delivery-allocated-prices", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-rate-rider" },
+    body: JSON.stringify({ price_ngn: 700, operator_class: "rider", effective_from: "2026-01-01" })
+  });
+  assert.equal(riderRate.response.status, 201);
+
+  // A rider on a ₦30k day.
+  const rider = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-rider-operator" },
+    body: JSON.stringify({
+      person_id: "person_pace_rider", operator_type: "rider", operator_class: "rider",
+      operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1",
+      daily_revenue_target_ngn: 30000
+    })
+  });
+  assert.equal(rider.response.status, 201);
+  const operatorId = rider.body.operator_id;
+
+  const customer = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-customer" },
+    body: JSON.stringify({ name: "Pace Speedaf", contract_price_ngn: 1300 })
+  });
+  const batch = await request("/ops/v1/delivery-batches", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-batch" },
+    body: JSON.stringify({ delivery_customer_id: customer.body.delivery_customer_id, amoeba_id: "amoeba_mainland", batch_date: PACE_DATE })
+  });
+  const assignment = await request(`/ops/v1/delivery-batches/${batch.body.batch_id}/assignments`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-assign" },
+    body: JSON.stringify({ operator_id: operatorId, assigned_count: 20 })
+  });
+  await request(`/ops/v1/delivery-assignments/${assignment.body.assignment_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "pace-progress" },
+    body: JSON.stringify({ delivered_count: 20, status: "completed" })
+  });
+
+  const pacing = await request(`/ops/v1/pacing?record_date=${PACE_DATE}`);
+  assert.equal(pacing.response.status, 200);
+  const row = pacing.body.data.find((item) => item.operator_id === operatorId);
+  assert.ok(row, "the rider appears on the pacing board");
+
+  // Acceptance #2: 20 parcels x ₦700 = ₦14,000 scheduled; ₦16,000 left online.
+  assert.equal(row.scheduled_assigned, 20);
+  assert.equal(row.scheduled_delivered, 20);
+  assert.equal(Number(row.scheduled_attributed_earned_ngn), 14000);
+  assert.equal(Number(row.daily_revenue_target_ngn), 30000);
+  assert.equal(Number(row.online_target_ngn), 16000, "online target = target − scheduled earned");
+
+  // Acceptance #1: 20 parcels at 5/hr + 1h buffer from the 08:00 default = 13:00.
+  assert.equal(row.day_start_source, "default_dispatch");
+  assert.equal(row.resumption_deadline, "13:00");
+
+  // Acceptance #5: combined pace folds in scheduled earnings (ride revenue is 0
+  // here, so the ride-only view would look empty).
+  assert.equal(Number(row.online_earned_ngn), 0);
+  assert.equal(Number(row.combined_earned_ngn), 14000, "combined = online + scheduled");
+  assert.ok(["ahead", "on_track", "behind", "at_risk", "not_available"].includes(row.combined_pace_status));
+
+  // Acceptance #3: a per-customer rate overrides the class rate for that customer
+  // only. A second customer at ₦900 shows through on the assignment rate.
+  const konga = await request("/ops/v1/delivery-customers", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-customer-2" },
+    body: JSON.stringify({ name: "Pace Konga", contract_price_ngn: 1500 })
+  });
+  const override = await request("/ops/v1/delivery-allocated-prices", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-rate-override" },
+    body: JSON.stringify({ price_ngn: 900, operator_class: "rider", delivery_customer_id: konga.body.delivery_customer_id, effective_from: "2026-01-01" })
+  });
+  assert.equal(override.response.status, 201);
+  const batch2 = await request("/ops/v1/delivery-batches", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-batch-2" },
+    body: JSON.stringify({ delivery_customer_id: konga.body.delivery_customer_id, amoeba_id: "amoeba_mainland", batch_date: PACE_DATE })
+  });
+  const assign2 = await request(`/ops/v1/delivery-batches/${batch2.body.batch_id}/assignments`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "pace-assign-2" },
+    body: JSON.stringify({ operator_id: operatorId, assigned_count: 5 })
+  });
+  const rows2 = await request(`/ops/v1/delivery-assignments?date_from=${PACE_DATE}&date_to=${PACE_DATE}&operator_id=${operatorId}`);
+  const kongaRow = rows2.body.data.find((item) => item.assignment_id === assign2.body.assignment_id);
+  assert.equal(Number(kongaRow.allocated_price_ngn), 900, "per-customer rate overrides the class rate for Konga");
+  const speedafRow = rows2.body.data.find((item) => item.assignment_id === assignment.body.assignment_id);
+  assert.equal(Number(speedafRow.allocated_price_ngn), 700, "the other customer keeps the class rate");
+});
+
 test("deletes an unreferenced delivery customer but refuses one with history", async () => {
   // A throwaway customer with nothing referencing it deletes cleanly.
   const spare = await request("/ops/v1/delivery-customers", {

@@ -18,6 +18,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
 import { OpsService } from "./ops.service.js";
+import { PacingService } from "./pacing.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
 import { AttendanceService } from "./attendance.service.js";
@@ -29,7 +30,8 @@ export class OpsController {
     @Inject(AuthService) private readonly identity: AuthService,
     @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
     @Inject(IntegrationStatusService) private readonly integrationStatus: IntegrationStatusService,
-    @Inject(AttendanceService) private readonly attendance: AttendanceService
+    @Inject(AttendanceService) private readonly attendance: AttendanceService,
+    @Inject(PacingService) private readonly pacing: PacingService
   ) {}
 
   private auth(req: Request) {
@@ -73,6 +75,7 @@ export class OpsController {
         ingestion_runs: "/ops/v1/ingestion-runs",
         daily_performance: "/ops/v1/daily-performance",
         team_board: "/ops/v1/team-board",
+        pacing: "/ops/v1/pacing",
         daily_reports: "/ops/v1/daily-reports",
         scheduled_jobs: "/ops/v1/scheduled-jobs",
         alerts: "/ops/v1/alerts",
@@ -675,6 +678,25 @@ export class OpsController {
         this.identity.dataScope(actor)
       ),
       next_cursor: null
+    };
+  }
+
+  @ApiTags("Reporting")
+  @ApiBearerAuth()
+  @Get("ops/v1/pacing")
+  async pacingBoard(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("amoeba_id") amoebaId?: string
+  ) {
+    const actor = await this.auth(req);
+    const range = this.ops.dateRange({ record_date: recordDate });
+    return {
+      record_date: range.to,
+      data: await this.pacing.pacingBoard(
+        { record_date: recordDate, amoeba_id: amoebaId },
+        this.identity.dataScope(actor)
+      )
     };
   }
 

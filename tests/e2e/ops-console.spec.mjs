@@ -280,6 +280,23 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#teamBoard")).toBeVisible();
   });
 
+  test("shows the resumption-aware pace war-room board", async ({ page }) => {
+    await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+
+    await page.locator("#boardPaceToggle").click();
+    await expect(page.locator("#boardPaceView")).toBeVisible();
+    await expect(page.locator("#teamBoard")).toBeHidden();
+    await expect(page.locator("#boardPaceView")).toContainText("Call-time briefing");
+    // At least one rider tile (or the empty state) renders.
+    const paceContent = page.locator("#paceBoard .pace-tile, #paceBoard .empty");
+    await expect(paceContent.first()).toBeVisible();
+
+    await page.locator("#boardListToggle").click();
+    await expect(page.locator("#teamBoard")).toBeVisible();
+    await expect(page.locator("#boardPaceView")).toBeHidden();
+  });
+
   test("has no page-level horizontal overflow on mobile", async ({ page }) => {
     await page.goto(url);
     await expect(page.locator("#notice")).toContainText("Connected");

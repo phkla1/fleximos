@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "./database.service.js";
 import { OpsService } from "./ops.service.js";
+import { PacingService } from "./pacing.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { NotificationService } from "./notification.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
@@ -22,7 +23,8 @@ export class JobRunnerService {
     @Inject(PlatformConnectorsService) private readonly connectors: PlatformConnectorsService,
     @Inject(NotificationService) private readonly notifications: NotificationService,
     @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
-    @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService
+    @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService,
+    @Inject(PacingService) private readonly pacing: PacingService
   ) {}
 
   private recordDate(run: JobRun) {
@@ -129,6 +131,8 @@ export class JobRunnerService {
     const board = await this.ops.teamBoard({ record_date: date });
     const mileage = await this.ops.mileageReconciliations(date);
     const mileageByOperator = new Map((mileage as any[]).map((row) => [row.operator_id, row]));
+    const pacing = await this.pacing.pacingBoard({ record_date: date });
+    const pacingByOperator = new Map((pacing as any[]).map((row) => [row.operator_id, row]));
     let created = 0;
     for (const operator of board as any[]) {
       const recon: any = mileageByOperator.get(operator.operator_id);
@@ -198,7 +202,10 @@ export class JobRunnerService {
           metadata: { generated_by: "alert-watchdog" }
         }) ? 1 : 0;
       }
-      if (operator.pace_status === "at_risk") {
+      // Combined pace (online + scheduled) is the headline for at-risk. A rider
+      // running Speedaf all morning no longer trips this on ride revenue alone.
+      const pace: any = pacingByOperator.get(operator.operator_id);
+      if ((pace?.combined_pace_status || operator.pace_status) === "at_risk") {
         created += await this.ops.ensureAlert({
           operator_id: operator.operator_id,
           platform_account_id: operator.platforms?.[0]?.platform_account_id || null,
@@ -209,7 +216,27 @@ export class JobRunnerService {
           metadata: {
             generated_by: "alert-watchdog",
             revenue_ngn: operator.ride_revenue_ngn,
-            expected_revenue_ngn: operator.expected_revenue_ngn
+            expected_revenue_ngn: operator.expected_revenue_ngn,
+            combined_earned_ngn: pace?.combined_earned_ngn,
+            scheduled_attributed_earned_ngn: pace?.scheduled_attributed_earned_ngn
+          }
+        }) ? 1 : 0;
+      }
+      // Scheduled deliveries trailing the per-hour parcel pace.
+      if (pace?.behind_schedule) {
+        created += await this.ops.ensureAlert({
+          operator_id: operator.operator_id,
+          platform_account_id: operator.platforms?.[0]?.platform_account_id || null,
+          alert_type: "delivery_behind_schedule",
+          alert_date: date,
+          tier: 1,
+          episode_key: date,
+          metadata: {
+            generated_by: "alert-watchdog",
+            assigned: pace.scheduled_assigned,
+            delivered: pace.scheduled_delivered,
+            expected_delivered: pace.scheduled_expected_delivered,
+            resumption_deadline: pace.resumption_deadline
           }
         }) ? 1 : 0;
       }

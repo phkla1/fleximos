@@ -29,6 +29,17 @@ export class OpsService {
     }).format(date);
   }
 
+  // Lagos wall clock: today's date plus minutes-since-midnight. Shared by the
+  // pace/pacing engines so every "expected by now" reads the same clock.
+  lagosClock(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Lagos", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    }).formatToParts(date);
+    const minutes = Number(parts.find((part) => part.type === "hour")?.value) * 60
+      + Number(parts.find((part) => part.type === "minute")?.value);
+    return { today: this.lagosDate(date), minutes };
+  }
+
   // Pay class for delivery attribution. Explicit wins; otherwise a "driver"
   // operator_type maps to driver, everything else (riders on bikes) to rider.
   private operatorClassOf(explicit: unknown, operatorType: unknown): "rider" | "driver" {
@@ -89,7 +100,7 @@ export class OpsService {
     });
   }
 
-  private expectedPct(checkpoints: any[], recordDate: string) {
+  expectedPct(checkpoints: any[], recordDate: string) {
     const today = this.lagosDate();
     if (recordDate < today) return 100;
     if (recordDate > today) return 0;
@@ -114,7 +125,7 @@ export class OpsService {
     return 100;
   }
 
-  private paceStatus(actual: number, expected: number, target: number, warning: number, critical: number) {
+  paceStatus(actual: number, expected: number, target: number, warning: number, critical: number) {
     if (!target || expected <= 0) return { pace_status: "not_available", pace_variance_pct: null };
     const variance = ((actual - expected) / expected) * 100;
     const status = variance >= 5 ? "ahead" : variance >= -warning ? "on_track" : variance >= -critical ? "behind" : "at_risk";
@@ -950,11 +961,14 @@ export class OpsService {
         checkpoints: this.checkpoints(body.checkpoints),
         warning_tolerance_pct: this.number(body.warning_tolerance_pct ?? 10, "warning_tolerance_pct"),
         critical_tolerance_pct: this.number(body.critical_tolerance_pct ?? 20, "critical_tolerance_pct"),
+        delivery_parcels_per_hour: this.number(body.delivery_parcels_per_hour ?? existing.delivery_parcels_per_hour ?? 5, "delivery_parcels_per_hour"),
+        delivery_journey_buffer_hours: this.number(body.delivery_journey_buffer_hours ?? existing.delivery_journey_buffer_hours ?? 1, "delivery_journey_buffer_hours"),
         effective_to: body.effective_to ? this.date(body.effective_to) : null
       };
       await this.db.exec(
         `UPDATE ops_revenue_pace_profiles SET daily_target_ngn=$2, checkpoints=$3,
-          warning_tolerance_pct=$4, critical_tolerance_pct=$5, effective_to=$6, updated_at=$7
+          warning_tolerance_pct=$4, critical_tolerance_pct=$5, delivery_parcels_per_hour=$6,
+          delivery_journey_buffer_hours=$7, effective_to=$8, updated_at=$9
          WHERE pace_profile_id=$1`,
         [existing.pace_profile_id, ...Object.values(updated), timestamp]
       );
@@ -973,6 +987,8 @@ export class OpsService {
       checkpoints: this.checkpoints(body.checkpoints),
       warning_tolerance_pct: this.number(body.warning_tolerance_pct ?? 10, "warning_tolerance_pct"),
       critical_tolerance_pct: this.number(body.critical_tolerance_pct ?? 20, "critical_tolerance_pct"),
+      delivery_parcels_per_hour: this.number(body.delivery_parcels_per_hour ?? 5, "delivery_parcels_per_hour"),
+      delivery_journey_buffer_hours: this.number(body.delivery_journey_buffer_hours ?? 1, "delivery_journey_buffer_hours"),
       effective_from: this.date(body.effective_from || this.lagosDate()),
       effective_to: body.effective_to ? this.date(body.effective_to) : null,
       created_by_person_id: actorPersonId,
@@ -982,9 +998,10 @@ export class OpsService {
     await this.db.exec(
       `INSERT INTO ops_revenue_pace_profiles
        (pace_profile_id, vehicle_type, day_type, daily_target_ngn, checkpoints,
-        warning_tolerance_pct, critical_tolerance_pct, effective_from, effective_to,
+        warning_tolerance_pct, critical_tolerance_pct, delivery_parcels_per_hour,
+        delivery_journey_buffer_hours, effective_from, effective_to,
         created_by_person_id, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       Object.values(profile)
     );
     await this.audit("revenue_pace_profile.created", "revenue_pace_profile", profile.pace_profile_id, null, profile, actorPersonId);
@@ -1000,15 +1017,19 @@ export class OpsService {
       checkpoints: body.checkpoints === undefined ? current.checkpoints : this.checkpoints(body.checkpoints),
       warning_tolerance_pct: body.warning_tolerance_pct === undefined ? current.warning_tolerance_pct : this.number(body.warning_tolerance_pct, "warning_tolerance_pct"),
       critical_tolerance_pct: body.critical_tolerance_pct === undefined ? current.critical_tolerance_pct : this.number(body.critical_tolerance_pct, "critical_tolerance_pct"),
+      delivery_parcels_per_hour: body.delivery_parcels_per_hour === undefined ? current.delivery_parcels_per_hour : this.number(body.delivery_parcels_per_hour, "delivery_parcels_per_hour"),
+      delivery_journey_buffer_hours: body.delivery_journey_buffer_hours === undefined ? current.delivery_journey_buffer_hours : this.number(body.delivery_journey_buffer_hours, "delivery_journey_buffer_hours"),
       effective_to: body.effective_to === undefined ? current.effective_to : (body.effective_to ? this.date(body.effective_to) : null),
       updated_at: this.now()
     };
     await this.db.exec(
       `UPDATE ops_revenue_pace_profiles SET daily_target_ngn=$2, checkpoints=$3,
-       warning_tolerance_pct=$4, critical_tolerance_pct=$5, effective_to=$6, updated_at=$7
+       warning_tolerance_pct=$4, critical_tolerance_pct=$5, delivery_parcels_per_hour=$6,
+       delivery_journey_buffer_hours=$7, effective_to=$8, updated_at=$9
        WHERE pace_profile_id=$1`,
       [profileId, updated.daily_target_ngn, updated.checkpoints, updated.warning_tolerance_pct,
-       updated.critical_tolerance_pct, updated.effective_to, updated.updated_at]
+       updated.critical_tolerance_pct, updated.delivery_parcels_per_hour,
+       updated.delivery_journey_buffer_hours, updated.effective_to, updated.updated_at]
     );
     await this.audit("revenue_pace_profile.updated", "revenue_pace_profile", profileId, current, updated, actorPersonId);
     return updated;

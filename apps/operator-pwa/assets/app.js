@@ -285,7 +285,7 @@ async function load() {
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const date = dateTo;
   const weekStart = new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
-  const [boardPage, performancePage, alertPage, mileagePage, fuelPage, incidentPage, leaderboardPage, deliveryPage, stopsPage] = await Promise.all([
+  const [boardPage, performancePage, alertPage, mileagePage, fuelPage, incidentPage, leaderboardPage, deliveryPage, stopsPage, pacingPage] = await Promise.all([
     api(opsBase, `/ops/v1/team-board?${range}`),
     api(opsBase, `/ops/v1/daily-performance?${range}`),
     api(opsBase, `/ops/v1/alerts?operator_id=${encodeURIComponent(operator.operator_id)}&${range}`),
@@ -294,9 +294,11 @@ async function load() {
     api(opsBase, "/ops/v1/incidents").catch(() => ({ data: [] })),
     api(opsBase, `/ops/v1/leaderboard?period_start=${weekStart}&period_end=${date}&amoeba_id=${encodeURIComponent(operator.amoeba_id)}`).catch(() => null),
     api(opsBase, `/ops/v1/delivery-assignments?${range}`).catch(() => ({ data: [] })),
-    api(opsBase, `/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] }))
+    api(opsBase, `/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
+    api(opsBase, `/ops/v1/pacing?record_date=${date}`).catch(() => ({ data: [] }))
   ]);
   const board = boardPage.data[0] || {};
+  const pace = (pacingPage.data || []).find((row) => row.operator_id === operator.operator_id) || null;
   const performance = performancePage.data;
   currentAlerts = alertPage.data.filter((alert) => alert.resolution_status !== "resolved");
   currentIncidents = incidentPage.data.filter((incident) => incident.operator_id === operator.operator_id);
@@ -319,9 +321,17 @@ async function load() {
     ["ahead", "on_track"].includes(paceStatus) ? "green" : paceStatus === "behind" ? "yellow" : paceStatus === "at_risk" ? "red" : "green");
   el.paceLabel.textContent = paceStatus.replaceAll("_", " ");
   el.paceLabel.className = `pace-status ${paceStatus}`;
-  el.paceContext.textContent = board.expected_revenue_ngn
-    ? `${money(board.expected_revenue_ngn)} expected by now`
-    : "Waiting for platform activity";
+  if (pace && Number(pace.scheduled_assigned || 0) > 0) {
+    // Resumption-aware: after scheduled deliveries, show what's left to earn
+    // online and by when the rider should be back on the apps.
+    const deadline = pace.resumption_deadline ? ` · online by ${pace.resumption_deadline}` : "";
+    el.paceContext.textContent =
+      `Online target ${money(pace.online_target_ngn)} · earned ${money(pace.online_earned_ngn)}${deadline}`;
+  } else {
+    el.paceContext.textContent = board.expected_revenue_ngn
+      ? `${money(board.expected_revenue_ngn)} expected by now`
+      : "Waiting for platform activity";
+  }
 
   const status = String(board.current_status || "not_seen_today");
   el.liveStatus.textContent = status.replaceAll("_", " ");

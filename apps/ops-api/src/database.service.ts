@@ -727,6 +727,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS operator_class TEXT NOT NULL DEFAULT 'rider';
       ALTER TABLE ops_delivery_allocated_prices ADD COLUMN IF NOT EXISTS operator_class TEXT NOT NULL DEFAULT 'all';
       ALTER TABLE ops_delivery_allocated_prices ADD COLUMN IF NOT EXISTS daily_basic_ngn NUMERIC(12, 2) NOT NULL DEFAULT 0;
+      -- Phase 2: the attributed (allocated) rate can also be set per delivery
+      -- customer, so ₦/parcel is configurable per vehicle class AND per client.
+      ALTER TABLE ops_delivery_allocated_prices ADD COLUMN IF NOT EXISTS delivery_customer_id TEXT;
+      -- Phase 2: delivery pace inputs live on the per-vehicle-type pace profile.
+      ALTER TABLE ops_revenue_pace_profiles ADD COLUMN IF NOT EXISTS delivery_parcels_per_hour NUMERIC(6, 2) NOT NULL DEFAULT 5;
+      ALTER TABLE ops_revenue_pace_profiles ADD COLUMN IF NOT EXISTS delivery_journey_buffer_hours NUMERIC(4, 2) NOT NULL DEFAULT 1;
 
       -- Speedaf (and future customers) name their courier as free text on the
       -- export ("ODEH", "Uche"); map each to a real operator once, then every
