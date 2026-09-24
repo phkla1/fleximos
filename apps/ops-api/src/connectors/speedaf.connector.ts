@@ -67,21 +67,18 @@ export class SpeedafConnector {
       await page.getByPlaceholder(/Account/i).first().fill(this.config.account);
       await page.getByPlaceholder(/Password/i).first().fill(this.config.password);
       await page.getByRole("button", { name: /login/i }).click();
-      // Wait until the session token is actually persisted — a hard-load of an
-      // inner route before this redirects to Home (no session yet).
+      // Wait until the session token is persisted and the SPA's permission menu
+      // has registered its dynamic routes (the ⋯ appears when the top nav loads).
       await page.waitForFunction(() => !!window.localStorage.getItem("ACCESS_TOKEN"), undefined, { timeout: 25000 });
       await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
+      await page.locator(".el-sub-menu__hide-arrow").first().waitFor({ state: "attached", timeout: 20000 }).catch(() => undefined);
 
-      // --- Delivery Waybill Inquiry (direct route — avoids the fragile ⋯ menu;
-      // both module routes navigate cleanly while authenticated) ---
+      // --- Delivery Waybill Inquiry (client-side route via the SPA router — a
+      // hard reload of an inner route redirects to Home before the dynamic
+      // routes load, so we push through the Vue router instead of the ⋯ menu) ---
+      await this.spaNavigate(page, "/waybillManage/deliveryWaybillQuery");
       const searchButton = page.getByRole("button", { name: /^Search$/ }).first();
-      let onInquiry = false;
-      for (let attempt = 0; attempt < 3 && !onInquiry; attempt++) {
-        await page.goto(`${this.config.baseUrl}/waybillManage/deliveryWaybillQuery`, { waitUntil: "networkidle", timeout: 30000 });
-        try { await searchButton.waitFor({ state: "visible", timeout: 8000 }); onInquiry = true; }
-        catch { await page.waitForTimeout(1000); }
-      }
-      if (!onInquiry) throw new Error(`Delivery Waybill Inquiry did not load (ended at ${page.url()}).`);
+      await searchButton.waitFor({ state: "visible", timeout: 20000 });
       // Date range defaults to today, which is exactly what we pull.
       await searchButton.click();
       await page.waitForLoadState("networkidle", { timeout: 20000 });
@@ -99,8 +96,8 @@ export class SpeedafConnector {
       // Give the export task a moment to finish so it's the newest completed row.
       await page.waitForTimeout(5000);
 
-      // --- Download Center (direct route) → newest export's Download button ---
-      await page.goto(`${this.config.baseUrl}/systemSetting/download/downloadCenter`, { waitUntil: "networkidle", timeout: 30000 });
+      // --- Download Center (client-side route) → newest export's Download button ---
+      await this.spaNavigate(page, "/systemSetting/download/downloadCenter");
       const downloadButton = page.locator('button[title="Download"]').first();
       await downloadButton.waitFor({ state: "visible", timeout: 20000 });
       const [download] = await Promise.all([
@@ -119,4 +116,25 @@ export class SpeedafConnector {
     }
   }
 
+  // Navigate within the SPA using its Vue-Router instance (client-side), which
+  // — unlike a hard page load of an inner route — keeps the dynamically
+  // registered routes and does not bounce to Home. Retries until the route
+  // sticks (the permission routes may still be loading just after login).
+  private async spaNavigate(page: any, path: string) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const landed = await page.evaluate(async (target: string) => {
+        const router = (document.querySelector("#app") as any)?.__vue_app__?.config?.globalProperties?.$router;
+        if (!router) return null;
+        try { await router.push(target); } catch { /* route not ready yet */ }
+        await new Promise((r) => setTimeout(r, 500));
+        return router.currentRoute?.value ? router.currentRoute.value.path : (router.currentRoute?.path || null);
+      }, path);
+      if (landed === path) {
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
+        return;
+      }
+      await page.waitForTimeout(1000);
+    }
+    throw new Error(`SPA navigation to ${path} did not stick (ended at ${page.url()}).`);
+  }
 }
