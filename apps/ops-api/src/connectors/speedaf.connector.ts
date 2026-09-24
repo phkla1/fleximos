@@ -88,6 +88,9 @@ export class SpeedafConnector {
       }
       await page.getByRole("button", { name: /New/ }).first().click().catch(() => undefined);
       await page.getByRole("button", { name: /^Export$/ }).last().click();
+      // The "export completed" toast pops over the ⋯ menu; let it clear (and the
+      // export finish) before reopening the menu for the Download Center.
+      await page.waitForTimeout(4000);
 
       // --- Download from the Download Center ---
       // System Setup module → the left sidebar's "Download Center" group (a
@@ -124,16 +127,27 @@ export class SpeedafConnector {
   private async openModule(page: any, label: string) {
     const trigger = page.locator(".el-sub-menu__hide-arrow").first();
     const item = page.locator(".el-menu--popup .el-menu-item").filter({ hasText: label }).first();
-    await trigger.waitFor({ state: "attached", timeout: 15000 });
+    await trigger.waitFor({ state: "visible", timeout: 15000 });
     for (let attempt = 0; attempt < 5; attempt++) {
-      await trigger.dispatchEvent("mouseenter").catch(() => undefined);
-      await page.waitForTimeout(350);
-      if (await item.count().catch(() => 0)) {
-        await item.dispatchEvent("click");
+      // A genuine pointer move+click is what actually opens Element Plus's
+      // popup in headless (dispatched/hover events do not mount the lazy
+      // popper). Click the ⋯ at its real on-screen centre.
+      const box = await trigger.boundingBox();
+      if (box) {
+        const cx = box.x + box.width / 2;
+        const cy = box.y + box.height / 2;
+        await page.mouse.move(cx, cy);
+        await page.waitForTimeout(200);
+        await page.mouse.click(cx, cy);
+      }
+      try {
+        await item.waitFor({ state: "visible", timeout: 2500 });
+        await item.click();
         await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => undefined);
         return;
+      } catch {
+        await page.waitForTimeout(400);
       }
-      await page.waitForTimeout(350);
     }
     throw new Error(`Could not open module "${label}" from the ⋯ menu.`);
   }
