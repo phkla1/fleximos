@@ -1688,3 +1688,146 @@ test("stores raw Speedaf waybills and reports per-courier with ZERO mappings", a
   const again = await request(`/ops/v1/delivery-imports/couriers?date_from=2026-07-01&date_to=2026-07-01&customer_id=${customerId}`);
   assert.equal(Number(again.body.data.find((c) => c.courier_display === "Uche").waybills), 2, "still 2, not 4");
 });
+
+// Mirrors OnboardingService.workingDayN: Day 1 = the anchor day itself; count
+// calendar days in [anchor, date] that are not the fixed weekly rest day.
+function workingDayN(anchor, date, restDow) {
+  const a = Date.parse(`${anchor}T00:00:00Z`);
+  const d = Date.parse(`${date}T00:00:00Z`);
+  if (d < a) return 0;
+  const calDays = Math.round((d - a) / 86400000);
+  let n = 0;
+  for (let i = 0; i <= calDays; i++) {
+    if (new Date(a + i * 86400000).getUTCDay() !== restDow) n++;
+  }
+  return n;
+}
+
+test("onboarding ramp overrides the daily target and delivery pace for a new rider", async () => {
+  const RAMP_TARGETS = [0, 2500, 5000, 7500, 10000, 13000, 16000, 19000, 22000, 25000, 28000, 30000];
+  const START = "2026-06-01"; // Monday
+  const RECORD = "2026-06-12"; // ~11 calendar days later, lands in the scheduled phase
+  const expectedDayN = workingDayN(START, RECORD, 0); // rest day = Sunday
+  assert.ok(expectedDayN >= 7 && expectedDayN <= 12, "test dates land in the scheduled ramp phase");
+  const expectedTarget = RAMP_TARGETS[expectedDayN - 1];
+
+  const cohort = await request("/ops/v1/onboarding/cohorts", {
+    method: "POST",
+    headers: { "Idempotency-Key": "onb-cohort-1" },
+    body: JSON.stringify({ name: "June batch", operator_class: "rider", start_date: START })
+  });
+  assert.equal(cohort.response.status, 201);
+
+  const rider = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "onb-rider-1" },
+    body: JSON.stringify({
+      person_id: "person_onb_rider", operator_type: "rider", operator_class: "rider",
+      operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1",
+      daily_revenue_target_ngn: 30000
+    })
+  });
+  const operatorId = rider.body.operator_id;
+  const added = await request(`/ops/v1/onboarding/cohorts/${cohort.body.cohort_id}/members`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "onb-members-1" },
+    body: JSON.stringify({ operator_ids: [operatorId] })
+  });
+  assert.equal(added.body.assigned, 1);
+
+  // Per-operator onboarding status resolves the ramp day + target.
+  const status = await request(`/ops/v1/onboarding/operators/${operatorId}?record_date=${RECORD}`);
+  assert.equal(status.body.in_ramp, true);
+  assert.equal(status.body.day_n, expectedDayN);
+  assert.equal(Number(status.body.daily_target_ngn), expectedTarget, "ramp day target from the curve");
+  assert.equal(status.body.phase, "scheduled_and_on_demand");
+
+  // The ramp target overrides the daily target on the team board.
+  const board = await request(`/ops/v1/team-board?record_date=${RECORD}`);
+  const row = board.body.data.find((r) => r.operator_id === operatorId);
+  assert.equal(Number(row.daily_revenue_target_ngn), expectedTarget, "team board uses the ramp target");
+  assert.equal(Number(row.steady_state_target_ngn), 30000, "steady-state (post-ramp) target preserved");
+  assert.equal(row.onboarding_ramp.day_n, expectedDayN);
+
+  // Pacing carries the ramp + a reduced parcel throughput multiplier.
+  const pacing = await request(`/ops/v1/pacing?record_date=${RECORD}`);
+  const paceRow = pacing.body.data.find((r) => r.operator_id === operatorId);
+  assert.ok(paceRow.onboarding_ramp, "pacing row exposes the ramp");
+  const expectedMultiplier = Math.round((expectedTarget / 30000) * 1000) / 1000;
+  assert.equal(Number(paceRow.onboarding_ramp.parcels_per_hour_multiplier), expectedMultiplier);
+  assert.ok(expectedMultiplier < 1, "a mid-ramp rider is judged below veteran throughput");
+});
+
+test("onboarding ramp profile bonus params are editable and drive the projected bonus", async () => {
+  const profiles = await request("/ops/v1/onboarding/ramp-profiles");
+  const rider = profiles.body.data.find((p) => p.operator_class === "rider" && !p.effective_to);
+  assert.ok(rider, "seeded rider ramp profile exists");
+
+  const updated = await request(`/ops/v1/onboarding/ramp-profiles/${rider.ramp_profile_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "onb-ramp-edit" },
+    body: JSON.stringify({ completion_bonus_ngn: 20000, missed_day_reduction_pct: 10 })
+  });
+  assert.equal(Number(updated.body.completion_bonus_ngn), 20000);
+  assert.equal(Number(updated.body.missed_day_reduction_pct), 10);
+
+  // A rider with no recorded revenue misses every scoreable day so far, so the
+  // projected bonus is reduced 10% per missed day from the ₦20k standard.
+  const cohort = await request("/ops/v1/onboarding/cohorts", {
+    method: "POST",
+    headers: { "Idempotency-Key": "onb-cohort-2" },
+    body: JSON.stringify({ name: "Bonus batch", operator_class: "rider", start_date: "2026-06-01" })
+  });
+  const rider2 = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "onb-rider-2" },
+    body: JSON.stringify({
+      person_id: "person_onb_rider2", operator_type: "rider", operator_class: "rider",
+      operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1"
+    })
+  });
+  await request(`/ops/v1/onboarding/cohorts/${cohort.body.cohort_id}/members`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "onb-members-2" },
+    body: JSON.stringify({ operator_ids: [rider2.body.operator_id] })
+  });
+  const status = await request(`/ops/v1/onboarding/operators/${rider2.body.operator_id}?record_date=2026-06-05`);
+  const missed = workingDayN("2026-06-01", "2026-06-05", 0) - 1; // Day 1 target is 0 (not scoreable)
+  assert.equal(status.body.targets_hit, 0, "no revenue recorded, nothing hit");
+  assert.equal(Number(status.body.projected_bonus_ngn), Math.round(20000 * (1 - 0.10 * missed)));
+});
+
+test("supervisor onboarding runs assist phases and graduates by explicit HR action", async () => {
+  const created = await request("/ops/v1/supervisor-onboardings", {
+    method: "POST",
+    headers: { "Idempotency-Key": "supon-001" },
+    body: JSON.stringify({
+      supervisor_person_id: "person_new_supervisor", host_amoeba_id: "amoeba_mainland",
+      mentor_person_id: "person_founder_wole", start_date: "2026-06-01"
+    })
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.phase, "scheduled_assist");
+  assert.equal(created.body.status, "active");
+  const id = created.body.supervisor_onboarding_id;
+
+  const advanced = await request(`/ops/v1/supervisor-onboardings/${id}/phase`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "supon-phase" },
+    body: JSON.stringify({ phase: "on_demand_assist" })
+  });
+  assert.equal(advanced.body.phase, "on_demand_assist");
+
+  // No auto-graduation: HR graduates explicitly, here by cell-split to a new amoeba.
+  const graduated = await request(`/ops/v1/supervisor-onboardings/${id}/graduate`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "supon-grad" },
+    body: JSON.stringify({ graduation_route: "cell_split", target_amoeba_id: "amoeba_island" })
+  });
+  assert.equal(graduated.body.status, "graduated");
+  assert.equal(graduated.body.graduation_route, "cell_split");
+  assert.equal(graduated.body.target_amoeba_id, "amoeba_island");
+
+  const list = await request("/ops/v1/supervisor-onboardings?status=graduated");
+  assert.ok(list.body.data.some((r) => r.supervisor_onboarding_id === id), "graduated record is listable");
+});

@@ -446,6 +446,7 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .pace-pill.tone-yellow { background: var(--amber-bg); color: var(--amber); }
 .pace-pill.tone-green { background: var(--green-bg); color: var(--green-dark); }
 .pace-flag { padding: 1px 7px; border-radius: 6px; background: var(--red-bg); color: var(--red); font-size: 11px; font-weight: 800; }
+.pace-flag.ramp-chip { background: #e4edf5; color: #23527c; margin-right: 6px; }
 @media (max-width: 520px) { .pace-metrics { grid-template-columns: 1fr; } }
 .vehicle-map { height: 420px; border-radius: 14px; border: 1px solid var(--line); background: #e8efec; }
 .vehicle-map:empty::after { content: "Map loads here"; display: grid; place-items: center; height: 100%; color: var(--muted); }

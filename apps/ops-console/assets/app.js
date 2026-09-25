@@ -807,11 +807,14 @@ function paceTile(row) {
   const deadline = row.resumption_deadline ? ` · online by ${escapeHtml(row.resumption_deadline)}` : "";
   const online = `${money(row.online_earned_ngn)} / ${money(row.online_target_ngn)} · ${pct(row.online_earned_ngn, row.online_target_ngn)}%`;
   const combined = `${money(row.combined_earned_ngn)} / ${money(row.daily_revenue_target_ngn)} · ${pct(row.combined_earned_ngn, row.daily_revenue_target_ngn)}%`;
+  const ramp = row.onboarding_ramp
+    ? `<span class="pace-flag ramp-chip">ramping · Day ${row.onboarding_ramp.day_n}/${row.onboarding_ramp.total_days}</span>`
+    : "";
   return `
     <article class="pace-tile tone-${PACE_TONE[row.combined_pace_status] || "grey"}">
       <div class="pace-head">
         <strong>${escapeHtml(personName(row.person_id))}</strong>
-        ${pacePill(row.combined_pace_status)}
+        ${ramp}${pacePill(row.combined_pace_status)}
       </div>
       <dl class="pace-metrics">
         <div><dt>Resumed</dt><dd>${resumption}${deadline}</dd></div>

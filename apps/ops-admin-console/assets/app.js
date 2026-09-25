@@ -22,6 +22,10 @@ const state = {
   serviceHealth: null,
   deliveryCustomers: [],
   allocatedPrices: [],
+  onboardingRampProfiles: [],
+  cohorts: [],
+  supervisorOnboardings: [],
+  people: [],
   operatingDate: null,
   jobFilter: ""
 };
@@ -53,7 +57,9 @@ const el = Object.fromEntries(
     "vehicleAmoebaFilter", "vehicleSearch", "vehicleFilterSummary",
     "operatorTeamFilter", "operatorAmoebaFilter", "operatorSearch",
     "operatorFilterSummary", "reportForm", "reportList", "reportDialog",
-    "reportDialogTitle", "reportDialogSummary", "reportDialogRows"
+    "reportDialogTitle", "reportDialogSummary", "reportDialogRows",
+    "onboardingRampList", "onboardingRampForm", "cohortList", "cohortForm",
+    "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm"
   ].map((id) => [id, document.getElementById(id)])
 );
 
@@ -76,6 +82,9 @@ el.paceProfileForm.elements.effective_from.value = todayLagos;
 el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
 el.economicsPolicyForm.elements.effective_from.value = todayLagos;
 el.allocatedPriceForm.elements.effective_from.value = todayLagos;
+el.onboardingRampForm.elements.effective_from.value = todayLagos;
+el.cohortForm.elements.start_date.value = todayLagos;
+el.supervisorOnboardingForm.elements.start_date.value = todayLagos;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -708,6 +717,67 @@ function render() {
         </div>
       </article>`;
   }).join("") : `<div class="empty">No report snapshot exists ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`}.</div>`;
+
+  renderOnboarding();
+}
+
+const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function renderOnboarding() {
+  // Ramp profiles.
+  el.onboardingRampList.innerHTML = state.onboardingRampProfiles.length
+    ? state.onboardingRampProfiles.map((profile) => {
+        const targets = Array.isArray(profile.daily_targets_ngn)
+          ? profile.daily_targets_ngn
+          : JSON.parse(profile.daily_targets_ngn || "[]");
+        const grad = targets[targets.length - 1] || 0;
+        const active = !profile.effective_to;
+        return `
+      <article class="policy-row ${active ? "" : "superseded"}">
+        <div><strong>${escapeHtml(profile.operator_class === "driver" ? "Drivers" : "Riders")} · ${targets.length}-day ramp</strong>
+          <small>Scheduled from day ${profile.scheduled_from_day} · rest ${DOW[Number(profile.rest_day_of_week) || 0]} · graduates to ₦${Number(grad).toLocaleString()}</small>
+          <span class="pill ${active ? "" : "superseded"}">${active ? "active" : "superseded"}</span></div>
+        <div><small>Targets ₦: ${targets.map((t) => Number(t).toLocaleString()).join(" · ")}</small>
+          <small>Completion bonus ₦${Number(profile.completion_bonus_ngn || 0).toLocaleString()} · −${Number(profile.missed_day_reduction_pct || 0)}%/missed day · effective ${escapeHtml(effectiveWindow(profile))}</small></div>
+      </article>`;
+      }).join("")
+    : `<div class="empty">No ramp profile configured.</div>`;
+
+  // Cohorts.
+  el.cohortList.innerHTML = state.cohorts.length
+    ? state.cohorts.map((c) => `
+      <article class="policy-row ${c.status === "active" ? "" : "superseded"}">
+        <div><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(c.operator_class === "driver" ? "Drivers" : "Riders")} · Day 1 = ${escapeHtml(String(c.start_date).slice(0, 10))}</small>
+          <span class="pill">${Number(c.member_count || 0)} rider${Number(c.member_count) === 1 ? "" : "s"}</span></div>
+      </article>`).join("")
+    : `<div class="empty">No cohorts yet.</div>`;
+
+  // Supervisor onboarding.
+  el.supervisorOnboardingList.innerHTML = state.supervisorOnboardings.length
+    ? state.supervisorOnboardings.map((s) => {
+        const graduated = s.status === "graduated";
+        return `
+      <article class="policy-row ${graduated ? "superseded" : ""}">
+        <div><strong>${escapeHtml(nameForPerson(s.supervisor_person_id))}</strong>
+          <small>Host ${escapeHtml(nameForAmoeba(s.host_amoeba_id))}${s.mentor_person_id ? ` · mentor ${escapeHtml(nameForPerson(s.mentor_person_id))}` : ""} · from ${escapeHtml(String(s.start_date).slice(0, 10))}</small>
+          <span class="pill ${graduated ? "" : "open"}">${escapeHtml(String(s.phase).replaceAll("_", " "))}</span></div>
+        <div class="row-actions">
+          ${graduated
+            ? `<small>Graduated${s.target_amoeba_id ? ` → ${escapeHtml(nameForAmoeba(s.target_amoeba_id))}` : ""} (${escapeHtml(s.graduation_route || "reassign")})</small>`
+            : `<button type="button" class="linklike" data-advance-supervisor="${escapeHtml(s.supervisor_onboarding_id)}" data-phase="${s.phase === "scheduled_assist" ? "on_demand_assist" : "scheduled_assist"}">${s.phase === "scheduled_assist" ? "→ On-demand phase" : "→ Scheduled phase"}</button>
+               <button type="button" class="linklike" data-graduate-supervisor="${escapeHtml(s.supervisor_onboarding_id)}" data-supervisor-name="${escapeHtml(nameForPerson(s.supervisor_person_id))}">Graduate</button>`}
+        </div>
+      </article>`;
+      }).join("")
+    : `<div class="empty">No supervisor onboarding in progress.</div>`;
+
+  // Populate selects.
+  const riders = state.operators.filter((o) => o.operator_status === "active");
+  el.cohortMemberForm.elements.cohort_id.innerHTML = optionHtml(state.cohorts.filter((c) => c.status === "active"), "cohort_id", "name");
+  el.cohortMemberForm.elements.operator_id.innerHTML = operatorOptions(riders);
+  el.supervisorOnboardingForm.elements.supervisor_person_id.innerHTML = optionHtml(state.people, "person_id", "display_name");
+  el.supervisorOnboardingForm.elements.mentor_person_id.innerHTML = optionHtml(state.people, "person_id", "display_name", "", "No mentor");
+  el.supervisorOnboardingForm.elements.host_amoeba_id.innerHTML = optionHtml(state.amoebas, "amoeba_id", "name");
 }
 
 async function refresh(message = "Connected to Fleximotion Ops.") {
@@ -731,12 +801,15 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
-    ops("/ops/v1/delivery-allocated-prices").catch(() => ({ data: [] }))
+    ops("/ops/v1/delivery-allocated-prices").catch(() => ({ data: [] })),
+    ops("/ops/v1/onboarding/ramp-profiles").catch(() => ({ data: [] })),
+    ops("/ops/v1/onboarding/cohorts").catch(() => ({ data: [] })),
+    ops("/ops/v1/supervisor-onboardings").catch(() => ({ data: [] }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
@@ -785,6 +858,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     inspectionCompliance,
     deliveryCustomers: deliveryCustomers.data,
     allocatedPrices: allocatedPrices.data,
+    onboardingRampProfiles: rampProfiles.data,
+    cohorts: cohorts.data,
+    supervisorOnboardings: supervisorOnboardings.data,
     fleetPolicy,
     operatingDate,
     dateFrom,
@@ -1109,6 +1185,100 @@ el.allocatedPriceForm.addEventListener("submit", async (event) => {
     el.allocatedPriceForm.reset();
     el.allocatedPriceForm.elements.effective_from.value = todayLagos;
     await refresh("Allocated price saved.");
+  } catch (error) { showError(error); }
+});
+
+el.onboardingRampForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.onboardingRampForm));
+  const targets = String(values.daily_targets_ngn).split(",").map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
+  try {
+    await ops("/ops/v1/onboarding/ramp-profiles", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("ramp") },
+      body: JSON.stringify({
+        operator_class: values.operator_class,
+        daily_targets_ngn: targets,
+        scheduled_from_day: Number(values.scheduled_from_day),
+        rest_day_of_week: Number(values.rest_day_of_week),
+        completion_bonus_ngn: Number(values.completion_bonus_ngn || 0),
+        missed_day_reduction_pct: Number(values.missed_day_reduction_pct || 0),
+        effective_from: values.effective_from
+      })
+    });
+    el.onboardingRampForm.closest("details").open = false;
+    await refresh("Onboarding ramp profile saved.");
+  } catch (error) { showError(error); }
+});
+
+el.cohortForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.cohortForm));
+  try {
+    await ops("/ops/v1/onboarding/cohorts", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("cohort") },
+      body: JSON.stringify({ name: values.name || null, operator_class: values.operator_class, start_date: values.start_date })
+    });
+    el.cohortForm.reset();
+    el.cohortForm.elements.start_date.value = todayLagos;
+    await refresh("Cohort created.");
+  } catch (error) { showError(error); }
+});
+
+el.cohortMemberForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.cohortMemberForm));
+  try {
+    await ops(`/ops/v1/onboarding/cohorts/${values.cohort_id}/members`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key("cohortmember") },
+      body: JSON.stringify({ operator_ids: [values.operator_id] })
+    });
+    await refresh("Rider added to cohort.");
+  } catch (error) { showError(error); }
+});
+
+el.supervisorOnboardingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.supervisorOnboardingForm));
+  try {
+    await ops("/ops/v1/supervisor-onboardings", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("supon") },
+      body: JSON.stringify({
+        supervisor_person_id: values.supervisor_person_id,
+        host_amoeba_id: values.host_amoeba_id,
+        mentor_person_id: values.mentor_person_id || null,
+        start_date: values.start_date
+      })
+    });
+    el.supervisorOnboardingForm.closest("details").open = false;
+    await refresh("Supervisor onboarding started.");
+  } catch (error) { showError(error); }
+});
+
+el.supervisorOnboardingList.addEventListener("click", async (event) => {
+  const advance = event.target.closest("[data-advance-supervisor]");
+  const graduate = event.target.closest("[data-graduate-supervisor]");
+  try {
+    if (advance) {
+      await ops(`/ops/v1/supervisor-onboardings/${advance.dataset.advanceSupervisor}/phase`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("supphase") },
+        body: JSON.stringify({ phase: advance.dataset.phase })
+      });
+      await refresh("Supervisor phase updated.");
+    } else if (graduate) {
+      const route = window.prompt(`Graduate ${graduate.dataset.supervisorName}. Type the target amoeba_id they will run (leave blank to record without one):`, "");
+      if (route === null) return;
+      await ops(`/ops/v1/supervisor-onboardings/${graduate.dataset.graduateSupervisor}/graduate`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key("supgrad") },
+        body: JSON.stringify({ graduation_route: "reassign", target_amoeba_id: route.trim() || null })
+      });
+      await refresh("Supervisor graduated. Reassign their team from the Roster.");
+    }
   } catch (error) { showError(error); }
 });
 

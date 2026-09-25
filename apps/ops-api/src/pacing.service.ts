@@ -72,7 +72,12 @@ export class PacingService {
       );
       const warning = Number(profile?.warning_tolerance_pct || 10);
       const critical = Number(profile?.critical_tolerance_pct || 20);
-      const parcelsPerHour = Math.max(0.1, Number(profile?.delivery_parcels_per_hour || 5));
+      // A rider in their onboarding ramp is judged at a gentler parcel throughput
+      // (fewer parcels across the same full day) — the working day is fixed, the
+      // pace ramps. teamBoard attached the ramp snapshot to the row.
+      const onboarding = row.onboarding_ramp || null;
+      const parcelMultiplier = onboarding ? Number(onboarding.parcels_per_hour_multiplier || 1) : 1;
+      const parcelsPerHour = Math.max(0.1, Number(profile?.delivery_parcels_per_hour || 5) * parcelMultiplier);
       const bufferMinutes = Math.max(0, Number(profile?.delivery_journey_buffer_hours || 1)) * 60;
 
       const sched = schedule.get(row.operator_id) || { assigned: 0, delivered: 0, earned: 0 };
@@ -154,6 +159,9 @@ export class PacingService {
         combined_pace_variance_pct: combinedPace.pace_variance_pct,
         // Ride-only pace stays available (from teamBoard).
         ride_pace_status: row.pace_status,
+        // Onboarding ramp (null once graduated) — drives the war-room chip.
+        onboarding_ramp: onboarding,
+        steady_state_target_ngn: Number(row.steady_state_target_ngn || row.daily_revenue_target_ngn || 0),
         open_alerts: row.open_alerts
       };
     });

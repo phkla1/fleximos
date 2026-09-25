@@ -316,8 +316,13 @@ async function load() {
   const pacePct = target ? revenue / target * 100 : 0;
 
   el.operatorName.textContent = profile.person?.display_name || "Driver";
-  renderGauge("earningsGauge", pacePct, money(revenue), null,
-    target ? `${Math.round(pacePct)}% of ${money(target)} target` : "No target configured",
+  // Onboarding ramp: the gauge target is already the ramped (fair) target; label
+  // it as a training-day target so a new rider understands the lower number.
+  const onboardingRamp = pace?.onboarding_ramp || board.onboarding_ramp || null;
+  const targetLabel = onboardingRamp
+    ? `Onboarding Day ${onboardingRamp.day_n}/${onboardingRamp.total_days} · target ${money(target)}`
+    : (target ? `${Math.round(pacePct)}% of ${money(target)} target` : "No target configured");
+  renderGauge("earningsGauge", pacePct, money(revenue), null, targetLabel,
     ["ahead", "on_track"].includes(paceStatus) ? "green" : paceStatus === "behind" ? "yellow" : paceStatus === "at_risk" ? "red" : "green");
   el.paceLabel.textContent = paceStatus.replaceAll("_", " ");
   el.paceLabel.className = `pace-status ${paceStatus}`;

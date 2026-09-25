@@ -8,6 +8,7 @@ import { AttendanceService } from "./attendance.service.js";
 import { DepthController } from "./depth.controller.js";
 import { DepthService } from "./depth.service.js";
 import { JobRunnerService } from "./job-runner.service.js";
+import { OnboardingService } from "./onboarding.service.js";
 import { OpsController } from "./ops.controller.js";
 import { OpsService } from "./ops.service.js";
 import { PacingService } from "./pacing.service.js";
@@ -22,6 +23,7 @@ import { IntegrationStatusService } from "./integration-status.service.js";
   providers: [
     AuthService,
     DatabaseService,
+    OnboardingService,
     OpsService,
     PacingService,
     DepthService,

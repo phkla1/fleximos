@@ -705,6 +705,260 @@
         }
       }
     },
+    "/onboarding/ramp-profiles": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "List onboarding ramp profiles (rider/driver target curves)",
+        "responses": {
+          "200": {
+            "description": "Ramp profiles"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Create/version a ramp profile (daily targets, parcels-per-hour ramp, completion bonus)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/onboarding/ramp-profiles/{rampProfileId}": {
+      "patch": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Edit a ramp profile in place",
+        "parameters": [
+          {
+            "name": "rampProfileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      }
+    },
+    "/onboarding/cohorts": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "List onboarding cohorts (weekly intake batches)",
+        "responses": {
+          "200": {
+            "description": "Cohorts"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Start a cohort (shared Day-1 start date)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/onboarding/cohorts/{cohortId}/members": {
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Add riders to a cohort",
+        "parameters": [
+          {
+            "name": "cohortId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assigned"
+          }
+        }
+      }
+    },
+    "/onboarding/cohort-board": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Cohort monitoring board: per-rider ramp day, target, targets-hit, projected bonus",
+        "parameters": [
+          {
+            "name": "record_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cohort board"
+          }
+        }
+      }
+    },
+    "/onboarding/operators/{operatorId}": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "One rider's onboarding + completion snapshot",
+        "parameters": [
+          {
+            "name": "operatorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "record_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Onboarding status"
+          }
+        }
+      }
+    },
+    "/supervisor-onboardings": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "List supervisor onboardings (assist assignments)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Supervisor onboardings"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Start a supervisor onboarding (host amoeba + mentor)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/supervisor-onboardings/{onboardingId}/phase": {
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Advance the assist phase (scheduled -> on-demand)",
+        "parameters": [
+          {
+            "name": "onboardingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      }
+    },
+    "/supervisor-onboardings/{onboardingId}/graduate": {
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Graduate the supervisor (explicit HR action; reassign or cell-split)",
+        "parameters": [
+          {
+            "name": "onboardingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Graduated"
+          }
+        }
+      }
+    },
     "/daily-reports": {
       "get": {
         "tags": [

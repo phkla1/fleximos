@@ -821,9 +821,66 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
 
       CREATE INDEX IF NOT EXISTS idx_operator_checkins_date ON ops_operator_checkins(check_in_date DESC, amoeba_id);
+
+      -- Phase 3 go-live: onboarding ramps + cohorts.
+      -- Ramp profile per operator_class: the day-by-day target curve, the
+      -- parcels/hour ramp, the on-demand->scheduled split day, and the
+      -- completion-bonus parameters. All editable; seeded from the onboarding doc.
+      CREATE TABLE IF NOT EXISTS ops_onboarding_ramp_profiles (
+        ramp_profile_id TEXT PRIMARY KEY,
+        operator_class TEXT NOT NULL DEFAULT 'rider',
+        daily_targets_ngn JSONB NOT NULL,            -- ordered array, index 0 = Day 1
+        parcels_per_hour_mode TEXT NOT NULL DEFAULT 'proportional', -- proportional | explicit
+        parcels_per_hour_by_day JSONB,               -- optional explicit ramp (mode=explicit)
+        scheduled_from_day INTEGER NOT NULL DEFAULT 7,
+        rest_day_of_week INTEGER NOT NULL DEFAULT 0,  -- 0=Sunday .. 6=Saturday
+        completion_bonus_ngn NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        missed_day_reduction_pct NUMERIC(6, 2) NOT NULL DEFAULT 0,
+        effective_from DATE NOT NULL,
+        effective_to DATE,
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      -- Weekly intake batches: everyone shares Day N off the cohort start date.
+      CREATE TABLE IF NOT EXISTS ops_onboarding_cohorts (
+        cohort_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        operator_class TEXT NOT NULL DEFAULT 'rider',
+        amoeba_id TEXT,
+        start_date DATE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
+      -- A rider joins a cohort (shared Day N); off-cycle riders leave it null
+      -- and anchor on activated_at instead.
+      ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS onboarding_cohort_id TEXT;
+
+      -- Supervisor onboarding: an assist assignment, not a numeric ramp.
+      CREATE TABLE IF NOT EXISTS ops_supervisor_onboardings (
+        supervisor_onboarding_id TEXT PRIMARY KEY,
+        supervisor_person_id TEXT NOT NULL,
+        host_amoeba_id TEXT NOT NULL,
+        mentor_person_id TEXT,
+        start_date DATE NOT NULL,
+        phase TEXT NOT NULL DEFAULT 'scheduled_assist', -- scheduled_assist | on_demand_assist | graduated
+        status TEXT NOT NULL DEFAULT 'active',           -- active | graduated | cancelled
+        graduated_at TIMESTAMPTZ,
+        target_amoeba_id TEXT,
+        graduation_route TEXT,                           -- reassign | cell_split
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_supervisor_onboardings_status ON ops_supervisor_onboardings(status, host_amoeba_id);
     `);
 
     await this.seed();
+    await this.seedOnboardingRamp();
     await this.seedScheduledJobs();
     await this.seedLeaderboardConfig();
     await this.seedFleetPolicy();
@@ -898,7 +955,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ];
       for (const [id, type, target] of [
         ["pace_car_default", "car", 60000],
-        ["pace_motorbike_default", "motorbike", 27000]
+        // Steady-state bike target = the rider onboarding graduation target
+        // (₦30k). Editable in the admin console like any pace profile.
+        ["pace_motorbike_default", "motorbike", 30000]
       ]) {
         await this.exec(
           `INSERT INTO ops_revenue_pace_profiles
@@ -981,6 +1040,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         (allocated_price_id, price_ngn, effective_from, created_by_person_id, created_at)
        VALUES ('allocated_default', 1000, '2026-01-01', 'person_founder_wole', $1)`,
       [new Date().toISOString()]
+    );
+  }
+
+  private async seedOnboardingRamp() {
+    const existing = await this.one("SELECT ramp_profile_id FROM ops_onboarding_ramp_profiles LIMIT 1");
+    if (existing) return;
+    // Rider 12-day curve from onboarding-thoughts.pdf. Day 1 = induction (0),
+    // graduates to ₦30k. Placeholder bonus params (owner to set real values).
+    const dailyTargets = [0, 2500, 5000, 7500, 10000, 13000, 16000, 19000, 22000, 25000, 28000, 30000];
+    await this.exec(
+      `INSERT INTO ops_onboarding_ramp_profiles
+        (ramp_profile_id, operator_class, daily_targets_ngn, parcels_per_hour_mode,
+         scheduled_from_day, rest_day_of_week, completion_bonus_ngn, missed_day_reduction_pct,
+         effective_from, created_by_person_id, created_at, updated_at)
+       VALUES ('ramp_rider_default', 'rider', $1, 'proportional', 7, 0, 0, 0,
+               '2026-01-01', 'person_system', $2, $2)`,
+      [dailyTargets, new Date().toISOString()]
     );
   }
 

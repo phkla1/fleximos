@@ -27,6 +27,7 @@
       <a href="#operators">Roster</a>
       <a href="#vehicles">Vehicles</a>
       <a href="#controls">Controls</a>
+      <a href="#onboarding">Onboarding</a>
       <a href="#settings">System settings</a>
       <a href="../hr-admin-console/" target="_blank" rel="noopener" title="People, users, roles and scoped access (Identity admin console)">Users ↗</a>
     </nav>
@@ -375,6 +376,72 @@
               <label>Effective from<input name="effective_from" type="date" required /></label>
               <p class="form-hint">The form shows the current company-wide assumptions. Saving creates a new version effective from the chosen date; earlier versions stay listed for history.</p>
               <button type="submit">Save economics policy version</button>
+              </form>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="onboarding" class="workspace-section">
+        <div class="section-heading">
+          <div><p class="eyebrow">New hires</p><h2>Onboarding ramps &amp; cohorts</h2></div>
+        </div>
+        <div class="controls-grid">
+          <div class="control-panel">
+            <h3>Rider ramp profile</h3>
+            <p class="panel-intro">The day-by-day target curve for new riders. The daily target and the delivery parcel pace ramp together over the working days below; day 1 is induction (target 0). Everything here is editable and versioned by date.</p>
+            <div id="onboardingRampList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Set the ramp curve &amp; completion bonus</summary>
+              <form id="onboardingRampForm" class="entry-form compact-form">
+                <label>Applies to<select name="operator_class"><option value="rider">Riders (bikes)</option><option value="driver">Drivers (Qute cars)</option></select></label>
+                <label>Daily targets ₦ (comma-separated, Day 1 first)<input name="daily_targets_ngn" value="0, 2500, 5000, 7500, 10000, 13000, 16000, 19000, 22000, 25000, 28000, 30000" required /></label>
+                <label>Scheduled deliveries start on day<input name="scheduled_from_day" type="number" min="1" step="1" value="7" required /></label>
+                <label>Weekly rest day<select name="rest_day_of_week"><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></label>
+                <label>Completion bonus ₦<input name="completion_bonus_ngn" type="number" min="0" step="any" value="0" /></label>
+                <label>Reduction % per missed day<input name="missed_day_reduction_pct" type="number" min="0" max="100" step="any" value="0" /></label>
+                <label>Effective from<input name="effective_from" type="date" required /></label>
+                <p class="form-hint">Working days count calendar days minus the weekly rest day. The bonus is paid in full for hitting every daily target, cut by the reduction % for each day missed. The ramp graduates to whatever the vehicle-type pace profile (Controls) sets as the veteran target.</p>
+                <button type="submit">Save ramp profile</button>
+              </form>
+            </details>
+          </div>
+
+          <div class="control-panel">
+            <h3>Onboarding cohorts</h3>
+            <p class="panel-intro">Riders are onboarded in weekly batches — everyone in a cohort shares Day N off the start date. Off-cycle riders can be left out and anchor on their own activation date.</p>
+            <div id="cohortList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Start a cohort</summary>
+              <form id="cohortForm" class="entry-form compact-form">
+                <label>Name<input name="name" placeholder="e.g. Monday 6 Jul batch" /></label>
+                <label>Class<select name="operator_class"><option value="rider">Riders</option><option value="driver">Drivers</option></select></label>
+                <label>Start date (Day 1)<input name="start_date" type="date" required /></label>
+                <button type="submit">Create cohort</button>
+              </form>
+            </details>
+            <details class="management-panel">
+              <summary>Add a rider to a cohort</summary>
+              <form id="cohortMemberForm" class="entry-form compact-form">
+                <label>Cohort<select name="cohort_id" required></select></label>
+                <label>Rider<select name="operator_id" required></select></label>
+                <button type="submit">Add to cohort</button>
+              </form>
+            </details>
+          </div>
+
+          <div class="control-panel">
+            <h3>Supervisor onboarding</h3>
+            <p class="panel-intro">A new supervisor assists an active supervisor in an existing amoeba — scheduled first, then on-demand — then HR graduates them to their own team. No auto-graduation.</p>
+            <div id="supervisorOnboardingList" class="data-list compact-list"></div>
+            <details class="management-panel">
+              <summary>Start a supervisor onboarding</summary>
+              <form id="supervisorOnboardingForm" class="entry-form compact-form">
+                <label>New supervisor<select name="supervisor_person_id" required></select></label>
+                <label>Host amoeba<select name="host_amoeba_id" required></select></label>
+                <label>Mentor (active supervisor)<select name="mentor_person_id"></select></label>
+                <label>Start date<input name="start_date" type="date" required /></label>
+                <button type="submit">Start onboarding</button>
               </form>
             </details>
           </div>

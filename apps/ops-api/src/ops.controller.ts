@@ -17,6 +17,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
+import { OnboardingService } from "./onboarding.service.js";
 import { OpsService } from "./ops.service.js";
 import { PacingService } from "./pacing.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
@@ -31,7 +32,8 @@ export class OpsController {
     @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
     @Inject(IntegrationStatusService) private readonly integrationStatus: IntegrationStatusService,
     @Inject(AttendanceService) private readonly attendance: AttendanceService,
-    @Inject(PacingService) private readonly pacing: PacingService
+    @Inject(PacingService) private readonly pacing: PacingService,
+    @Inject(OnboardingService) private readonly onboarding: OnboardingService
   ) {}
 
   private auth(req: Request) {
@@ -76,6 +78,9 @@ export class OpsController {
         daily_performance: "/ops/v1/daily-performance",
         team_board: "/ops/v1/team-board",
         pacing: "/ops/v1/pacing",
+        onboarding_ramp_profiles: "/ops/v1/onboarding/ramp-profiles",
+        onboarding_cohort_board: "/ops/v1/onboarding/cohort-board",
+        supervisor_onboardings: "/ops/v1/supervisor-onboardings",
         daily_reports: "/ops/v1/daily-reports",
         scheduled_jobs: "/ops/v1/scheduled-jobs",
         alerts: "/ops/v1/alerts",
@@ -698,6 +703,146 @@ export class OpsController {
         this.identity.dataScope(actor)
       )
     };
+  }
+
+  /* -------------------- Onboarding ramps (Phase 3) -------------------- */
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/onboarding/ramp-profiles")
+  async listRampProfiles(@Req() req: Request) {
+    await this.auth(req);
+    return { data: await this.onboarding.listRampProfiles(), next_cursor: null };
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/onboarding/ramp-profiles")
+  async createRampProfile(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.onboarding.createRampProfile(body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Patch("ops/v1/onboarding/ramp-profiles/:rampProfileId")
+  async updateRampProfile(
+    @Req() req: Request,
+    @Param("rampProfileId") rampProfileId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.updateRampProfile(rampProfileId, body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/onboarding/cohorts")
+  async listCohorts(@Req() req: Request) {
+    await this.auth(req);
+    return { data: await this.onboarding.listCohorts(), next_cursor: null };
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/onboarding/cohorts")
+  async createCohort(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.onboarding.createCohort(body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/onboarding/cohorts/:cohortId/members")
+  async addCohortMembers(
+    @Req() req: Request,
+    @Param("cohortId") cohortId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    const operatorIds = Array.isArray(body.operator_ids) ? (body.operator_ids as unknown[]).map(String) : [];
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.addCohortMembers(cohortId, operatorIds, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/onboarding/cohort-board")
+  async cohortBoard(@Req() req: Request, @Query("record_date") recordDate?: string) {
+    await this.auth(req);
+    const date = this.ops.dateRange({ record_date: recordDate }).to;
+    return { record_date: date, data: await this.onboarding.cohortBoard(date) };
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/onboarding/operators/:operatorId")
+  async operatorOnboarding(@Req() req: Request, @Param("operatorId") operatorId: string, @Query("record_date") recordDate?: string) {
+    await this.auth(req);
+    const date = this.ops.dateRange({ record_date: recordDate }).to;
+    return this.onboarding.operatorOnboardingStatus(operatorId, date);
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/supervisor-onboardings")
+  async listSupervisorOnboardings(@Req() req: Request, @Query("status") status?: string) {
+    await this.auth(req);
+    return { data: await this.onboarding.listSupervisorOnboardings({ status }), next_cursor: null };
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/supervisor-onboardings")
+  async createSupervisorOnboarding(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.onboarding.createSupervisorOnboarding(body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/supervisor-onboardings/:onboardingId/phase")
+  async advanceSupervisorPhase(
+    @Req() req: Request,
+    @Param("onboardingId") onboardingId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.advanceSupervisorPhase(onboardingId, body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/supervisor-onboardings/:onboardingId/graduate")
+  async graduateSupervisor(
+    @Req() req: Request,
+    @Param("onboardingId") onboardingId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.graduateSupervisor(onboardingId, body, actor.person_id));
   }
 
   @ApiTags("Reporting")

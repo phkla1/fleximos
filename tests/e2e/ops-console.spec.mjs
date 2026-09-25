@@ -475,4 +475,29 @@ test.describe("Ops admin console", () => {
     await page.locator("#ingestionForm").getByRole("button", { name: "Save performance record" }).click();
     await expect(page.locator("#notice")).toContainText("1 record accepted");
   });
+
+  test("configures an onboarding ramp and starts a cohort", async ({ page }) => {
+    await page.goto(`${url}#onboarding`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    // Seeded rider ramp profile is listed.
+    await expect(page.locator("#onboardingRampList")).toContainText("Riders · 12-day ramp");
+
+    // Edit the completion bonus params.
+    const rampPanel = page.locator("#onboardingRampForm").locator("xpath=ancestor::details");
+    await page.getByText("Set the ramp curve & completion bonus", { exact: true }).click();
+    await page.locator('#onboardingRampForm input[name="completion_bonus_ngn"]').fill("25000");
+    await page.locator('#onboardingRampForm input[name="missed_day_reduction_pct"]').fill("8");
+    await page.locator("#onboardingRampForm").getByRole("button", { name: "Save ramp profile" }).click();
+    await expect(page.locator("#notice")).toContainText("ramp profile saved");
+    await expect(page.locator("#onboardingRampList")).toContainText("₦25,000");
+    await expect(rampPanel).not.toHaveAttribute("open", "");
+
+    // Start a cohort.
+    await page.getByText("Start a cohort", { exact: true }).click();
+    await page.locator('#cohortForm input[name="name"]').fill("E2E Monday batch");
+    await page.locator('#cohortForm input[name="start_date"]').fill("2026-06-01");
+    await page.locator("#cohortForm").getByRole("button", { name: "Create cohort" }).click();
+    await expect(page.locator("#notice")).toContainText("Cohort created");
+    await expect(page.locator("#cohortList")).toContainText("E2E Monday batch");
+  });
 });

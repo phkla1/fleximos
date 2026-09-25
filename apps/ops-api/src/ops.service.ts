@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { randomUUID } from "node:crypto";
 import type { OpsDataScope } from "./auth.service.js";
 import { DatabaseService } from "./database.service.js";
+import { OnboardingService } from "./onboarding.service.js";
 
 type RecordBody = Record<string, unknown>;
 
@@ -10,7 +11,10 @@ export class OpsService {
   private readonly paymentsBase = process.env.PAYMENTS_API_BASE || "http://127.0.0.1:4040";
   private readonly serviceToken = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
 
-  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(OnboardingService) private readonly onboarding: OnboardingService
+  ) {}
 
   private id(prefix: string) {
     return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 26)}`;
@@ -1573,6 +1577,9 @@ export class OpsService {
       params
     );
     const profiles = await this.listRevenuePaceProfiles();
+    // Onboarding ramp overrides the daily target for operators still in their
+    // ramp window, so the whole pace/alert stack judges new hires fairly.
+    const ramp = await this.onboarding.rampTargetsForDate(to);
     return rows.map((row) => {
       const platformVehicleType = row.platforms.find((item: any) => item.vehicle_type)?.vehicle_type;
       const vehicleType = platformVehicleType || row.vehicle_type;
@@ -1581,7 +1588,9 @@ export class OpsService {
         && item.effective_from <= to
         && (!item.effective_to || item.effective_to >= to)
       );
-      const dailyTarget = Number(row.daily_revenue_target_ngn || profile?.daily_target_ngn || 0);
+      const onboarding = ramp.get(row.operator_id) || null;
+      const baseTarget = Number(row.daily_revenue_target_ngn || profile?.daily_target_ngn || 0);
+      const dailyTarget = onboarding ? Number(onboarding.daily_target_ngn) : baseTarget;
       // Over a range, the target scales by whole days; the final day only
       // counts its intraday checkpoint share when the range ends today.
       const finalDayPct = profile ? this.expectedPct(profile.checkpoints, to) : 100;
@@ -1595,6 +1604,8 @@ export class OpsService {
         date_to: to,
         day_count: days,
         daily_revenue_target_ngn: dailyTarget,
+        steady_state_target_ngn: baseTarget,
+        onboarding_ramp: onboarding,
         range_revenue_target_ngn: Math.round(target * 100) / 100,
         expected_revenue_pct: Math.round(expectedPct * 10) / 10,
         expected_revenue_ngn: Math.round(expectedRevenue * 100) / 100,
