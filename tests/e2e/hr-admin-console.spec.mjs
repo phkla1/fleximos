@@ -73,6 +73,9 @@ test.describe("hr-admin console", () => {
     await page.locator("#personForm").getByRole("button", { name: "Create person" }).click();
     await expect(page.locator("#notice")).toContainText("Person created.");
 
+    // Switch to the Access view (the console now shows one section at a time).
+    await page.locator('.rail nav a[href="#access-assignments"]').click();
+    await expect(page.locator("#access-assignments")).toBeVisible();
     await page.locator("#access-assignments .create > summary").click({ force: true });
     await page.locator('#roleAssignmentForm select[name="person_id"]').selectOption({ label: name });
     await page.locator('#roleAssignmentForm select[name="role"]').selectOption("manager");

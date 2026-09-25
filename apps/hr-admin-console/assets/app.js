@@ -151,7 +151,7 @@ function renderPeople() {
         ${actionsCell("people", id, p.global_status)}</tr>`;
     }
     return `<tr data-row="people:${escapeHtml(id)}">
-      <td><strong>${escapeHtml(p.display_name)}</strong>${p.legal_name ? `<small>${escapeHtml(p.legal_name)}</small>` : ""}</td>
+      <td><strong>${escapeHtml(p.display_name)}</strong>${p.legal_name && p.legal_name !== p.display_name ? `<small>${escapeHtml(p.legal_name)}</small>` : ""}</td>
       <td>${escapeHtml(p.phone || "—")}</td>
       <td>${escapeHtml(p.email || "—")}</td>
       <td>${escapeHtml(p.nin || "—")}</td>
@@ -481,5 +481,9 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+if (window.AdminKit) {
+  AdminKit.mountViews({ defaultView: "people" });
+  AdminKit.wireNavSearch(document.getElementById("navSearch"));
+}
 document.querySelector("#refreshButton").addEventListener("click", () => refresh());
 refresh();

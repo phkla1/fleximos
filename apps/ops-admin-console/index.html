@@ -6,37 +6,47 @@
     <meta name="theme-color" content="#12362f" />
     <title>Fleximotion Administrator Console</title>
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="../role-console-assets/admin-kit.css" />
     <link rel="stylesheet" href="./assets/styles.css" />
   </head>
   <body>
-    <header class="app-header">
-      <a class="brand" href="#overview" aria-label="Fleximotion Ops home">
-        <span>F</span>
-        <div><strong>Administrator Console</strong><small>Configuration &amp; data administration</small></div>
-      </a>
-      <div class="connection-status"><span id="connectionDot"></span><span id="connectionText">Connecting</span></div>
-    </header>
+    <div class="shell">
+      <aside class="rail">
+        <a class="brand" href="#overview" aria-label="Fleximotion Ops home">
+          <span class="logo">F</span>
+          <div><strong>Administrator</strong><small>Operations</small></div>
+        </a>
+        <div class="nav-search"><input id="navSearch" type="search" placeholder="Search sections…" aria-label="Search sections" /></div>
+        <nav aria-label="Ops sections">
+          <p class="nav-group">Monitor</p>
+          <a href="#overview"><span class="nav-ic">◉</span>Overview</a>
+          <a href="#team"><span class="nav-ic">👥</span>Team board</a>
+          <a href="#alerts"><span class="nav-ic">⚠</span>Alerts</a>
+          <a href="#reports"><span class="nav-ic">📄</span>Reports</a>
+          <a href="#data-health"><span class="nav-ic">🩺</span>Data health</a>
+          <p class="nav-group">Manage</p>
+          <a href="#operators"><span class="nav-ic">🧑‍✈️</span>Roster</a>
+          <a href="#vehicles"><span class="nav-ic">🛵</span>Vehicles</a>
+          <p class="nav-group">Configure</p>
+          <a href="#controls"><span class="nav-ic">🎚</span>Targets &amp; policy</a>
+          <a href="#onboarding"><span class="nav-ic">🎓</span>Onboarding</a>
+          <a href="#cohorts"><span class="nav-ic">📈</span>Cohorts</a>
+          <p class="nav-group">Workflow</p>
+          <a href="#ingestion"><span class="nav-ic">✍</span>Manual entry</a>
+          <p class="nav-group">System</p>
+          <a href="#settings"><span class="nav-ic">⚙</span>Settings</a>
+        </nav>
+        <div class="rail-foot">
+          <span class="conn-dot" id="connectionDot"></span><span id="connectionText">Connecting</span>
+          <div class="rail-xlink"><a href="../hr-admin-console/" title="People, users, roles and scoped access">→ Identity &amp; Org console</a></div>
+        </div>
+      </aside>
 
-    <nav class="tabs" aria-label="Ops sections">
-      <a href="#overview">Overview</a>
-      <a href="#team">Team board</a>
-      <a href="#alerts">Alerts</a>
-      <a href="#ingestion">Manual entry</a>
-      <a href="#reports">Reports</a>
-      <a href="#data-health">Data health</a>
-      <a href="#operators">Roster</a>
-      <a href="#vehicles">Vehicles</a>
-      <a href="#controls">Controls</a>
-      <a href="#onboarding">Onboarding</a>
-      <a href="#settings">System settings</a>
-      <a href="../hr-admin-console/" target="_blank" rel="noopener" title="People, users, roles and scoped access (Identity admin console)">Users ↗</a>
-    </nav>
-
-    <main>
-      <section id="overview" class="overview-band">
+      <main>
+      <header class="topbar">
         <div>
           <p class="eyebrow">Live operations</p>
-          <h1>Today’s operating picture</h1>
+          <h1>Administrator console</h1>
           <p id="todayLabel" class="subtle"></p>
         </div>
         <div class="overview-actions">
@@ -44,18 +54,21 @@
           <label>To<input id="dateTo" type="date" /></label>
           <button id="refreshButton" type="button">Refresh data</button>
         </div>
-      </section>
-
-      <section class="metrics" aria-label="Operational summary">
-        <a href="#operators" data-jump="operators" title="Open the operator roster"><span>Active operators</span><strong id="activeOperatorCount">0</strong></a>
-        <a href="#alerts" data-jump="alerts" title="Open the alert inbox"><span>Open alerts</span><strong id="openAlertCount">0</strong></a>
-        <a href="#vehicles" data-jump="vehicles" title="Open the fleet list"><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></a>
-        <a href="#data-health" data-jump="data-health" title="Open feed and job health"><span>Platform feeds</span><strong id="activePlatformCount">0</strong></a>
-      </section>
+      </header>
 
       <p id="notice" class="notice" role="status"></p>
 
-      <section id="team" class="workspace-section">
+      <section id="overview" class="view">
+        <section class="metrics" aria-label="Operational summary">
+          <a href="#operators" data-jump="operators" title="Open the operator roster"><span>Active operators</span><strong id="activeOperatorCount">0</strong></a>
+          <a href="#alerts" data-jump="alerts" title="Open the alert inbox"><span>Open alerts</span><strong id="openAlertCount">0</strong></a>
+          <a href="#vehicles" data-jump="vehicles" title="Open the fleet list"><span>Vehicles ready</span><strong id="activeVehicleCount">0</strong></a>
+          <a href="#data-health" data-jump="data-health" title="Open feed and job health"><span>Platform feeds</span><strong id="activePlatformCount">0</strong></a>
+        </section>
+        <p class="section-intro">Pick a section from the left. The date range above scopes every view; Refresh reloads all data for that window.</p>
+      </section>
+
+      <section id="team" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Company operations</p><h2>Team summary</h2></div>
           <span id="boardUpdated" class="subtle"></span>
@@ -64,7 +77,7 @@
         <div id="teamBoard" class="team-board"></div>
       </section>
 
-      <section id="alerts" class="workspace-section">
+      <section id="alerts" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Action queue</p><h2>Alert inbox</h2></div>
           <label class="compact-field">Status
@@ -80,7 +93,7 @@
         <div id="alertList" class="alert-list"></div>
       </section>
 
-      <section id="ingestion" class="workspace-section">
+      <section id="ingestion" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Exceptional workflow</p><h2>Manual data entry</h2></div>
         </div>
@@ -130,7 +143,7 @@
         </details>
       </section>
 
-      <section id="reports" class="workspace-section">
+      <section id="reports" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Immutable snapshots</p><h2>Daily reports</h2></div>
           <form id="reportForm" class="report-actions">
@@ -142,7 +155,7 @@
         <div id="reportList" class="data-list report-list"></div>
       </section>
 
-      <section id="data-health" class="workspace-section">
+      <section id="data-health" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Scheduled operations</p><h2>Data health</h2></div>
           <span id="jobHealthSummary" class="subtle"></span>
@@ -175,7 +188,7 @@
         </details>
       </section>
 
-      <section id="operators" class="workspace-section">
+      <section id="operators" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Fleet roster</p><h2>Operators</h2><p class="section-count"><strong id="operatorSummaryCount">0</strong> active operators</p></div>
         </div>
@@ -208,7 +221,7 @@
         </details>
       </section>
 
-      <section id="vehicles" class="workspace-section">
+      <section id="vehicles" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Fleet assets</p><h2>Vehicles</h2><p class="section-count"><strong id="vehicleSummaryCount">0</strong> active vehicles</p></div>
         </div>
@@ -240,7 +253,7 @@
         </details>
       </section>
 
-      <section id="controls" class="workspace-section">
+      <section id="controls" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">Operating policy</p><h2>Targets, fuel and mileage</h2></div>
         </div>
@@ -382,7 +395,7 @@
         </div>
       </section>
 
-      <section id="onboarding" class="workspace-section">
+      <section id="onboarding" class="workspace-section view">
         <div class="section-heading">
           <div><p class="eyebrow">New hires</p><h2>Onboarding ramps &amp; cohorts</h2></div>
         </div>
@@ -448,7 +461,16 @@
         </div>
       </section>
 
-      <section id="settings" class="workspace-section api-settings">
+      <section id="cohorts" class="workspace-section view">
+        <div class="section-heading">
+          <div><p class="eyebrow">New-hire monitoring</p><h2>Onboarding cohorts</h2></div>
+          <span id="cohortBoardUpdated" class="subtle"></span>
+        </div>
+        <p class="section-intro">Live view of riders in their ramp window — day of the curve, today's ramped target, targets hit, and the projected completion bonus. Cohorts and the ramp curve are configured under Onboarding.</p>
+        <div id="cohortBoard" class="data-list"></div>
+      </section>
+
+      <section id="settings" class="workspace-section view api-settings">
         <div class="section-heading">
           <div><p class="eyebrow">Development environment</p><h2>Admin console connection</h2></div>
         </div>
@@ -467,7 +489,8 @@
           </div>
         </details>
       </section>
-    </main>
+      </main>
+    </div>
 
     <dialog id="actionDialog">
       <form method="dialog" class="dialog-body">
@@ -515,6 +538,7 @@
     </dialog>
 
     <script src="../role-console-assets/flexi-env.js"></script>
+    <script src="../role-console-assets/admin-kit.js"></script>
     <script src="./assets/app.js"></script>
   </body>
 </html>

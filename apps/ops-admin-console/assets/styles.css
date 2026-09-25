@@ -283,3 +283,12 @@ button.linklike:hover { background: none; filter: none; text-decoration: underli
 .inline-edit input, .inline-edit select { min-height: 38px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; max-width: 150px; }
 .row-actions { display: inline-flex; gap: 10px; margin-left: 8px; }
 button.linklike.danger { color: #a53e32; }
+
+/* ---------- Phase 4: sidebar shell adjustments ---------- */
+/* Sections are now switchable views, not stacked panels — drop the divider. */
+.workspace-section.view { margin-top: 0; padding-top: 0; border-top: 0; }
+.topbar h1 { font-size: 26px; line-height: 1.1; }
+.topbar .overview-actions label { min-width: 120px; }
+/* Compact team KPI figures so large naira values stop wrapping mid-number. */
+.team-kpis strong { font-size: 15.5px; overflow-wrap: normal; }
+main { max-width: 1240px; }

@@ -24,6 +24,7 @@ const state = {
   allocatedPrices: [],
   onboardingRampProfiles: [],
   cohorts: [],
+  cohortBoard: [],
   supervisorOnboardings: [],
   people: [],
   operatingDate: null,
@@ -59,7 +60,8 @@ const el = Object.fromEntries(
     "operatorFilterSummary", "reportForm", "reportList", "reportDialog",
     "reportDialogTitle", "reportDialogSummary", "reportDialogRows",
     "onboardingRampList", "onboardingRampForm", "cohortList", "cohortForm",
-    "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm"
+    "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
+    "cohortBoard", "cohortBoardUpdated"
   ].map((id) => [id, document.getElementById(id)])
 );
 
@@ -105,10 +107,11 @@ function setNotice(message, error = false) {
 }
 
 function setConnection(status, text) {
-  const root = document.querySelector(".connection-status");
-  root.classList.remove("connected", "error");
-  if (status) root.classList.add(status);
-  el.connectionText.textContent = text;
+  // Connection status now lives in the sidebar rail foot (conn-dot + text).
+  const state = status === "connected" ? "ok" : status === "error" ? "bad" : "";
+  const dot = document.getElementById("connectionDot");
+  if (window.AdminKit) AdminKit.setConnection(dot, el.connectionText, state, text);
+  else { if (dot) dot.className = "conn-dot" + (state ? " " + state : ""); el.connectionText.textContent = text; }
 }
 
 function key(prefix) {
@@ -719,6 +722,24 @@ function render() {
   }).join("") : `<div class="empty">No report snapshot exists ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`}.</div>`;
 
   renderOnboarding();
+  // Keep the live/active version front and centre; fold superseded history away.
+  ["efficiencyPolicyList", "economicsPolicyList", "allocatedPriceList", "paceProfileList", "onboardingRampList"]
+    .forEach((id) => collapseHistory(el[id]));
+}
+
+// Move superseded policy versions into a collapsed "N earlier versions" details,
+// so a config list shows the active value first, not a wall of history.
+function collapseHistory(container) {
+  if (!container) return;
+  const superseded = [...container.querySelectorAll(":scope > .policy-row.superseded, :scope > .superseded")];
+  if (!superseded.length) return;
+  const details = document.createElement("details");
+  details.className = "config-history";
+  const summary = document.createElement("summary");
+  summary.textContent = `${superseded.length} earlier version${superseded.length === 1 ? "" : "s"}`;
+  details.appendChild(summary);
+  superseded.forEach((row) => details.appendChild(row));
+  container.appendChild(details);
 }
 
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -778,6 +799,40 @@ function renderOnboarding() {
   el.supervisorOnboardingForm.elements.supervisor_person_id.innerHTML = optionHtml(state.people, "person_id", "display_name");
   el.supervisorOnboardingForm.elements.mentor_person_id.innerHTML = optionHtml(state.people, "person_id", "display_name", "", "No mentor");
   el.supervisorOnboardingForm.elements.host_amoeba_id.innerHTML = optionHtml(state.amoebas, "amoeba_id", "name");
+
+  renderCohortBoard();
+}
+
+const RAMP_PHASE_LABEL = { on_demand_only: "on-demand", scheduled_and_on_demand: "scheduled + on-demand" };
+
+function renderCohortBoard() {
+  if (!el.cohortBoard) return;
+  const cohorts = (state.cohortBoard || []).filter((c) => (c.members || []).length);
+  el.cohortBoardUpdated.textContent = state.operatingDate ? `As at ${state.operatingDate}` : "";
+  if (!cohorts.length) {
+    el.cohortBoard.innerHTML = `<div class="empty">No riders are in an onboarding ramp on this date. Start a cohort under Onboarding.</div>`;
+    return;
+  }
+  el.cohortBoard.innerHTML = cohorts.map((cohort) => {
+    const rows = (cohort.members || []).map((m) => {
+      if (!m.in_ramp) {
+        return `<div class="policy-row"><div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong><small>Not in a ramp window</small></div><div></div></div>`;
+      }
+      const hitPct = m.scoreable_days ? Math.round((m.targets_hit / m.scoreable_days) * 100) : 0;
+      return `
+      <div class="policy-row">
+        <div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong>
+          <small>Day ${m.day_n}/${m.total_days} · ${escapeHtml(RAMP_PHASE_LABEL[m.phase] || m.phase)}</small>
+          <span class="pill">₦${Number(m.daily_target_ngn || 0).toLocaleString()} target</span></div>
+        <div><small>Targets hit ${m.targets_hit}/${m.scoreable_days} (${hitPct}%) · projected bonus ₦${Number(m.projected_bonus_ngn || 0).toLocaleString()}</small></div>
+      </div>`;
+    }).join("");
+    return `
+      <div class="control-panel">
+        <h3>${escapeHtml(cohort.name)} <span class="subtle" style="font-weight:600;font-size:13px">· Day 1 ${escapeHtml(String(cohort.start_date).slice(0, 10))}</span></h3>
+        <div class="data-list compact-list">${rows}</div>
+      </div>`;
+  }).join("");
 }
 
 async function refresh(message = "Connected to Fleximotion Ops.") {
@@ -827,12 +882,13 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
   el.ingestionForm.elements.record_date.value = operatingDate;
-  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports, rangedAlerts] = await Promise.all([
+  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports, rangedAlerts, cohortBoard] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/daily-performance?${range}`),
     ops(`/ops/v1/ingestion-runs?${range}`),
     ops(`/ops/v1/daily-reports?${range}`),
-    ops(`/ops/v1/alerts?${range}`)
+    ops(`/ops/v1/alerts?${range}`),
+    ops(`/ops/v1/onboarding/cohort-board?record_date=${operatingDate}`).catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     people: people.data,
@@ -843,6 +899,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     platformAccounts: platformAccounts.data,
     alerts: rangedAlerts.data,
     teamBoard: teamBoard.data,
+    cohortBoard: cohortBoard.data,
     dailyPerformance: dailyPerformance.data,
     ingestionRuns: ingestionRuns.data,
     paceProfiles: paceProfiles.data,
@@ -1566,5 +1623,9 @@ function downloadReportFile(report, format) {
   URL.revokeObjectURL(anchor.href);
 }
 
+if (window.AdminKit) {
+  AdminKit.mountViews({ defaultView: "overview" });
+  AdminKit.wireNavSearch(document.getElementById("navSearch"));
+}
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
 refresh().catch(showError);

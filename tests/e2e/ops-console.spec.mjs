@@ -312,13 +312,15 @@ test.describe("Ops admin console", () => {
     await page.goto(url);
     await expect(page).toHaveTitle("Fleximotion Administrator Console");
     await expect(page.locator("#notice")).toContainText("Connected");
-    await expect(page.getByRole("heading", { name: "Manual data entry" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Operators" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Vehicles" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Targets, fuel and mileage" })).toBeVisible();
+    // The admin console exposes management surfaces the supervisor app hides,
+    // reachable from the sidebar (one view at a time).
+    for (const hash of ["#ingestion", "#operators", "#vehicles", "#controls", "#reports", "#data-health", "#onboarding"]) {
+      await expect(page.locator(`.rail nav a[href="${hash}"]`)).toBeVisible();
+    }
+    await page.locator('.rail nav a[href="#controls"]').click();
     await expect(page.getByRole("heading", { name: "Revenue pace profile" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Vehicle efficiency policy" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Daily reports" })).toBeVisible();
+    await page.locator('.rail nav a[href="#data-health"]').click();
     await expect(page.getByRole("heading", { name: "Data health" })).toBeVisible();
     await expect(page.getByText("16 registered jobs")).toBeVisible();
     await expect(page.locator(".job-row")).toHaveCount(16);
@@ -369,6 +371,8 @@ test.describe("Ops admin console", () => {
     expect(await page.locator("#performanceOperatorFilter option").count()).toBeGreaterThan(1);
     await page.locator("#performanceOperatorFilter").selectOption({ index: 1 });
     expect(await page.locator("#performanceRows tr").count()).toBeGreaterThan(0);
+    // The technical import-run audit lives under Data health.
+    await page.locator('.rail nav a[href="#data-health"]').click();
     await expect(page.getByText("View platform import runs", { exact: true })).toBeVisible();
   });
 
@@ -467,7 +471,7 @@ test.describe("Ops admin console", () => {
   });
 
   test("submits a connector test record", async ({ page }) => {
-    await page.goto(url);
+    await page.goto(`${url}#ingestion`);
     await expect(page.locator("#notice")).toContainText("Connected");
     await page.getByText("Enter a performance record", { exact: true }).click();
     await page.locator('#ingestionForm input[name="ride_revenue_ngn"]').fill("27500");

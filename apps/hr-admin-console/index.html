@@ -5,26 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#072e23" />
     <title>Fleximotion Admin Console</title>
+    <link rel="stylesheet" href="../role-console-assets/admin-kit.css" />
     <link rel="stylesheet" href="./assets/styles.css" />
   </head>
   <body>
     <div class="shell">
       <aside class="rail">
         <a class="brand" href="#people">
-          <span>F</span>
+          <span class="logo">F</span>
           <div><strong>Fleximotion</strong><small>Identity &amp; Organisation</small></div>
         </a>
+        <div class="nav-search"><input id="navSearch" type="search" placeholder="Search sections…" aria-label="Search sections" /></div>
         <nav>
+          <p class="nav-group">People &amp; access</p>
           <a href="#people"><span class="nav-ic">👤</span>People</a>
           <a href="#users"><span class="nav-ic">🔑</span>Users &amp; roles</a>
           <a href="#access-assignments"><span class="nav-ic">🎛</span>Access</a>
+          <p class="nav-group">Organisation</p>
           <a href="#amoebas"><span class="nav-ic">🧫</span>Amoebas</a>
           <a href="#sites"><span class="nav-ic">📍</span>Sites</a>
+          <p class="nav-group">System</p>
           <a href="#service-accounts"><span class="nav-ic">🤖</span>Service accounts</a>
         </nav>
         <div class="rail-foot">
           <span class="conn-dot" id="connDot"></span><span id="connText">Connecting…</span>
           <button id="refreshButton" type="button" class="ghost">Refresh</button>
+          <div class="rail-xlink"><a href="../ops-admin-console/" title="Operations configuration &amp; monitoring">→ Administrator (Ops) console</a></div>
           <details class="advanced">
             <summary>Connection</summary>
             <label>API base<input id="apiBase" /></label>
@@ -53,7 +59,7 @@
         <p id="notice" class="notice" role="status"></p>
 
         <!-- ============ PEOPLE ============ -->
-        <section id="people" class="panel">
+        <section id="people" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Identity</p><h2>People</h2></div>
           </div>
@@ -87,7 +93,7 @@
         </section>
 
         <!-- ============ USERS ============ -->
-        <section id="users" class="panel">
+        <section id="users" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Identity</p><h2>Users &amp; roles</h2></div>
           </div>
@@ -126,7 +132,7 @@
         </section>
 
         <!-- ============ ACCESS ASSIGNMENTS ============ -->
-        <section id="access-assignments" class="panel">
+        <section id="access-assignments" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Identity</p><h2>Access</h2></div>
           </div>
@@ -156,7 +162,7 @@
                 <button type="submit">Assign access</button>
               </form>
             </details>
-          <p class="hint">These grants control <strong>console visibility</strong> — which amoebas, sites or teams a Manager, Finance user or Supervisor can see. Day-to-day rider/driver assignment lives in the Administrator (Ops) console under Roster.</p>
+          <p class="hint">These grants control <strong>console visibility</strong> — which amoebas, sites or teams a Manager, Finance user or Supervisor can see. Day-to-day rider/driver assignment lives in the <a href="../ops-admin-console/#operators">Administrator (Ops) console under Roster</a>.</p>
           <div class="toolbar">
             <input class="search" data-search="access" type="search" placeholder="Search person, role, scope…" />
             <select data-status-filter="access">
@@ -175,7 +181,7 @@
         </section>
 
         <!-- ============ AMOEBAS ============ -->
-        <section id="amoebas" class="panel">
+        <section id="amoebas" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Organisation</p><h2>Amoebas</h2></div>
           </div>
@@ -212,7 +218,7 @@
         </section>
 
         <!-- ============ SITES ============ -->
-        <section id="sites" class="panel">
+        <section id="sites" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Organisation</p><h2>Sites</h2></div>
           </div>
@@ -246,7 +252,7 @@
         </section>
 
         <!-- ============ SERVICE ACCOUNTS ============ -->
-        <section id="service-accounts" class="panel">
+        <section id="service-accounts" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Identity</p><h2>Service accounts</h2></div>
           </div>
@@ -280,6 +286,7 @@
     </dialog>
 
     <script src="../role-console-assets/flexi-env.js"></script>
+    <script src="../role-console-assets/admin-kit.js"></script>
     <script src="./assets/app.js"></script>
   </body>
 </html>
