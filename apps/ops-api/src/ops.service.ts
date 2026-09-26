@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { OpsDataScope } from "./auth.service.js";
+import { AccommodationService } from "./accommodation.service.js";
 import { DatabaseService } from "./database.service.js";
 import { OnboardingService } from "./onboarding.service.js";
 
@@ -13,7 +14,8 @@ export class OpsService {
 
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
-    @Inject(OnboardingService) private readonly onboarding: OnboardingService
+    @Inject(OnboardingService) private readonly onboarding: OnboardingService,
+    @Inject(AccommodationService) private readonly accommodation: AccommodationService
   ) {}
 
   private id(prefix: string) {
@@ -297,7 +299,7 @@ export class OpsService {
 
   async updateOperator(operatorId: string, body: RecordBody) {
     const current: any = await this.getOperator(operatorId);
-    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn"];
+    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn", "accommodation_unit_id"];
     const updated: any = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
     if ("operator_class" in body) updated.operator_class = this.operatorClassOf(body.operator_class, updated.operator_type);
@@ -306,11 +308,19 @@ export class OpsService {
     if (["inactive", "suspended"].includes(updated.operator_status) && !["inactive", "suspended"].includes(current.operator_status)) {
       updated.deactivated_at = updated.updated_at;
     }
+    // Housing: leaving active status frees the bed; otherwise a requested unit is
+    // capacity-checked (hard block) before it is assigned.
+    if (["inactive", "suspended"].includes(updated.operator_status)) {
+      updated.accommodation_unit_id = null;
+    } else if ("accommodation_unit_id" in body) {
+      updated.accommodation_unit_id = await this.accommodation.assertCanAssign(body.accommodation_unit_id, operatorId);
+    }
     await this.db.exec(
       `UPDATE ops_operators SET
         operator_type = $2, operator_status = $3, amoeba_id = $4, site_id = $5,
         supervisor_person_id = $6, vehicle_id = $7, daily_revenue_target_ngn = $8,
-        activated_at = $9, deactivated_at = $10, operator_class = $12, updated_at = $11
+        activated_at = $9, deactivated_at = $10, operator_class = $12,
+        accommodation_unit_id = $13, updated_at = $11
        WHERE operator_id = $1`,
       [
         operatorId,
@@ -324,7 +334,8 @@ export class OpsService {
         updated.activated_at,
         updated.deactivated_at,
         updated.updated_at,
-        updated.operator_class || "rider"
+        updated.operator_class || "rider",
+        updated.accommodation_unit_id ?? null
       ]
     );
     await this.audit("operator.updated", "operator", operatorId, current, body);
@@ -1532,7 +1543,8 @@ export class OpsService {
     this.addScope(clauses, params, scope);
     const rows = await this.db.many<any>(
       `SELECT o.operator_id, o.person_id, o.amoeba_id, o.site_id, o.operator_status,
-        o.daily_revenue_target_ngn, v.plate AS vehicle_plate, v.vehicle_type,
+        o.daily_revenue_target_ngn, o.accommodation_unit_id, au.name AS accommodation_name,
+        v.plate AS vehicle_plate, v.vehicle_type,
         COALESCE(d.trips_total, 0) AS trips_total,
         COALESCE(d.trips_completed, 0) AS trips_completed,
         COALESCE(d.ride_revenue_ngn, 0) AS ride_revenue_ngn,
@@ -1544,6 +1556,7 @@ export class OpsService {
         COALESCE(a.open_alerts, 0) AS open_alerts
        FROM ops_operators o
        LEFT JOIN ops_vehicles v ON v.vehicle_id = o.vehicle_id
+       LEFT JOIN ops_accommodation_units au ON au.accommodation_unit_id = o.accommodation_unit_id
        LEFT JOIN (
          SELECT records.operator_id,
           SUM(records.trips_total) AS trips_total,
@@ -1599,6 +1612,7 @@ export class OpsService {
       const expectedPct = target > 0 ? (expectedRevenue / target) * 100 : 100;
       return {
         ...row,
+        accommodated: !!row.accommodation_unit_id,
         vehicle_type: vehicleType,
         date_from: from,
         date_to: to,
@@ -1826,8 +1840,16 @@ export class OpsService {
   async generateDailyReport(body: RecordBody, actorPersonId: string) {
     const recordDate = this.date(body.record_date || this.lagosDate());
     const amoebaId = body.amoeba_id ? String(body.amoeba_id) : null;
-    const rows = await this.listDailyPerformance({ record_date: recordDate, amoeba_id: amoebaId || undefined });
+    const rawRows = await this.listDailyPerformance({ record_date: recordDate, amoeba_id: amoebaId || undefined });
     const board = await this.teamBoard({ record_date: recordDate, amoeba_id: amoebaId || undefined });
+    // Stamp each report row with accommodation status so the spooled report
+    // shows whether a rider is housed (the ₦30k target assumes accommodation).
+    const housing = new Map((board as any[]).map((b) => [b.operator_id, { accommodated: !!b.accommodated, accommodation_name: b.accommodation_name || null }]));
+    const rows = (rawRows as any[]).map((row) => ({
+      ...row,
+      accommodated: housing.get(row.operator_id)?.accommodated ?? false,
+      accommodation_name: housing.get(row.operator_id)?.accommodation_name ?? null
+    }));
     const alerts = await this.listAlerts({});
     const relevantAlerts = alerts.filter((alert: any) =>
       String(alert.alert_date).slice(0, 10) === recordDate && (!amoebaId || alert.amoeba_id === amoebaId)

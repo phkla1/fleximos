@@ -504,4 +504,34 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#notice")).toContainText("Cohort created");
     await expect(page.locator("#cohortList")).toContainText("E2E Monday batch");
   });
+
+  test("tracks finite accommodation and flags housed riders", async ({ page }) => {
+    await page.goto(`${url}#accommodation`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+
+    // A one-bed unit.
+    const name = `E2E Flat ${Date.now()}`;
+    await page.getByText("Add or edit an accommodation unit", { exact: true }).click();
+    await page.locator('#accommodationForm input[name="name"]').fill(name);
+    await page.locator('#accommodationForm input[name="capacity"]').fill("1");
+    await page.locator("#accommodationForm").getByRole("button", { name: "Save unit" }).click();
+    await expect(page.locator("#notice")).toContainText("Accommodation unit saved");
+    const unitRow = page.locator("#accommodationList .policy-row").filter({ hasText: name });
+    await expect(unitRow).toContainText("0/1 beds");
+
+    // Assign it to a rider from the roster; the bed fills and the rider is flagged.
+    await page.locator('.rail nav a[href="#operators"]').click();
+    await page.getByText("Manage operator roster", { exact: true }).click();
+    await page.locator("#operatorAmoebaFilter").selectOption({ index: 1 });
+    const opRow = page.locator("#operatorList .data-row").first();
+    await opRow.locator("[data-operator-status]").selectOption("active");
+    await opRow.locator("[data-operator-accommodation]").selectOption({ label: `${name} (0/1)` });
+    await opRow.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#notice")).toContainText("Operator updated");
+    await expect(page.locator("#operatorList .data-row").first()).toContainText("🏠");
+
+    // The unit now reads full.
+    await page.locator('.rail nav a[href="#accommodation"]').click();
+    await expect(page.locator("#accommodationList .policy-row").filter({ hasText: name })).toContainText("1/1 beds");
+  });
 });

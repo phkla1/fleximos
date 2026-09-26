@@ -26,6 +26,7 @@ const state = {
   cohorts: [],
   cohortBoard: [],
   supervisorOnboardings: [],
+  accommodationUnits: [],
   people: [],
   operatingDate: null,
   jobFilter: ""
@@ -61,7 +62,8 @@ const el = Object.fromEntries(
     "reportDialogTitle", "reportDialogSummary", "reportDialogRows",
     "onboardingRampList", "onboardingRampForm", "cohortList", "cohortForm",
     "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
-    "cohortBoard", "cohortBoardUpdated"
+    "cohortBoard", "cohortBoardUpdated",
+    "accommodationList", "accommodationForm", "accommodationBedsSummary"
   ].map((id) => [id, document.getElementById(id)])
 );
 
@@ -435,7 +437,7 @@ function render() {
     : "Select a team or amoeba, or search by name or vehicle.";
   el.operatorList.innerHTML = currentOperators.length ? currentOperators.map((operator) => `
     <article class="data-row" data-operator-id="${escapeHtml(operator.operator_id)}">
-      <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small></div>
+      <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodation_unit_id ? `<span class="pill" title="Company accommodation">🏠 ${escapeHtml(accommodationName(operator.accommodation_unit_id))}</span>` : ""}</div>
       <div><span class="row-label">Assignment</span><strong>${escapeHtml(nameForAmoeba(operator.amoeba_id))}</strong><small>${escapeHtml(nameForSite(operator.site_id))}</small></div>
       <div><span class="row-label">Vehicle</span><strong>${escapeHtml(operator.vehicle_plate || "No vehicle")}</strong><small>Target ₦${Number(operator.daily_revenue_target_ngn || 0).toLocaleString()}</small></div>
       <div><span class="row-label">Platforms</span><strong>${operator.platform_registrations.length}</strong><small>${operator.platform_registrations.map((item) => item.platform_display_name).join(", ") || "Not registered"}</small></div>
@@ -443,6 +445,7 @@ function render() {
         <select aria-label="Operator status" data-operator-status>
           ${["pending_activation", "active", "inactive", "suspended"].map((value) => `<option value="${value}" ${value === operator.operator_status ? "selected" : ""}>${value}</option>`).join("")}
         </select>
+        <select aria-label="Accommodation" data-operator-accommodation>${accommodationOptions(operator.accommodation_unit_id || "")}</select>
         <button type="button" data-save-operator="${escapeHtml(operator.operator_id)}">Save</button>
         <button type="button" class="secondary" data-register-operator="${escapeHtml(operator.operator_id)}">Add platform</button>
       </div>
@@ -722,8 +725,9 @@ function render() {
   }).join("") : `<div class="empty">No report snapshot exists ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`}.</div>`;
 
   renderOnboarding();
+  renderAccommodation();
   // Keep the live/active version front and centre; fold superseded history away.
-  ["efficiencyPolicyList", "economicsPolicyList", "allocatedPriceList", "paceProfileList", "onboardingRampList"]
+  ["efficiencyPolicyList", "economicsPolicyList", "allocatedPriceList", "paceProfileList", "onboardingRampList", "accommodationList"]
     .forEach((id) => collapseHistory(el[id]));
 }
 
@@ -835,6 +839,43 @@ function renderCohortBoard() {
   }).join("");
 }
 
+function accommodationName(id) {
+  if (!id) return null;
+  return state.accommodationUnits.find((u) => u.accommodation_unit_id === id)?.name || "unit";
+}
+
+// <select> options for assigning a rider's unit: None + active units, with full
+// units disabled (unless it's the rider's current unit, kept selectable).
+function accommodationOptions(selectedId) {
+  const opts = [`<option value="">Not accommodated</option>`];
+  for (const u of state.accommodationUnits) {
+    if (u.status !== "active" && u.accommodation_unit_id !== selectedId) continue;
+    const full = Number(u.available) <= 0 && u.accommodation_unit_id !== selectedId;
+    opts.push(`<option value="${escapeHtml(u.accommodation_unit_id)}"${u.accommodation_unit_id === selectedId ? " selected" : ""}${full ? " disabled" : ""}>${escapeHtml(u.name)} (${Number(u.occupied)}/${Number(u.capacity)})${full ? " — full" : ""}</option>`);
+  }
+  return opts.join("");
+}
+
+function renderAccommodation() {
+  const units = state.accommodationUnits;
+  el.accommodationBedsSummary.textContent = units.reduce((sum, u) => sum + Number(u.capacity || 0), 0);
+  el.accommodationList.innerHTML = units.length ? units.map((u) => {
+    const occupied = Number(u.occupied || 0);
+    const full = Number(u.available) <= 0;
+    return `
+    <article class="policy-row ${u.status === "active" ? "" : "superseded"}">
+      <div><strong>${escapeHtml(u.name)}</strong><small>${escapeHtml(u.location || "No location set")}</small>
+        <span class="pill ${full ? "open" : ""}">${occupied}/${Number(u.capacity)} beds</span>${u.status === "active" ? "" : `<span class="pill superseded">inactive</span>`}</div>
+      <div><small>${Number(u.available)} bed${Number(u.available) === 1 ? "" : "s"} free</small>
+        <span class="row-actions">
+          <button type="button" class="linklike" data-edit-accommodation="${escapeHtml(u.accommodation_unit_id)}">Capacity</button>
+          <button type="button" class="linklike danger" data-delete-accommodation="${escapeHtml(u.accommodation_unit_id)}" data-unit-name="${escapeHtml(u.name)}">Delete</button>
+        </span></div>
+    </article>`;
+  }).join("") : `<div class="empty">No accommodation units yet. Add one below to start tracking beds.</div>`;
+
+}
+
 async function refresh(message = "Connected to Fleximotion Ops.") {
   setConnection("", "Connecting");
   setNotice("Loading operational data...");
@@ -856,7 +897,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodationUnits] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
@@ -864,7 +905,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/delivery-allocated-prices").catch(() => ({ data: [] })),
     ops("/ops/v1/onboarding/ramp-profiles").catch(() => ({ data: [] })),
     ops("/ops/v1/onboarding/cohorts").catch(() => ({ data: [] })),
-    ops("/ops/v1/supervisor-onboardings").catch(() => ({ data: [] }))
+    ops("/ops/v1/supervisor-onboardings").catch(() => ({ data: [] })),
+    ops("/ops/v1/accommodation-units").catch(() => ({ data: [] }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
@@ -918,6 +960,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     onboardingRampProfiles: rampProfiles.data,
     cohorts: cohorts.data,
     supervisorOnboardings: supervisorOnboardings.data,
+    accommodationUnits: accommodationUnits.data,
     fleetPolicy,
     operatingDate,
     dateFrom,
@@ -1339,6 +1382,46 @@ el.supervisorOnboardingList.addEventListener("click", async (event) => {
   } catch (error) { showError(error); }
 });
 
+el.accommodationForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.accommodationForm));
+  try {
+    await ops("/ops/v1/accommodation-units", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("accom") },
+      body: JSON.stringify({ name: values.name, location: values.location || null, capacity: Number(values.capacity || 0) })
+    });
+    el.accommodationForm.reset();
+    el.accommodationForm.elements.capacity.value = "4";
+    await refresh("Accommodation unit saved.");
+  } catch (error) { showError(error); }
+});
+
+el.accommodationList.addEventListener("click", async (event) => {
+  const editUnit = event.target.closest("[data-edit-accommodation]");
+  const deleteUnit = event.target.closest("[data-delete-accommodation]");
+  try {
+    if (editUnit) {
+      const unit = state.accommodationUnits.find((u) => u.accommodation_unit_id === editUnit.dataset.editAccommodation);
+      const next = window.prompt(`Set the number of beds for ${unit?.name || "this unit"} (currently ${unit?.capacity}). Occupied: ${unit?.occupied}.`, String(unit?.capacity ?? ""));
+      if (next === null) return;
+      await ops(`/ops/v1/accommodation-units/${editUnit.dataset.editAccommodation}`, {
+        method: "PATCH",
+        headers: { "Idempotency-Key": key("accom-edit") },
+        body: JSON.stringify({ capacity: Number(next) })
+      });
+      await refresh("Accommodation capacity updated.");
+    } else if (deleteUnit) {
+      if (!window.confirm(`Delete accommodation unit "${deleteUnit.dataset.unitName}"? Only empty units can be deleted.`)) return;
+      await ops(`/ops/v1/accommodation-units/${deleteUnit.dataset.deleteAccommodation}`, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": key("accom-del") }
+      });
+      await refresh("Accommodation unit deleted.");
+    }
+  } catch (error) { showError(error); }
+});
+
 el.reportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(el.reportForm));
@@ -1471,7 +1554,7 @@ document.addEventListener("click", async (event) => {
         <span><strong>${escapeHtml(summary.open_alerts || 0)}</strong> open alerts</span>`;
       el.reportDialogRows.innerHTML = (report.rows || []).map((row) => `
         <tr>
-          <td>${escapeHtml(nameForPerson(row.person_id))}</td>
+          <td>${escapeHtml(nameForPerson(row.person_id))}${row.accommodated ? ` <span class="pill" title="${escapeHtml(row.accommodation_name || "Company accommodation")}">🏠</span>` : ` <span class="pill superseded" title="Not accommodated">no acc.</span>`}</td>
           <td>${escapeHtml(row.platform_display_name)}</td>
           <td>${escapeHtml(row.trips_completed)} / ${escapeHtml(row.trips_total)}</td>
           <td>₦${Number(row.ride_revenue_ngn || 0).toLocaleString()}</td>
@@ -1517,7 +1600,7 @@ document.addEventListener("click", async (event) => {
     el.teamDialogSummary.textContent = `${team.live} of ${team.operators.length} live · ₦${team.revenue.toLocaleString()} revenue · ${team.alerts} open alerts`;
     el.teamOperatorList.innerHTML = team.operators.map((item) => `
       <article class="team-operator-row">
-        <div><strong>${escapeHtml(nameForPerson(item.person_id))}</strong><small>${escapeHtml(item.vehicle_plate || "No vehicle")} · ${escapeHtml(item.current_status.replaceAll("_", " "))}</small></div>
+        <div><strong>${escapeHtml(nameForPerson(item.person_id))}</strong><small>${escapeHtml(item.vehicle_plate || "No vehicle")} · ${escapeHtml(item.current_status.replaceAll("_", " "))}</small>${item.accommodated ? `<span class="pill" title="${escapeHtml(item.accommodation_name || "Company accommodation")}">🏠 accommodated</span>` : `<span class="pill superseded">not accommodated</span>`}</div>
         <div><strong>₦${Number(item.ride_revenue_ngn || 0).toLocaleString()}</strong><small>${escapeHtml(String(item.pace_status || "not available").replaceAll("_", " "))}</small></div>
         <div><strong>${Number(item.hours_online || 0).toFixed(1)}h</strong><small>${Number(item.open_alerts || 0)} alerts</small></div>
       </article>
@@ -1554,13 +1637,17 @@ document.addEventListener("click", async (event) => {
 
   if (saveOperator) {
     const row = saveOperator.closest("[data-operator-id]");
+    const accommodationSelect = row.querySelector("[data-operator-accommodation]");
     try {
       await ops(`/ops/v1/operators/${saveOperator.dataset.saveOperator}`, {
         method: "PATCH",
         headers: { "Idempotency-Key": key("operator-status") },
-        body: JSON.stringify({ operator_status: row.querySelector("[data-operator-status]").value })
+        body: JSON.stringify({
+          operator_status: row.querySelector("[data-operator-status]").value,
+          accommodation_unit_id: accommodationSelect ? (accommodationSelect.value || null) : undefined
+        })
       });
-      await refresh("Operator status updated.");
+      await refresh("Operator updated.");
     } catch (error) { showError(error); }
     return;
   }

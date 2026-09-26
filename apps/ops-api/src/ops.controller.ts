@@ -17,6 +17,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
+import { AccommodationService } from "./accommodation.service.js";
 import { OnboardingService } from "./onboarding.service.js";
 import { OpsService } from "./ops.service.js";
 import { PacingService } from "./pacing.service.js";
@@ -33,7 +34,8 @@ export class OpsController {
     @Inject(IntegrationStatusService) private readonly integrationStatus: IntegrationStatusService,
     @Inject(AttendanceService) private readonly attendance: AttendanceService,
     @Inject(PacingService) private readonly pacing: PacingService,
-    @Inject(OnboardingService) private readonly onboarding: OnboardingService
+    @Inject(OnboardingService) private readonly onboarding: OnboardingService,
+    @Inject(AccommodationService) private readonly accommodation: AccommodationService
   ) {}
 
   private auth(req: Request) {
@@ -81,6 +83,7 @@ export class OpsController {
         onboarding_ramp_profiles: "/ops/v1/onboarding/ramp-profiles",
         onboarding_cohort_board: "/ops/v1/onboarding/cohort-board",
         supervisor_onboardings: "/ops/v1/supervisor-onboardings",
+        accommodation_units: "/ops/v1/accommodation-units",
         daily_reports: "/ops/v1/daily-reports",
         scheduled_jobs: "/ops/v1/scheduled-jobs",
         alerts: "/ops/v1/alerts",
@@ -843,6 +846,57 @@ export class OpsController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.graduateSupervisor(onboardingId, body, actor.person_id));
+  }
+
+  /* -------------------- Company accommodation -------------------- */
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/accommodation-units")
+  async listAccommodationUnits(@Req() req: Request) {
+    await this.auth(req);
+    return { data: await this.accommodation.listUnits(), next_cursor: null };
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/accommodation-units")
+  async createAccommodationUnit(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.accommodation.createUnit(body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Patch("ops/v1/accommodation-units/:unitId")
+  async updateAccommodationUnit(
+    @Req() req: Request,
+    @Param("unitId") unitId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.accommodation.updateUnit(unitId, body, actor.person_id));
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Delete("ops/v1/accommodation-units/:unitId")
+  @HttpCode(HttpStatus.OK)
+  async deleteAccommodationUnit(
+    @Req() req: Request,
+    @Param("unitId") unitId: string,
+    @Headers("idempotency-key") rawKey: string | undefined
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.accommodation.deleteUnit(unitId, actor.person_id));
   }
 
   @ApiTags("Reporting")

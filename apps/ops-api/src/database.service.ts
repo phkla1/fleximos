@@ -877,6 +877,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at TIMESTAMPTZ NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_supervisor_onboardings_status ON ops_supervisor_onboardings(status, host_amoeba_id);
+
+      -- Company accommodation: finite housing. A unit is a place with a bed
+      -- capacity; an operator occupies at most one. Occupancy is derived from
+      -- ops_operators.accommodation_unit_id (cleared when an operator leaves
+      -- active status, so a bed frees automatically). Not amoeba-scoped.
+      CREATE TABLE IF NOT EXISTS ops_accommodation_units (
+        accommodation_unit_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        location TEXT,
+        capacity INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+      ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS accommodation_unit_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_operators_accommodation ON ops_operators(accommodation_unit_id);
     `);
 
     await this.seed();

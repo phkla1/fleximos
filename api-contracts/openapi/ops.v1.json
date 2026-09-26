@@ -959,6 +959,85 @@
         }
       }
     },
+    "/accommodation-units": {
+      "get": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "List company accommodation units with occupancy and free beds",
+        "responses": {
+          "200": {
+            "description": "Accommodation units"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Create an accommodation unit (finite bed capacity)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/accommodation-units/{unitId}": {
+      "patch": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Edit a unit (name/location/capacity/status); capacity cannot drop below occupancy",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "Delete a unit (only when empty)",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
     "/daily-reports": {
       "get": {
         "tags": [

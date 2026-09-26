@@ -27,6 +27,7 @@
           <p class="nav-group">Manage</p>
           <a href="#operators"><span class="nav-ic">🧑‍✈️</span>Roster</a>
           <a href="#vehicles"><span class="nav-ic">🛵</span>Vehicles</a>
+          <a href="#accommodation"><span class="nav-ic">🏠</span>Accommodation</a>
           <p class="nav-group">Configure</p>
           <a href="#controls"><span class="nav-ic">🎚</span>Targets &amp; policy</a>
           <a href="#onboarding"><span class="nav-ic">🎓</span>Onboarding</a>
@@ -250,6 +251,23 @@
           </div>
           <p id="vehicleFilterSummary" class="filter-summary"></p>
           <div id="vehicleList" class="data-list"></div>
+        </details>
+      </section>
+
+      <section id="accommodation" class="workspace-section view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Company housing</p><h2>Accommodation</h2><p class="section-count"><strong id="accommodationBedsSummary">0</strong> beds</p></div>
+        </div>
+        <p class="section-intro">Company accommodation is finite. Each unit has a fixed number of beds; assigning a rider consumes one, and deactivating a rider frees it. Assign a rider's unit under Roster. The ₦30k target assumes accommodation — the team board and reports flag who is housed so lower numbers from non-accommodated riders read fairly.</p>
+        <div id="accommodationList" class="data-list compact-list"></div>
+        <details class="management-panel">
+          <summary>Add or edit an accommodation unit</summary>
+          <form id="accommodationForm" class="entry-form compact-form">
+            <label>Name<input name="name" placeholder="e.g. Surulere Flat A" required /></label>
+            <label>Location<input name="location" placeholder="Optional" /></label>
+            <label>Capacity (beds)<input name="capacity" type="number" min="0" step="1" value="4" required /></label>
+            <button type="submit">Save unit</button>
+          </form>
         </details>
       </section>
 
