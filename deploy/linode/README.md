@@ -342,25 +342,55 @@ worker/scheduler — never start a separate worker (it corrupts the PGlite dir).
 
 **Clean reset for UAT** (empty org for personnel to build from scratch — keeps
 only the founder person + config defaults like pace profiles and platform
-accounts; no demo amoebas/operators as long as `FLEXI_SEED_DEMO` is not `true`):
+accounts; no demo amoebas/operators as long as `FLEXI_SEED_DEMO` is not `true`).
+
+**First check which backend you're on** — deleting the wrong thing is a no-op:
 
 ```bash
-# 1. Stop the services (leave fleximos-frontend up if you like)
+grep -E "FLEXI_(FOUNDATION|OPS|PAYMENTS)_DATABASE_URL" ~/fleximos-data/fleximos.env
+```
+
+*If it prints three `postgresql://…` URLs → you are on **PostgreSQL** (the §9
+cutover). The `*-pglite` folders are unused; reset the databases instead:*
+
+```bash
+set -a; source <(grep -E "FLEXI_(FOUNDATION|OPS|PAYMENTS)_DATABASE_URL" ~/fleximos-data/fleximos.env); set +a
 pm2 stop fleximos-ops-api fleximos-foundation fleximos-payments
-# 2. Back up first — captures the databases AND fleximos.env (token survives)
 mkdir -p ~/fleximos-backups
-tar -czf ~/fleximos-backups/pre-uat-$(date +%F-%H%M).tar.gz -C ~ fleximos-data
-# 3. Delete the databases (schema + config defaults rebuild on next boot)
-rm -rf ~/fleximos-data/{foundation,ops,payments}-pglite
-# 4. Restart
+pg_dump "$FLEXI_FOUNDATION_DATABASE_URL" | gzip > ~/fleximos-backups/foundation-pre-uat-$(date +%F-%H%M).sql.gz
+pg_dump "$FLEXI_OPS_DATABASE_URL"        | gzip > ~/fleximos-backups/ops-pre-uat-$(date +%F-%H%M).sql.gz
+pg_dump "$FLEXI_PAYMENTS_DATABASE_URL"   | gzip > ~/fleximos-backups/payments-pre-uat-$(date +%F-%H%M).sql.gz
+for U in "$FLEXI_FOUNDATION_DATABASE_URL" "$FLEXI_OPS_DATABASE_URL" "$FLEXI_PAYMENTS_DATABASE_URL"; do
+  psql "$U" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"   # owner-level; no superuser needed
+done
 pm2 restart fleximos-ops-api fleximos-foundation fleximos-payments --update-env
 pm2 save
 ```
 
+*(If `DROP SCHEMA` is refused on permissions, `DROP DATABASE … / CREATE DATABASE …
+OWNER fleximos` as the superuser — see §9 — using the DB names from the URLs.)*
+
+*If the grep prints **nothing** → you are on the default **PGlite** file DBs;
+delete those instead (stop the services first, or a running process rewrites the
+folder):*
+
+```bash
+pm2 stop fleximos-ops-api fleximos-foundation fleximos-payments
+mkdir -p ~/fleximos-backups
+tar -czf ~/fleximos-backups/pre-uat-$(date +%F-%H%M).tar.gz -C ~ fleximos-data
+rm -rf ~/fleximos-data/{foundation,ops,payments}-pglite
+pm2 restart fleximos-ops-api fleximos-foundation fleximos-payments --update-env
+pm2 save
+```
+
+Either way, verify: the HR console shows only the founder (**Wole**) with **0
+amoebas / 0 sites**, and the Ops roster is empty with pace profiles + platform
+accounts still present.
+
 To instead reset to a **demo baseline** (sample amoebas + a demo operator, e.g.
 for a throwaway training box), set `FLEXI_SEED_DEMO=true` in
-`~/fleximos-data/fleximos.env` before step 4, or run `node scripts/seed-ops-demo.mjs`
-for a full training roster after the restart.
+`~/fleximos-data/fleximos.env` before the restart, or run
+`node scripts/seed-ops-demo.mjs` for a full training roster after it.
 
 ## 7. Backups and restore
 
