@@ -40,7 +40,10 @@ policy, leaderboard weights, the onboarding ramp, scheduled jobs). So Stage 1
 genuinely starts from scratch; in Stage 3 you *confirm/adjust* the defaults rather
 than create them. *(If you see demo amoebas or a demo operator on first login, the
 box was reset with `FLEXI_SEED_DEMO=true` — that's the training baseline, not the
-clean one.)*
+clean one.)* Note: the **Targets & policy → Vehicle trackers** panel will still
+list GPS devices (e.g. "15 devices at cartracker · 0 mapped to vehicles") even on
+a clean database — those come live from the tracker vendor, not our DB. They map
+to vehicles as you create them in Stage 2.
 
 **Smoke check first:** open each of the seven consoles and confirm the footer/
 header shows **Connected** (not a connection error). `[ ]`
