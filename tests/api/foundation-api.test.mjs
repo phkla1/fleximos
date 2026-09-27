@@ -16,7 +16,7 @@ async function startServer() {
   if (server) return;
   server = spawn("node", ["apps/api-foundation/server.mjs"], {
     cwd: new URL("../..", import.meta.url).pathname,
-    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", FLEXI_DB_DIR: dbDir },
+    env: { ...process.env, FLEXI_SEED_DEMO: "true", PORT: String(port), HOST: "127.0.0.1", FLEXI_DB_DIR: dbDir },
     stdio: ["ignore", "pipe", "pipe"]
   });
   server.stderr.on("data", (chunk) => process.stderr.write(chunk));

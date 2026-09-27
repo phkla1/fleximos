@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:api": "FLEXI_DB_DIR=.data/local-foundation-pglite node apps/api-foundation/server.mjs",
-    "dev:ops-api": "PORT=4030 FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/main.ts",
+    "dev:api": "FLEXI_SEED_DEMO=true FLEXI_DB_DIR=.data/local-foundation-pglite node apps/api-foundation/server.mjs",
+    "dev:ops-api": "FLEXI_SEED_DEMO=true PORT=4030 FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/main.ts",
     "dev:payments-api": "PORT=4040 FLEXI_PAYMENTS_DB_DIR=.data/local-payments-pglite node apps/payments-integration/server.mjs",
     "dev:payments-api:sandbox": "PORT=4040 MONNIFY_PROVIDER_MODE=sandbox FLEXI_PAYMENTS_DB_DIR=.data/local-payments-pglite node apps/payments-integration/server.mjs",
     "dev:ops-worker": "FLEXI_OPS_DB_DIR=.data/local-ops-pglite tsx apps/ops-api/src/worker.ts",

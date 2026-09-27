@@ -1005,8 +1005,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // Demo operator + vehicle + registration + demo alerts are dev/test only.
+    // A clean UAT/production install keeps the config above but no demo roster.
     const existingOperator = await this.one("SELECT operator_id FROM ops_operators LIMIT 1");
-    if (!existingOperator) {
+    if (!existingOperator && process.env.FLEXI_SEED_DEMO === "true") {
       const timestamp = new Date().toISOString();
       await this.exec(
         `INSERT INTO ops_operators

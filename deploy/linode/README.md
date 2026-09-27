@@ -337,14 +337,30 @@ pm2 restart all          # or, if still on systemd units:
 ```
 
 Databases live in `~/fleximos-data`, so restarts and code updates never lose
-data. To reset the environment for a fresh training round:
+data. This box runs under **pm2** (`pm2 list`), and the ops process embeds the
+worker/scheduler — never start a separate worker (it corrupts the PGlite dir).
+
+**Clean reset for UAT** (empty org for personnel to build from scratch — keeps
+only the founder person + config defaults like pace profiles and platform
+accounts; no demo amoebas/operators as long as `FLEXI_SEED_DEMO` is not `true`):
 
 ```bash
-systemctl --user stop fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
+# 1. Stop the services (leave fleximos-frontend up if you like)
+pm2 stop fleximos-ops-api fleximos-foundation fleximos-payments
+# 2. Back up first — captures the databases AND fleximos.env (token survives)
+mkdir -p ~/fleximos-backups
+tar -czf ~/fleximos-backups/pre-uat-$(date +%F-%H%M).tar.gz -C ~ fleximos-data
+# 3. Delete the databases (schema + config defaults rebuild on next boot)
 rm -rf ~/fleximos-data/{foundation,ops,payments}-pglite
-systemctl --user start fleximos-foundation fleximos-ops-api fleximos-payments fleximos-ops-worker
-# then re-run the seed (section 4)
+# 4. Restart
+pm2 restart fleximos-ops-api fleximos-foundation fleximos-payments --update-env
+pm2 save
 ```
+
+To instead reset to a **demo baseline** (sample amoebas + a demo operator, e.g.
+for a throwaway training box), set `FLEXI_SEED_DEMO=true` in
+`~/fleximos-data/fleximos.env` before step 4, or run `node scripts/seed-ops-demo.mjs`
+for a full training roster after the restart.
 
 ## 7. Backups and restore
 

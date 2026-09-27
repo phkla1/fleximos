@@ -7,6 +7,9 @@ import pg from "pg";
 const port = Number(process.env.PORT || 4010);
 const host = process.env.HOST || "127.0.0.1";
 const serviceToken = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
+// Seed demo org (amoebas/sites) only when explicitly enabled — dev/test set this;
+// a clean UAT/production install leaves the org empty for HR to build.
+const SEED_DEMO = process.env.FLEXI_SEED_DEMO === "true";
 const dbDir = process.env.FLEXI_DB_DIR || path.resolve(".data/foundation-pglite");
 
 // Backend selection: a PostgreSQL URL wins (deployments); PGlite otherwise.
@@ -184,7 +187,9 @@ async function initDb() {
 
   const seeded = await one("SELECT person_id FROM people WHERE person_id = $1", ["person_founder_wole"]);
   if (!seeded) await seedDb();
-  await seedSites();
+  // Demo amoebas/sites only seed when explicitly enabled (dev/test). A clean
+  // UAT/production install keeps the founder + service account but no demo org.
+  if (SEED_DEMO) await seedSites();
 }
 
 async function addHistory(entityType, entityId, actorPersonId, changeType, diff) {
@@ -254,7 +259,8 @@ async function seedDb() {
     ]
   );
 
-  for (const amoeba of [
+  // Demo amoebas are dev/test scaffolding — a clean install lets HR create them.
+  if (SEED_DEMO) for (const amoeba of [
     { amoeba_id: "amoeba_island", name: "Island", classification: "operating" },
     { amoeba_id: "amoeba_mainland", name: "Mainland", classification: "operating" },
     { amoeba_id: "amoeba_central", name: "Central", classification: "shared_services" }

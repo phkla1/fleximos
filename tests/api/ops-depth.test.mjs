@@ -21,6 +21,7 @@ async function startServer() {
     cwd: new URL("../..", import.meta.url).pathname,
     env: {
       ...process.env,
+      FLEXI_SEED_DEMO: "true",
       PORT: String(foundationPort),
       HOST: "127.0.0.1",
       FLEXI_DB_DIR: foundationDbDir
@@ -38,6 +39,7 @@ async function startServer() {
     cwd: new URL("../..", import.meta.url).pathname,
     env: {
       ...process.env,
+      FLEXI_SEED_DEMO: "true",
       PORT: String(port),
       HOST: "127.0.0.1",
       FLEXI_OPS_DB_DIR: dbDir,
