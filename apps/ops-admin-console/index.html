@@ -241,7 +241,15 @@
           <label>Amoeba<select name="amoeba_id" required></select></label>
           <label>Make / model<input name="make_model" /></label>
           <label>Color<input name="color" /></label>
-          <label>Tracker device ID<input name="tracker_device_id" placeholder="Auto-mapped by plate if blank" /></label>
+          <label>Tracker provider
+            <select name="tracker_provider">
+              <option value="">Auto — Car Tracker (match by plate)</option>
+              <option value="cartracker">Car Tracker Nigeria</option>
+              <option value="tankvolt">Tankvolt EV (bike)</option>
+              <option value="orbit">Orbit Fleet</option>
+            </select>
+          </label>
+          <label>Tracker device ID / VIN<input name="tracker_device_id" placeholder="Blank = plate auto-map; Tankvolt needs the bike VIN" /></label>
           <button type="submit">Add vehicle</button>
           </form>
           <div class="asset-filters">

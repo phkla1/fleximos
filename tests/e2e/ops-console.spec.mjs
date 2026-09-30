@@ -534,4 +534,31 @@ test.describe("Ops admin console", () => {
     await page.locator('.rail nav a[href="#accommodation"]').click();
     await expect(page.locator("#accommodationList .policy-row").filter({ hasText: name })).toContainText("1/1 beds");
   });
+
+  test("registers a Tankvolt bike by VIN and shows its tracker", async ({ page }) => {
+    await page.goto(`${url}#vehicles`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Manage fleet assets", { exact: true }).click();
+
+    const vin = `LB7FP210XSF${String(Date.now()).slice(-6)}`;
+    const plate = `TV${String(Date.now()).slice(-5)}`;
+    await page.locator('#vehicleForm input[name="plate"]').fill(plate);
+    await page.locator('#vehicleForm select[name="vehicle_type"]').selectOption("motorbike");
+    await page.locator('#vehicleForm select[name="amoeba_id"]').selectOption("amoeba_mainland");
+    await page.locator('#vehicleForm select[name="tracker_provider"]').selectOption("tankvolt");
+
+    // Tankvolt without a VIN is refused (no device list to auto-map against).
+    await page.locator("#vehicleForm").getByRole("button", { name: "Add vehicle" }).click();
+    await expect(page.locator("#notice")).toContainText("VIN");
+
+    // With the VIN it saves and the fleet row shows the Tankvolt tracker.
+    await page.locator('#vehicleForm input[name="tracker_device_id"]').fill(vin);
+    await page.locator("#vehicleForm").getByRole("button", { name: "Add vehicle" }).click();
+    await expect(page.locator("#notice")).toContainText("Vehicle added");
+
+    await page.locator("#vehicleAmoebaFilter").selectOption("amoeba_mainland");
+    const row = page.locator("#vehicleList .data-row").filter({ hasText: plate });
+    await expect(row).toContainText("Tankvolt");
+    await expect(row).toContainText(vin);
+  });
 });

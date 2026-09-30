@@ -297,6 +297,7 @@ export class TrackerIngestService {
           position_age_minutes: ageMinutes !== null && ageMinutes >= 0 ? ageMinutes : null,
           battery_sn: position.battery_sn,
           battery_state: position.battery_state,
+          fix_valid: position.fix_valid,
           movement: position.speed_kmh !== null && position.speed_kmh > 3 ? "moving"
             : ageMinutes !== null && ageMinutes > 60 ? "stale" : "idle",
           controllable: Boolean(connector.controlBattery)

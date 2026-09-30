@@ -141,6 +141,8 @@ export class TankvoltConnector implements TrackerConnector {
           at: point.dataTime ? String(point.dataTime) : null,
           battery_sn: point.batterySn ? String(point.batterySn) : null,
           battery_state: point.workState === undefined ? null : WORK_STATES[Number(point.workState)] ?? String(point.workState),
+          // "A" = valid live fix; "V" = void/last-known (no satellite lock).
+          fix_valid: String(point.locationState || "").toUpperCase() === "A",
           raw: point
         });
       }

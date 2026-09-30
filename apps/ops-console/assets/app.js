@@ -565,9 +565,10 @@ function positionPopup(row) {
   const battery = row.battery_state ? ` · battery ${escapeHtml(row.battery_state)}` : "";
   const seen = row.position_age_minutes === null ? "" :
     row.position_age_minutes === 0 ? "just now" : `${row.position_age_minutes} min ago`;
+  const unverified = row.fix_valid === false ? " · ⚠ unverified fix (last known)" : "";
   return `<strong>${escapeHtml(row.plate)}</strong> · ${escapeHtml(driver)}<br />
     ${escapeHtml(String(row.movement))} · ${row.speed_kmh === null ? "—" : `${row.speed_kmh} km/h`}${battery}<br />
-    <small>${escapeHtml(row.provider)} · ${escapeHtml(seen)}</small><br />
+    <small>${escapeHtml(row.provider)} · ${escapeHtml(seen)}${unverified}</small><br />
     ${row.controllable ? `
       <button type="button" data-battery-control="0" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="${row.movement === "moving" ? "1" : "0"}">⛔ Power off</button>
       <button type="button" data-battery-control="1" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="0">▶ Power on</button>` : ""}`;
@@ -577,7 +578,7 @@ function positionRow(row) {
   const driver = row.person_id ? personName(row.person_id) : "Unassigned";
   return `
     <article class="mileage-row">
-      <div><strong>${escapeHtml(row.plate)}</strong><small>${escapeHtml(driver)} · ${escapeHtml(row.provider)}</small></div>
+      <div><strong>${escapeHtml(row.plate)}</strong><small>${escapeHtml(driver)} · ${escapeHtml(row.provider)}${row.fix_valid === false ? " · ⚠ unverified fix" : ""}</small></div>
       <dl>
         <div><dt>State</dt><dd>${escapeHtml(String(row.movement))}</dd></div>
         <div><dt>Speed</dt><dd>${row.speed_kmh === null ? "—" : `${row.speed_kmh} km/h`}</dd></div>

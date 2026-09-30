@@ -28,6 +28,10 @@ export type TrackerPosition = {
   at: string | null;
   battery_sn: string | null;
   battery_state: string | null;
+  /** Whether the vendor reports this as a valid GPS fix (Tankvolt
+      locationState "A") vs a last-known/unverified one ("V"). Undefined =
+      the vendor doesn't distinguish; treat as valid. */
+  fix_valid?: boolean;
   raw: unknown;
 };
 

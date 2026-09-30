@@ -480,8 +480,10 @@ function render() {
       <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
       <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
       <div><span class="row-label">Amoeba</span><strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong><small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>
+      <div><span class="row-label">Tracker</span>${vehicle.tracker_provider || vehicle.tracker_device_id
+        ? `<strong>${escapeHtml(TRACKER_LABEL[vehicle.tracker_provider] || vehicle.tracker_provider || "tracker")}</strong><small>${escapeHtml(vehicle.tracker_device_id || "auto by plate")}</small>`
+        : `<small>No tracker fitted</small>`}</div>
       <div><span class="pill">${escapeHtml(vehicle.status)}</span></div>
-      <div></div>
     </article>
   `).join("") : `<div class="empty">${hasVehicleScope ? "No vehicles match this scope." : "Choose a fleet scope to view vehicles."}</div>`;
 
@@ -747,6 +749,7 @@ function collapseHistory(container) {
 }
 
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const TRACKER_LABEL = { cartracker: "Car Tracker", tankvolt: "Tankvolt", orbit: "Orbit" };
 
 function renderOnboarding() {
   // Ramp profiles.
@@ -1079,6 +1082,13 @@ el.operatorForm.addEventListener("submit", async (event) => {
 el.vehicleForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const body = Object.fromEntries(new FormData(el.vehicleForm));
+  // Tankvolt has no device list — the VIN must be entered to track/control it.
+  if (body.tracker_provider === "tankvolt" && !String(body.tracker_device_id || "").trim()) {
+    showError(new Error("Tankvolt bikes need the VIN in the Tracker device ID / VIN field."));
+    return;
+  }
+  if (!body.tracker_provider) delete body.tracker_provider;
+  if (!String(body.tracker_device_id || "").trim()) delete body.tracker_device_id;
   try {
     await ops("/ops/v1/vehicles", {
       method: "POST",

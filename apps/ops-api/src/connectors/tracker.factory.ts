@@ -32,11 +32,13 @@ export function createTrackerConnectors(env: NodeJS.ProcessEnv = process.env): T
     }));
   }
   if (env.TANKVOLT_API_KEY) {
-    // Probed 18 Sep 2026: the partner API answers at web.tankvolt.net
-    // (the docs' {ip:port} placeholder resolves to the same host as the
-    // dashboard), so only the key is mandatory.
+    // Confirmed working 30 Sep 2026: the partner test API answers at
+    // devweb.tankvolt.net/iot-service/api/* with the static api-key header
+    // (query-vehicle-gps returned code:0 with GPS data once Tankvolt enabled
+    // the partner attribute on our key). Production will hand over a different
+    // host — set TANKVOLT_API_BASE then; only the key is otherwise mandatory.
     connectors.push(new TankvoltConnector({
-      baseUrl: (env.TANKVOLT_API_BASE || "https://web.tankvolt.net").replace(/\/$/, ""),
+      baseUrl: (env.TANKVOLT_API_BASE || "https://devweb.tankvolt.net").replace(/\/$/, ""),
       apiKey: env.TANKVOLT_API_KEY
     }));
   }

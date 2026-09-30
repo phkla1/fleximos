@@ -58,16 +58,20 @@ CARTRACKER_PASSWORD=<account password>
 # CARTRACKER_API_BASE=https://app.cartracker.com.ng/api   # default
 ```
 
-For the Tankvolt EV bikes (host:port and key are assigned by Tankvolt's
-developers once the VINs are attached to the account):
+For the Tankvolt EV bikes (key is assigned by Tankvolt per partner; GPS query
+needs the partner attribute enabled on the key — confirmed working 30 Sep 2026):
 
 ```bash
 TANKVOLT_API_KEY=<key assigned by Tankvolt>
-# TANKVOLT_API_BASE=https://web.tankvolt.net   # default, verified live
+# TANKVOLT_API_BASE=https://devweb.tankvolt.net   # confirmed TEST host; set the prod host here when Tankvolt provides it
 ```
 
-Register the bikes once with `node scripts/import-tankvolt-fleet.mjs`
-(after sourcing the env file). Both connectors run side by side.
+Tankvolt has no device list, so each bike must be **registered as a vehicle
+carrying `tracker_provider=tankvolt` and its VIN as the tracker device id** —
+either one at a time in the Administrator console (Vehicles → Manage fleet
+assets → Tracker provider = *Tankvolt EV*, VIN in *Tracker device ID / VIN*), or
+in bulk with `node scripts/import-tankvolt-fleet.mjs` (after sourcing the env
+file). Both connectors run side by side; Car Tracker devices auto-map by plate.
 
 ### Orbit e-bikes (orbitconnect.ng)
 

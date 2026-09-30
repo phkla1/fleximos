@@ -15,6 +15,7 @@
     "dev:portal": "node scripts/serve-developer-portal.mjs",
     "seed:ops-demo": "node scripts/seed-ops-demo.mjs",
     "migrate:ops-daily": "node scripts/migrate-ops-daily-csv.mjs",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:api": "node --test tests/api/*.test.mjs",
     "validate:openapi": "node scripts/validate-openapi.mjs",
     "test:e2e": "playwright test"
