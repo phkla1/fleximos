@@ -71,7 +71,12 @@ header shows **Connected** (not a connection error). `[ ]`
 *Needs the people, amoebas and sites from Stage 1.*
 
 1. `[ ]` **Vehicles** → *Manage fleet assets* → add 2–3 vehicles (a car and bikes)
-   to your amoebas, with plates and (optionally) a tracker device ID.
+   to your amoebas, with plates. Set the **Tracker provider** per vehicle:
+   *Car Tracker* (petrol vehicles — the device auto-maps by plate, leave the
+   device-id blank) or *Tankvolt EV* (electric bikes — the **VIN is required** in
+   the *Tracker device ID / VIN* field). Confirm a Tankvolt vehicle saved without
+   a VIN is refused, and that saved vehicles show their tracker provider in the
+   fleet row.
 2. `[ ]` **Roster** → *Manage operator roster* → add each rider/driver person as an
    operator: set type, amoeba, site, **supervisor**, daily target, vehicle.
 3. `[ ]` Register a platform account for an operator (**Add platform**) so it can
