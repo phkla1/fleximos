@@ -13,6 +13,7 @@ const state = {
   economicsPolicies: [],
   efficiencyPolicies: [],
   trackerInventory: null,
+  vehiclePositions: { positions: [], no_feed: [] },
   scheduledJobs: [],
   scheduledJobRuns: [],
   dailyReports: [],
@@ -40,6 +41,7 @@ const el = Object.fromEntries(
     "notice", "connectionText", "activeOperatorCount", "openAlertCount",
     "activeVehicleCount", "activePlatformCount", "alertList", "operatorList",
     "vehicleList", "operatorForm", "vehicleForm", "alertFilter", "opsApiBase",
+    "vehicleTrackerProvider", "vehicleTrackerFieldLabel", "vehicleTrackerDeviceId", "vehicleTrackerHint",
     "foundationApiBase", "apiToken", "actionDialog", "dialogTitle",
     "dialogContext", "dialogNotes", "confirmActionButton", "teamBoard",
     "boardUpdated", "ingestionForm", "performanceRows", "ingestionRuns",
@@ -480,9 +482,13 @@ function render() {
       <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
       <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
       <div><span class="row-label">Amoeba</span><strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong><small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>
-      <div><span class="row-label">Tracker</span>${vehicle.tracker_provider || vehicle.tracker_device_id
-        ? `<strong>${escapeHtml(TRACKER_LABEL[vehicle.tracker_provider] || vehicle.tracker_provider || "tracker")}</strong><small>${escapeHtml(vehicle.tracker_device_id || "auto by plate")}</small>`
-        : `<small>No tracker fitted</small>`}</div>
+      <div><span class="row-label">Tracker</span>${(() => {
+        const t = vehicleTracking(vehicle);
+        const head = vehicle.tracker_provider || vehicle.tracker_device_id
+          ? `<strong>${escapeHtml(TRACKER_LABEL[vehicle.tracker_provider] || vehicle.tracker_provider || "tracker")}</strong><small>${escapeHtml(vehicle.tracker_device_id || "auto by plate")}</small>`
+          : "";
+        return `${head}<span class="pill ${t.cls}">${escapeHtml(t.text)}</span>`;
+      })()}</div>
       <div><span class="pill">${escapeHtml(vehicle.status)}</span></div>
     </article>
   `).join("") : `<div class="empty">${hasVehicleScope ? "No vehicles match this scope." : "Choose a fleet scope to view vehicles."}</div>`;
@@ -750,6 +756,68 @@ function collapseHistory(container) {
 
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const TRACKER_LABEL = { cartracker: "Car Tracker", tankvolt: "Tankvolt", orbit: "Orbit" };
+// Which providers suit which vehicle types. Tankvolt is electric-bike only, so it
+// must not be selectable for a car or van (the provider list filters by type).
+const TRACKER_PROVIDERS = [
+  { value: "", label: "Auto — Car Tracker (match by plate)", types: ["car", "motorbike", "van"] },
+  { value: "cartracker", label: "Car Tracker Nigeria", types: ["car", "motorbike", "van"] },
+  { value: "tankvolt", label: "Tankvolt EV (bike)", types: ["motorbike"] },
+  { value: "orbit", label: "Orbit Fleet", types: ["car", "motorbike", "van"] }
+];
+
+// Keep the tracker fields honest: filter providers by vehicle type, and make the
+// device-id/VIN field explain itself for the chosen provider.
+function updateVehicleTrackerUi() {
+  if (!el.vehicleTrackerProvider) return;
+  const type = el.vehicleForm.elements.vehicle_type.value;
+  const sel = el.vehicleTrackerProvider;
+  const current = sel.value;
+  const opts = TRACKER_PROVIDERS.filter((p) => p.types.includes(type));
+  sel.innerHTML = opts.map((p) => `<option value="${p.value}">${escapeHtml(p.label)}</option>`).join("");
+  sel.value = opts.some((p) => p.value === current) ? current : "";
+  const provider = sel.value;
+  const input = el.vehicleTrackerDeviceId;
+  const label = el.vehicleTrackerFieldLabel;
+  const hint = el.vehicleTrackerHint;
+  if (provider === "tankvolt") {
+    label.textContent = "Bike VIN";
+    input.disabled = false; input.required = true;
+    input.placeholder = "e.g. LB7FP210XSF000155";
+    hint.textContent = "Electric bike — Tankvolt tracks by VIN. Enter the exact VIN; tracking starts on the next pull.";
+  } else if (provider === "cartracker") {
+    label.textContent = "Tracker device ID (optional)";
+    input.disabled = false; input.required = false;
+    input.placeholder = "Leave blank to auto-map by plate";
+    hint.textContent = "Car Tracker lists its own devices — leave blank to auto-map to this plate, or enter a specific device id to pin it.";
+  } else if (provider === "orbit") {
+    label.textContent = "Tracker device ID";
+    input.disabled = false; input.required = false;
+    input.placeholder = "Orbit device id";
+    hint.textContent = "Orbit Fleet device id.";
+  } else {
+    label.textContent = "Tracker device ID";
+    input.disabled = true; input.required = false; input.value = "";
+    input.placeholder = "Not needed — auto-maps by plate";
+    hint.textContent = "Auto: a Car Tracker device is matched to this vehicle by its plate. Nothing to enter.";
+  }
+}
+
+// Live tracking status for a vehicle row (built from vehicle-positions + the
+// device inventory), so you confirm tracking in place rather than elsewhere.
+function vehicleTracking(vehicle) {
+  const feed = state.vehiclePositions || { positions: [], no_feed: [] };
+  const pos = (feed.positions || []).find((p) => p.vehicle_id === vehicle.vehicle_id);
+  if (pos) {
+    const age = pos.position_age_minutes === null || pos.position_age_minutes === undefined
+      ? "" : pos.position_age_minutes === 0 ? " · just now" : ` · ${pos.position_age_minutes} min ago`;
+    const unverified = pos.fix_valid === false ? " · unverified" : "";
+    return { cls: "ok", text: `✓ tracked${age}${unverified}` };
+  }
+  const nf = (feed.no_feed || []).find((p) => p.vehicle_id === vehicle.vehicle_id);
+  if (!vehicle.tracker_provider && !vehicle.tracker_device_id) return { cls: "muted", text: "No tracker fitted" };
+  if (nf && /feed error/i.test(nf.reason || "")) return { cls: "bad", text: "⚠ feed error" };
+  return { cls: "warn", text: "registered · awaiting fix" };
+}
 
 function renderOnboarding() {
   // Ramp profiles.
@@ -882,7 +950,7 @@ function renderAccommodation() {
 async function refresh(message = "Connected to Fleximotion Ops.") {
   setConnection("", "Connecting");
   setNotice("Loading operational data...");
-  const [people, amoebas, sites, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth, trackerInventory] = await Promise.all([
+  const [people, amoebas, sites, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth, trackerInventory, vehiclePositions] = await Promise.all([
     foundation("/identity/v1/people"),
     foundation("/amoeba/v1/amoebas"),
     foundation("/amoeba/v1/sites"),
@@ -899,7 +967,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/notification-deliveries"),
     fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/health`).then((response) => response.json())
   ,
-    ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] }))]);
+    ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
+    ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
   const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodationUnits] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
@@ -951,6 +1020,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     economicsPolicies: economicsPolicies.data,
     efficiencyPolicies: efficiencyPolicies.data,
     trackerInventory,
+    vehiclePositions: vehiclePositions || { positions: [], no_feed: [] },
     scheduledJobs: scheduledJobs.data,
     scheduledJobRuns: scheduledJobRuns.data,
     notificationDeliveries: notificationDeliveries.data,
@@ -993,6 +1063,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   setNotice(message);
 }
 
+el.vehicleForm.elements.vehicle_type.addEventListener("change", updateVehicleTrackerUi);
+el.vehicleTrackerProvider.addEventListener("change", updateVehicleTrackerUi);
+updateVehicleTrackerUi();
 el.operatorForm.elements.amoeba_id.addEventListener("change", updateSiteOptions);
 el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrationOptions);
 el.alertFilter.addEventListener("change", render);
@@ -1084,7 +1157,7 @@ el.vehicleForm.addEventListener("submit", async (event) => {
   const body = Object.fromEntries(new FormData(el.vehicleForm));
   // Tankvolt has no device list — the VIN must be entered to track/control it.
   if (body.tracker_provider === "tankvolt" && !String(body.tracker_device_id || "").trim()) {
-    showError(new Error("Tankvolt bikes need the VIN in the Tracker device ID / VIN field."));
+    showError(new Error("Electric (Tankvolt) bikes need the bike VIN entered."));
     return;
   }
   if (!body.tracker_provider) delete body.tracker_provider;
@@ -1096,7 +1169,8 @@ el.vehicleForm.addEventListener("submit", async (event) => {
       body: JSON.stringify(body)
     });
     el.vehicleForm.reset();
-    await refresh("Vehicle added to the fleet.");
+    updateVehicleTrackerUi();
+    await refresh("Vehicle added — check the Tracker column for its tracking status.");
   } catch (error) { showError(error); }
 });
 

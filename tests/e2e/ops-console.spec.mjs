@@ -535,7 +535,7 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#accommodationList .policy-row").filter({ hasText: name })).toContainText("1/1 beds");
   });
 
-  test("registers a Tankvolt bike by VIN and shows its tracker", async ({ page }) => {
+  test("registers a Tankvolt bike by VIN, guided by vehicle type, with live tracking status", async ({ page }) => {
     await page.goto(`${url}#vehicles`);
     await expect(page.locator("#notice")).toContainText("Connected");
     await page.getByText("Manage fleet assets", { exact: true }).click();
@@ -543,16 +543,23 @@ test.describe("Ops admin console", () => {
     const vin = `LB7FP210XSF${String(Date.now()).slice(-6)}`;
     const plate = `TV${String(Date.now()).slice(-5)}`;
     await page.locator('#vehicleForm input[name="plate"]').fill(plate);
-    await page.locator('#vehicleForm select[name="vehicle_type"]').selectOption("motorbike");
     await page.locator('#vehicleForm select[name="amoeba_id"]').selectOption("amoeba_mainland");
-    await page.locator('#vehicleForm select[name="tracker_provider"]').selectOption("tankvolt");
 
-    // Tankvolt without a VIN is refused (no device list to auto-map against).
-    await page.locator("#vehicleForm").getByRole("button", { name: "Add vehicle" }).click();
-    await expect(page.locator("#notice")).toContainText("VIN");
+    // A car cannot be a Tankvolt EV — the option isn't offered.
+    await page.locator('#vehicleForm select[name="vehicle_type"]').selectOption("car");
+    await expect(page.locator('#vehicleTrackerProvider option[value="tankvolt"]')).toHaveCount(0);
 
-    // With the VIN it saves and the fleet row shows the Tankvolt tracker.
-    await page.locator('#vehicleForm input[name="tracker_device_id"]').fill(vin);
+    // A motorbike can — and choosing Tankvolt makes the VIN field required + relabelled.
+    await page.locator('#vehicleForm select[name="vehicle_type"]').selectOption("motorbike");
+    await expect(page.locator('#vehicleTrackerProvider option[value="tankvolt"]')).toHaveCount(1);
+    await page.locator("#vehicleTrackerProvider").selectOption("tankvolt");
+    await expect(page.locator("#vehicleTrackerFieldLabel")).toHaveText("Bike VIN");
+    await expect(page.locator("#vehicleTrackerHint")).toContainText("tracks by VIN");
+    // The VIN is mandatory for Tankvolt (no device list to auto-map against).
+    await expect(page.locator("#vehicleTrackerDeviceId")).toHaveJSProperty("required", true);
+
+    // With the VIN it saves; the fleet row shows the tracker + live tracking status.
+    await page.locator("#vehicleTrackerDeviceId").fill(vin);
     await page.locator("#vehicleForm").getByRole("button", { name: "Add vehicle" }).click();
     await expect(page.locator("#notice")).toContainText("Vehicle added");
 
@@ -560,5 +567,7 @@ test.describe("Ops admin console", () => {
     const row = page.locator("#vehicleList .data-row").filter({ hasText: plate });
     await expect(row).toContainText("Tankvolt");
     await expect(row).toContainText(vin);
+    // No live feed yet (only the fixture tracker is active in tests) -> awaiting fix.
+    await expect(row).toContainText("awaiting fix");
   });
 });
