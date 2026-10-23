@@ -67,7 +67,8 @@ const el = Object.fromEntries(
     "onboardingRampList", "onboardingRampForm", "cohortList", "cohortForm",
     "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
     "cohortBoard", "cohortBoardUpdated",
-    "accommodationList", "accommodationForm", "accommodationBedsSummary"
+    "accommodationList", "accommodationForm", "accommodationBedsSummary",
+    "platformDialog", "platformForm", "platformDialogContext", "platformDialogResult"
   ].map((id) => [id, document.getElementById(id)])
 );
 
@@ -1857,20 +1858,57 @@ document.addEventListener("click", async (event) => {
   }
 
   if (registerOperator) {
-    const options = state.platformAccounts.map((item) => `${item.platform_account_id}: ${item.display_name}`).join("\n");
-    const accountId = window.prompt(`Enter platform account ID:\n${options}`, state.platformAccounts[0]?.platform_account_id || "");
-    if (!accountId) return;
-    const externalId = window.prompt("Enter the operator ID used by that platform:");
-    if (!externalId) return;
-    try {
-      await ops(`/ops/v1/operators/${registerOperator.dataset.registerOperator}/platform-registrations`, {
-        method: "POST",
-        headers: { "Idempotency-Key": key("platform-registration") },
-        body: JSON.stringify({ platform_account_id: accountId, platform_operator_id: externalId, registration_status: "active" })
-      });
-      await refresh("Platform registration added.");
-    } catch (error) { showError(error); }
+    openPlatformDialog(registerOperator.dataset.registerOperator);
   }
+});
+
+// Platform registration: a proper dialog (dropdown of platform accounts + the
+// operator's ID on that platform), with inline feedback, replacing the old
+// browser prompts. Stays open after a successful add so a rider on several
+// platforms can be registered in one sitting.
+function openPlatformDialog(operatorId) {
+  if (!state.platformAccounts.length) { showError(new Error("No platform accounts are configured yet.")); return; }
+  el.platformDialog.dataset.operatorId = operatorId;
+  el.platformDialogContext.textContent = `Registering ${nameForPerson(state.operators.find((o) => o.operator_id === operatorId)?.person_id)} — add one entry per platform the rider works on.`;
+  el.platformForm.elements.platform_account_id.innerHTML = state.platformAccounts
+    .map((item) => `<option value="${escapeHtml(item.platform_account_id)}">${escapeHtml(item.display_name)}</option>`).join("");
+  el.platformForm.elements.platform_operator_id.value = "";
+  el.platformDialogResult.textContent = "";
+  el.platformDialogResult.className = "dialog-note";
+  el.platformDialog.showModal();
+  el.platformForm.elements.platform_operator_id.focus();
+}
+
+el.platformForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const operatorId = el.platformDialog.dataset.operatorId;
+  const accountId = el.platformForm.elements.platform_account_id.value;
+  const externalId = el.platformForm.elements.platform_operator_id.value.trim();
+  if (!externalId) return;
+  const accountName = state.platformAccounts.find((item) => item.platform_account_id === accountId)?.display_name || accountId;
+  const submitButton = el.platformForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    await ops(`/ops/v1/operators/${operatorId}/platform-registrations`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key("platform-registration") },
+      body: JSON.stringify({ platform_account_id: accountId, platform_operator_id: externalId, registration_status: "active" })
+    });
+    el.platformDialogResult.textContent = `✓ Added on ${accountName}.`;
+    el.platformDialogResult.className = "dialog-note ok";
+    el.platformForm.elements.platform_operator_id.value = "";
+    el.platformForm.elements.platform_operator_id.focus();
+    await refresh("Platform registration added.");
+  } catch (error) {
+    el.platformDialogResult.textContent = `✕ ${error.message}`;
+    el.platformDialogResult.className = "dialog-note err";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+el.platformDialog.addEventListener("click", (event) => {
+  if (event.target.closest("[data-close-platform]")) el.platformDialog.close();
 });
 
 el.actionDialog.addEventListener("close", async () => {

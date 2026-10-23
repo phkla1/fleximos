@@ -475,6 +475,53 @@ test.describe("Ops admin console", () => {
     expect(Number(saved.daily_revenue_target_ngn)).toBe(31500);
   });
 
+  test("registers a platform through a dialog with inline feedback, not a browser prompt", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    const headers = {
+      Authorization: "Bearer flexi-dev-service-token",
+      "Content-Type": "application/json",
+      "X-Actor-Person-Id": "person_founder_wole"
+    };
+    // A fresh operator (unique person) starts with no registrations, so adding one
+    // can never hit the "already registered for this account" conflict on re-runs.
+    const unique = Date.now();
+    const created = await (await request.post(`${opsBase}/ops/v1/operators`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-platform-operator-${unique}` },
+      data: { person_id: `person_e2e_platform_${unique}`, operator_type: "driver", operator_status: "active", amoeba_id: "amoeba_island", site_id: "site_island_1" }
+    })).json();
+    const operatorId = created.operator_id || created.data?.operator_id;
+    expect(operatorId).toBeTruthy();
+
+    await page.goto(`${url}#operators`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Manage operator roster", { exact: true }).click();
+    await page.locator("#operatorAmoebaFilter").selectOption("amoeba_island");
+
+    const row = page.locator(`[data-operator-id="${operatorId}"]`);
+    await expect(row).toBeVisible();
+
+    // No window.prompt — a real dialog opens with a platform dropdown and a field.
+    const dialog = page.locator("#platformDialog");
+    await expect(dialog).toBeHidden();
+    await row.getByRole("button", { name: "Add platform" }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('select[name="platform_account_id"] option').first()).toBeAttached();
+
+    await dialog.locator('select[name="platform_account_id"]').selectOption("platform_bolt_lagos");
+    await dialog.locator('input[name="platform_operator_id"]').fill(`bolt-${unique}`);
+    await dialog.getByRole("button", { name: "Add platform" }).click();
+
+    // Inline confirmation, right where the user is looking.
+    await expect(dialog.locator("#platformDialogResult")).toContainText("Added on Bolt Lagos");
+
+    // It really persisted.
+    const saved = await (await request.get(`${opsBase}/ops/v1/operators/${operatorId}`, { headers })).json();
+    expect(saved.platform_registrations.length).toBe(1);
+
+    await dialog.getByRole("button", { name: "Done" }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test("saves an efficiency policy version in place and closes the panel", async ({ page }) => {
     await page.goto(`${url}#controls`);
     await expect(page.locator("#notice")).toContainText("Connected");

@@ -557,6 +557,20 @@
       </div>
     </dialog>
 
+    <dialog id="platformDialog" class="team-dialog">
+      <form id="platformForm" class="dialog-body">
+        <div class="dialog-heading"><div><p class="eyebrow">Platform registration</p><h2>Add a platform</h2></div><button type="button" data-close-platform aria-label="Close">×</button></div>
+        <p id="platformDialogContext" class="subtle"></p>
+        <label>Platform account<select name="platform_account_id" required></select></label>
+        <label>Operator ID on that platform<input name="platform_operator_id" required placeholder="The rider/driver's own ID on that platform" /></label>
+        <p id="platformDialogResult" class="dialog-note" role="status" aria-live="polite"></p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary" data-close-platform>Done</button>
+          <button type="submit">Add platform</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="../role-console-assets/flexi-env.js"></script>
     <script src="../role-console-assets/admin-kit.js"></script>
     <script src="./assets/app.js"></script>
