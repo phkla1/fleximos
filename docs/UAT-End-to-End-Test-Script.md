@@ -61,7 +61,7 @@ header shows **Connected** (not a connection error). `[ ]`
    the supervisor a user with the **Supervisor** role, each rider/driver a user
    with the **Operator** role, plus one **Manager** and one **Finance** user. These
    roles gate the roster in Stage 2 — only **Operator**-role people can be added as
-   operators, and only **Supervisor**-role people appear as supervisors, so assign
+   operators, and only **Supervisor**- or **Manager**-role people appear as supervisors, so assign
    them here first.
 5. `[ ]` **Access** → grant the Manager an amoeba-scoped access grant; confirm it
    lists with the scope and can be **deactivated**.
@@ -86,7 +86,7 @@ header shows **Connected** (not a connection error). `[ ]`
 2. `[ ]` **Roster** → *Manage operator roster* → add each rider/driver person as an
    operator: set type, amoeba, site, **supervisor**, daily target, vehicle. The
    **Person** list shows only people with the Operator role who aren't already an
-   operator, and the **Supervisor** list only Supervisor-role people — so if a
+   operator, and the **Supervisor** list only Supervisor- or Manager-role people — so if a
    dropdown is empty, assign the role back in **Identity → Users & roles** (Stage
    1.4) first.
 3. `[ ]` Register a platform account for an operator (**Add platform**) so it can

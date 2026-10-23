@@ -189,8 +189,9 @@ function renderOptions() {
     ? optionHtml(operatorPeople, "person_id", "display_name")
     : `<option value="" disabled selected>No eligible people — grant the Operator role in the Identity console</option>`;
 
-  // Supervisor: only people who hold the Supervisor role in Identity.
-  const supervisorPeople = state.people.filter((p) => hasRole(p.person_id, "supervisor"));
+  // Supervisor: people who run teams — the Supervisor role, plus Managers (who
+  // also run amoebas/teams).
+  const supervisorPeople = state.people.filter((p) => hasRole(p.person_id, "supervisor") || hasRole(p.person_id, "manager"));
   el.operatorForm.elements.supervisor_person_id.innerHTML = optionHtml(supervisorPeople, "person_id", "display_name", "", "Unassigned");
 
   el.operatorForm.elements.amoeba_id.innerHTML = amoebas;
