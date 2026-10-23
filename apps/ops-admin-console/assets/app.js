@@ -189,12 +189,8 @@ function renderOptions() {
     ? optionHtml(operatorPeople, "person_id", "display_name")
     : `<option value="" disabled selected>No eligible people — grant the Operator role in the Identity console</option>`;
 
-  // Supervisor: people who run teams — the Supervisor role, plus Managers (who
-  // also run amoebas/teams).
-  const supervisorPeople = state.people.filter((p) => hasRole(p.person_id, "supervisor") || hasRole(p.person_id, "manager"));
-  el.operatorForm.elements.supervisor_person_id.innerHTML = optionHtml(supervisorPeople, "person_id", "display_name", "", "Unassigned");
-
   el.operatorForm.elements.amoeba_id.innerHTML = amoebas;
+  updateSupervisorOptions();
   el.vehicleForm.elements.amoeba_id.innerHTML = amoebas;
   el.reportForm.elements.amoeba_id.innerHTML = `<option value="">Whole company</option>${amoebas}`;
   el.ingestionForm.elements.operator_id.innerHTML = operatorOptions(state.operators);
@@ -214,6 +210,53 @@ function updateSiteOptions() {
   const amoebaId = el.operatorForm.elements.amoeba_id.value;
   const sites = state.sites.filter((site) => site.amoeba_id === amoebaId && site.status === "active");
   el.operatorForm.elements.site_id.innerHTML = optionHtml(sites, "site_id", "name");
+}
+
+// Which amoebas a candidate supervisor/manager actually covers, read from their
+// scoped Access grants — the same thing the API's dataScope() enforces on reads.
+// company grant => unrestricted; amoeba/site grants => a concrete amoeba set.
+// team-scoped or unscoped people have no amoeba-bindable grant, so we can't say
+// they *don't* cover the selected area — they stay selectable.
+function supervisorAmoebaScope(personId) {
+  let unrestricted = false;
+  const amoebaIds = new Set();
+  for (const a of state.roleAssignments || []) {
+    if (a.person_id !== personId) continue;
+    if (a.status && a.status !== "active") continue;
+    if (a.role !== "supervisor" && a.role !== "manager") continue;
+    if (a.scope_type === "company") unrestricted = true;
+    else if (a.scope_type === "amoeba" && a.scope_id) amoebaIds.add(a.scope_id);
+    else if (a.scope_type === "site" && a.scope_id) {
+      const site = state.sites.find((s) => s.site_id === a.scope_id);
+      if (site?.amoeba_id) amoebaIds.add(site.amoeba_id);
+    }
+  }
+  return { unrestricted, amoebaIds };
+}
+
+// Supervisor dropdown: people who run teams — the Supervisor role, plus Managers
+// (who also run amoebas/teams) — narrowed to those whose Access grant covers the
+// amoeba currently selected on the form, so an operator can't be handed to a
+// supervisor who could never see them.
+function updateSupervisorOptions() {
+  const roles = rolesByPerson();
+  const hasRole = (pid, role) => roles.get(pid)?.has(role);
+  const amoebaId = el.operatorForm.elements.amoeba_id.value;
+  const current = el.operatorForm.elements.supervisor_person_id.value;
+
+  const candidates = state.people.filter((p) => hasRole(p.person_id, "supervisor") || hasRole(p.person_id, "manager"));
+  const eligible = candidates.filter((p) => {
+    if (!amoebaId) return true;
+    const scope = supervisorAmoebaScope(p.person_id);
+    if (scope.unrestricted) return true;        // company-wide — covers every amoeba
+    if (scope.amoebaIds.size === 0) return true; // team-scoped / unscoped — not amoeba-bound
+    return scope.amoebaIds.has(amoebaId);        // amoeba/site grant must include this area
+  });
+
+  const keepCurrent = eligible.some((p) => p.person_id === current) ? current : "";
+  el.operatorForm.elements.supervisor_person_id.innerHTML = eligible.length
+    ? optionHtml(eligible, "person_id", "display_name", keepCurrent, "Unassigned")
+    : `<option value="" selected>Unassigned</option><option value="" disabled>No supervisor is scoped to this area — grant a scoped Supervisor role in the Identity console</option>`;
 }
 
 function updateRegistrationOptions() {
@@ -1099,7 +1142,10 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
 el.vehicleForm.elements.vehicle_type.addEventListener("change", updateVehicleTrackerUi);
 el.vehicleTrackerProvider.addEventListener("change", updateVehicleTrackerUi);
 updateVehicleTrackerUi();
-el.operatorForm.elements.amoeba_id.addEventListener("change", updateSiteOptions);
+el.operatorForm.elements.amoeba_id.addEventListener("change", () => {
+  updateSiteOptions();
+  updateSupervisorOptions();
+});
 el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrationOptions);
 el.alertFilter.addEventListener("change", render);
 el.performanceTeamFilter.addEventListener("change", () => {

@@ -406,6 +406,42 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#operatorList")).toContainText("No operators match this scope");
   });
 
+  test("filters the Add-operator Supervisor dropdown to grants that cover the chosen amoeba", async ({ page, request }) => {
+    const foundationBase = "http://127.0.0.1:4510";
+    const headers = {
+      Authorization: "Bearer flexi-dev-service-token",
+      "Content-Type": "application/json",
+      "X-Actor-Person-Id": "person_founder_wole"
+    };
+    // Tunde (the seeded manager) is the only Supervisor/Manager-role candidate in
+    // the demo. Give him an Access grant scoped to just the Island amoeba, so the
+    // dropdown must narrow to him on Island and drop him on Mainland.
+    const people = (await (await request.get(`${foundationBase}/identity/v1/people`, { headers })).json()).data;
+    const tunde = people.find((p) => p.display_name.toLowerCase() === "tunde");
+    expect(tunde, "seeded manager Tunde should exist").toBeTruthy();
+    await request.post(`${foundationBase}/identity/v1/role-assignments`, {
+      headers: { ...headers, "Idempotency-Key": "e2e-supervisor-scope-tunde-island" },
+      data: { person_id: tunde.person_id, role: "manager", scope_type: "amoeba", scope_id: "amoeba_island", status: "active" }
+    });
+
+    await page.goto(`${url}#operators`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Manage operator roster", { exact: true }).click();
+
+    const amoeba = page.locator('#operatorForm select[name="amoeba_id"]');
+    const supervisor = page.locator('#operatorForm select[name="supervisor_person_id"]');
+    const tundeOption = supervisor.locator("option", { hasText: "Tunde" });
+
+    // Island is within Tunde's grant — he is selectable.
+    await amoeba.selectOption("amoeba_island");
+    await expect(tundeOption).toHaveCount(1);
+
+    // Mainland is outside his grant — he drops out and the gap is made explicit.
+    await amoeba.selectOption("amoeba_mainland");
+    await expect(tundeOption).toHaveCount(0);
+    await expect(supervisor).toContainText("No supervisor is scoped to this area");
+  });
+
   test("saves an efficiency policy version in place and closes the panel", async ({ page }) => {
     await page.goto(`${url}#controls`);
     await expect(page.locator("#notice")).toContainText("Connected");
