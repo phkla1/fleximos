@@ -57,8 +57,12 @@ header shows **Connected** (not a connection error). `[ ]`
 2. `[ ]` **Sites** → add a site to each amoeba with GPS + radius; mark one primary.
 3. `[ ]` **People** → create 3–4 people (a supervisor, 2 riders, 1 driver). Give
    real names/phones. Confirm each shows **active**.
-4. `[ ]` **Users & roles** → create a login for the supervisor person and tick the
-   **Supervisor** role; create one **Manager** and one **Finance** user.
+4. `[ ]` **Users & roles** → give each person the role that matches what they are:
+   the supervisor a user with the **Supervisor** role, each rider/driver a user
+   with the **Operator** role, plus one **Manager** and one **Finance** user. These
+   roles gate the roster in Stage 2 — only **Operator**-role people can be added as
+   operators, and only **Supervisor**-role people appear as supervisors, so assign
+   them here first.
 5. `[ ]` **Access** → grant the Manager an amoeba-scoped access grant; confirm it
    lists with the scope and can be **deactivated**.
 6. `[ ]` **Service accounts** → confirm one exists and a token can be **issued**.
@@ -80,7 +84,11 @@ header shows **Connected** (not a connection error). `[ ]`
    tracking status** (✓ tracked · last fix / registered · awaiting fix / no tracker
    fitted) — you shouldn't need to leave the Vehicles view to see it.
 2. `[ ]` **Roster** → *Manage operator roster* → add each rider/driver person as an
-   operator: set type, amoeba, site, **supervisor**, daily target, vehicle.
+   operator: set type, amoeba, site, **supervisor**, daily target, vehicle. The
+   **Person** list shows only people with the Operator role who aren't already an
+   operator, and the **Supervisor** list only Supervisor-role people — so if a
+   dropdown is empty, assign the role back in **Identity → Users & roles** (Stage
+   1.4) first.
 3. `[ ]` Register a platform account for an operator (**Add platform**) so it can
    receive performance data.
 4. `[ ]` Set each operator's status to **active** (Roster row → status → Save).

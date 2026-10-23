@@ -1,5 +1,7 @@
 const state = {
   people: [],
+  users: [],
+  roleAssignments: [],
   amoebas: [],
   sites: [],
   operators: [],
@@ -160,11 +162,37 @@ function optionHtml(items, valueKey, labelKey, selected = "", empty = "") {
   ).join("");
 }
 
+// Roles a person holds in Identity = their user's system roles + any active
+// scoped role-assignment. Used to gate the roster dropdowns.
+function rolesByPerson() {
+  const map = new Map();
+  const add = (pid, role) => {
+    if (!pid || !role) return;
+    if (!map.has(pid)) map.set(pid, new Set());
+    map.get(pid).add(role);
+  };
+  for (const u of state.users || []) for (const r of (u.roles || [])) add(u.person_id, r);
+  for (const a of state.roleAssignments || []) if (!a.status || a.status === "active") add(a.person_id, a.role);
+  return map;
+}
+
 function renderOptions() {
-  const people = optionHtml(state.people, "person_id", "display_name");
   const amoebas = optionHtml(state.amoebas, "amoeba_id", "name");
-  el.operatorForm.elements.person_id.innerHTML = people;
-  el.operatorForm.elements.supervisor_person_id.innerHTML = optionHtml(state.people, "person_id", "display_name", "", "Unassigned");
+  const roles = rolesByPerson();
+  const hasRole = (pid, role) => roles.get(pid)?.has(role);
+  const alreadyOperator = new Set(state.operators.map((o) => o.person_id));
+
+  // Person: only people who hold the Operator role in Identity and aren't
+  // already on the roster (a person can only be one operator).
+  const operatorPeople = state.people.filter((p) => hasRole(p.person_id, "operator") && !alreadyOperator.has(p.person_id));
+  el.operatorForm.elements.person_id.innerHTML = operatorPeople.length
+    ? optionHtml(operatorPeople, "person_id", "display_name")
+    : `<option value="" disabled selected>No eligible people — grant the Operator role in the Identity console</option>`;
+
+  // Supervisor: only people who hold the Supervisor role in Identity.
+  const supervisorPeople = state.people.filter((p) => hasRole(p.person_id, "supervisor"));
+  el.operatorForm.elements.supervisor_person_id.innerHTML = optionHtml(supervisorPeople, "person_id", "display_name", "", "Unassigned");
+
   el.operatorForm.elements.amoeba_id.innerHTML = amoebas;
   el.vehicleForm.elements.amoeba_id.innerHTML = amoebas;
   el.reportForm.elements.amoeba_id.innerHTML = `<option value="">Whole company</option>${amoebas}`;
@@ -950,10 +978,12 @@ function renderAccommodation() {
 async function refresh(message = "Connected to Fleximotion Ops.") {
   setConnection("", "Connecting");
   setNotice("Loading operational data...");
-  const [people, amoebas, sites, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth, trackerInventory, vehiclePositions] = await Promise.all([
+  const [people, amoebas, sites, users, roleAssignments, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth, trackerInventory, vehiclePositions] = await Promise.all([
     foundation("/identity/v1/people"),
     foundation("/amoeba/v1/amoebas"),
     foundation("/amoeba/v1/sites"),
+    foundation("/identity/v1/users").catch(() => ({ data: [] })),
+    foundation("/identity/v1/role-assignments").catch(() => ({ data: [] })),
     ops("/ops/v1/operators"),
     ops("/ops/v1/vehicles"),
     ops("/ops/v1/platform-accounts"),
@@ -1006,6 +1036,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   ]);
   Object.assign(state, {
     people: people.data,
+    users: users.data || [],
+    roleAssignments: roleAssignments.data || [],
     amoebas: amoebas.data,
     sites: sites.data,
     operators: operators.data,
