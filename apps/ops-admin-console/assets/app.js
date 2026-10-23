@@ -234,29 +234,50 @@ function supervisorAmoebaScope(personId) {
   return { unrestricted, amoebaIds };
 }
 
-// Supervisor dropdown: people who run teams — the Supervisor role, plus Managers
-// (who also run amoebas/teams) — narrowed to those whose Access grant covers the
-// amoeba currently selected on the form, so an operator can't be handed to a
-// supervisor who could never see them.
-function updateSupervisorOptions() {
+// People who run teams — the Supervisor role, plus Managers (who also run
+// amoebas/teams) — narrowed to those whose Access grant covers the given amoeba,
+// so an operator can't be handed to a supervisor who could never see them.
+function eligibleSupervisors(amoebaId) {
   const roles = rolesByPerson();
   const hasRole = (pid, role) => roles.get(pid)?.has(role);
-  const amoebaId = el.operatorForm.elements.amoeba_id.value;
-  const current = el.operatorForm.elements.supervisor_person_id.value;
-
-  const candidates = state.people.filter((p) => hasRole(p.person_id, "supervisor") || hasRole(p.person_id, "manager"));
-  const eligible = candidates.filter((p) => {
+  return state.people.filter((p) => {
+    if (!(hasRole(p.person_id, "supervisor") || hasRole(p.person_id, "manager"))) return false;
     if (!amoebaId) return true;
     const scope = supervisorAmoebaScope(p.person_id);
     if (scope.unrestricted) return true;        // company-wide — covers every amoeba
     if (scope.amoebaIds.size === 0) return true; // team-scoped / unscoped — not amoeba-bound
     return scope.amoebaIds.has(amoebaId);        // amoeba/site grant must include this area
   });
+}
 
+// Add-operator form: supervisor options for the amoeba currently chosen on the form.
+function updateSupervisorOptions() {
+  const amoebaId = el.operatorForm.elements.amoeba_id.value;
+  const current = el.operatorForm.elements.supervisor_person_id.value;
+  const eligible = eligibleSupervisors(amoebaId);
   const keepCurrent = eligible.some((p) => p.person_id === current) ? current : "";
   el.operatorForm.elements.supervisor_person_id.innerHTML = eligible.length
     ? optionHtml(eligible, "person_id", "display_name", keepCurrent, "Unassigned")
     : `<option value="" selected>Unassigned</option><option value="" disabled>No supervisor is scoped to this area — grant a scoped Supervisor role in the Identity console</option>`;
+}
+
+// Inline roster-row reassignment: site and supervisor option lists for a given
+// amoeba. Each keeps the operator's current value selectable even if it is no
+// longer active/eligible, so saving the row never silently drops an assignment.
+function rowSiteOptions(amoebaId, selectedId) {
+  const sites = state.sites.filter((s) => s.amoeba_id === amoebaId && s.status === "active");
+  if (selectedId && !sites.some((s) => s.site_id === selectedId)) {
+    sites.unshift({ site_id: selectedId, name: nameForSite(selectedId) });
+  }
+  return optionHtml(sites, "site_id", "name", selectedId);
+}
+
+function rowSupervisorOptions(amoebaId, selectedId) {
+  const eligible = eligibleSupervisors(amoebaId);
+  if (selectedId && !eligible.some((p) => p.person_id === selectedId)) {
+    eligible.unshift({ person_id: selectedId, display_name: nameForPerson(selectedId) });
+  }
+  return optionHtml(eligible, "person_id", "display_name", selectedId, "Unassigned");
 }
 
 function updateRegistrationOptions() {
@@ -512,8 +533,12 @@ function render() {
   el.operatorList.innerHTML = currentOperators.length ? currentOperators.map((operator) => `
     <article class="data-row" data-operator-id="${escapeHtml(operator.operator_id)}">
       <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodation_unit_id ? `<span class="pill" title="Company accommodation">🏠 ${escapeHtml(accommodationName(operator.accommodation_unit_id))}</span>` : ""}</div>
-      <div><span class="row-label">Assignment</span><strong>${escapeHtml(nameForAmoeba(operator.amoeba_id))}</strong><small>${escapeHtml(nameForSite(operator.site_id))}</small></div>
-      <div><span class="row-label">Vehicle</span><strong>${escapeHtml(operator.vehicle_plate || "No vehicle")}</strong><small>Target ₦${Number(operator.daily_revenue_target_ngn || 0).toLocaleString()}</small></div>
+      <div><span class="row-label">Assignment</span>
+        <select class="row-field" aria-label="Amoeba" data-operator-amoeba>${optionHtml(state.amoebas, "amoeba_id", "name", operator.amoeba_id)}</select>
+        <select class="row-field" aria-label="Site" data-operator-site>${rowSiteOptions(operator.amoeba_id, operator.site_id || "")}</select>
+        <select class="row-field" aria-label="Supervisor" data-operator-supervisor>${rowSupervisorOptions(operator.amoeba_id, operator.supervisor_person_id || "")}</select>
+      </div>
+      <div><span class="row-label">Vehicle</span><strong>${escapeHtml(operator.vehicle_plate || "No vehicle")}</strong><label class="row-target">Target ₦<input type="number" min="0" step="any" aria-label="Daily target (NGN)" data-operator-target value="${Number(operator.daily_revenue_target_ngn || 0)}" /></label></div>
       <div><span class="row-label">Platforms</span><strong>${operator.platform_registrations.length}</strong><small>${operator.platform_registrations.map((item) => item.platform_display_name).join(", ") || "Not registered"}</small></div>
       <div class="row-actions">
         <select aria-label="Operator status" data-operator-status>
@@ -1145,6 +1170,15 @@ updateVehicleTrackerUi();
 el.operatorForm.elements.amoeba_id.addEventListener("change", () => {
   updateSiteOptions();
   updateSupervisorOptions();
+});
+// Reassignment: changing a roster row's amoeba re-scopes its site and supervisor.
+el.operatorList.addEventListener("change", (event) => {
+  const amoebaSelect = event.target.closest("[data-operator-amoeba]");
+  if (!amoebaSelect) return;
+  const row = amoebaSelect.closest("[data-operator-id]");
+  const amoebaId = amoebaSelect.value;
+  row.querySelector("[data-operator-site]").innerHTML = rowSiteOptions(amoebaId, "");
+  row.querySelector("[data-operator-supervisor]").innerHTML = rowSupervisorOptions(amoebaId, "");
 });
 el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrationOptions);
 el.alertFilter.addEventListener("change", render);
@@ -1801,13 +1835,20 @@ document.addEventListener("click", async (event) => {
   if (saveOperator) {
     const row = saveOperator.closest("[data-operator-id]");
     const accommodationSelect = row.querySelector("[data-operator-accommodation]");
+    const siteId = row.querySelector("[data-operator-site]").value;
+    const target = row.querySelector("[data-operator-target]").value;
+    if (!siteId) { showError("Pick a site for the selected amoeba before saving."); return; }
     try {
       await ops(`/ops/v1/operators/${saveOperator.dataset.saveOperator}`, {
         method: "PATCH",
-        headers: { "Idempotency-Key": key("operator-status") },
+        headers: { "Idempotency-Key": key("operator-update") },
         body: JSON.stringify({
           operator_status: row.querySelector("[data-operator-status]").value,
-          accommodation_unit_id: accommodationSelect ? (accommodationSelect.value || null) : undefined
+          accommodation_unit_id: accommodationSelect ? (accommodationSelect.value || null) : undefined,
+          amoeba_id: row.querySelector("[data-operator-amoeba]").value,
+          site_id: siteId,
+          supervisor_person_id: row.querySelector("[data-operator-supervisor]").value || null,
+          daily_revenue_target_ngn: target === "" ? undefined : Number(target)
         })
       });
       await refresh("Operator updated.");

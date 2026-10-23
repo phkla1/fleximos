@@ -188,6 +188,9 @@ textarea { resize: vertical; }
 .data-row strong, .alert-row strong { display: block; }
 .data-row small, .alert-row small { display: block; margin-top: 4px; color: var(--muted); }
 .row-label { display: none; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.row-field { display: block; width: 100%; margin-top: 6px; }
+.row-target { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.row-target input { width: 108px; margin-left: 4px; }
 .pill { display: inline-flex; align-items: center; width: max-content; min-height: 27px; padding: 0 9px; border-radius: 999px; background: #e8f1ed; color: var(--green-dark); font-size: 12px; font-weight: 850; }
 .pill.open { background: #f8ead6; color: #7c4808; }
 .pill.acknowledged { background: #e4edf5; color: var(--blue); }

@@ -442,6 +442,39 @@ test.describe("Ops admin console", () => {
     await expect(supervisor).toContainText("No supervisor is scoped to this area");
   });
 
+  test("reassigns an operator inline — amoeba, site and target — and persists it", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    const headers = { Authorization: "Bearer flexi-dev-service-token", "Content-Type": "application/json" };
+    // Work on a stable seeded operator; read its current amoeba so the test is
+    // idempotent across re-runs (the seed never resets an existing operator).
+    const roster = (await (await request.get(`${opsBase}/ops/v1/operators`, { headers })).json()).data;
+    const target = roster.find((o) => o.vehicle_plate === "FKJ176KM");
+    expect(target, "seeded operator FKJ176KM should exist").toBeTruthy();
+
+    await page.goto(`${url}#operators`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Manage operator roster", { exact: true }).click();
+    await page.locator("#operatorAmoebaFilter").selectOption(target.amoeba_id);
+
+    const row = page.locator(`[data-operator-id="${target.operator_id}"]`);
+    await expect(row).toBeVisible();
+
+    // Move the operator to the Island amoeba; the row's Site and Supervisor
+    // re-scope to that amoeba (Island sites appear).
+    await row.locator("[data-operator-amoeba]").selectOption("amoeba_island");
+    await expect(row.locator('[data-operator-site] option[value="site_island_1"]')).toHaveCount(1);
+    await row.locator("[data-operator-site]").selectOption("site_island_1");
+    await row.locator("[data-operator-target]").fill("31500");
+    await row.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#notice")).toContainText("Operator updated.");
+
+    // The change persisted exactly as entered.
+    const saved = await (await request.get(`${opsBase}/ops/v1/operators/${target.operator_id}`, { headers })).json();
+    expect(saved.amoeba_id).toBe("amoeba_island");
+    expect(saved.site_id).toBe("site_island_1");
+    expect(Number(saved.daily_revenue_target_ngn)).toBe(31500);
+  });
+
   test("saves an efficiency policy version in place and closes the panel", async ({ page }) => {
     await page.goto(`${url}#controls`);
     await expect(page.locator("#notice")).toContainText("Connected");
