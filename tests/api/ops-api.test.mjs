@@ -1770,6 +1770,60 @@ test("onboarding ramp overrides the daily target and delivery pace for a new rid
   assert.ok(expectedMultiplier < 1, "a mid-ramp rider is judged below veteran throughput");
 });
 
+test("daily target defaults by housing (25k standard / 28k accommodated) with a per-operator override", async () => {
+  const RECORD = "2026-03-01";
+  const unique = Date.now();
+  // A rider on a motorbike, so the motorbike pace profile (25k / 28k) applies.
+  const vehicle = await request("/ops/v1/vehicles", {
+    method: "POST",
+    headers: { "Idempotency-Key": `tgt-vehicle-${unique}` },
+    body: JSON.stringify({ plate: `TGT${String(unique).slice(-6)}`, vehicle_type: "motorbike", amoeba_id: "amoeba_mainland" })
+  });
+  const rider = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": `tgt-rider-${unique}` },
+    body: JSON.stringify({ person_id: `person_tgt_${unique}`, operator_type: "rider", operator_class: "rider", operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1" })
+  });
+  const id = rider.body.operator_id;
+  await request(`/ops/v1/operators/${id}`, {
+    method: "PATCH", headers: { "Idempotency-Key": `tgt-vehicle-assign-${unique}` },
+    body: JSON.stringify({ vehicle_id: vehicle.body.vehicle_id })
+  });
+  const targetOf = async () => {
+    const board = await request(`/ops/v1/team-board?record_date=${RECORD}`);
+    return board.body.data.find((r) => r.operator_id === id);
+  };
+
+  // No override, not accommodated → the standard default.
+  let row = await targetOf();
+  assert.equal(Number(row.daily_revenue_target_ngn), 25000, "standard rider default");
+  assert.equal(Number(row.steady_state_target_ngn), 25000);
+
+  // Accommodated → the higher default.
+  await request(`/ops/v1/operators/${id}`, {
+    method: "PATCH", headers: { "Idempotency-Key": `tgt-accom-${unique}` },
+    body: JSON.stringify({ accommodated: true })
+  });
+  row = await targetOf();
+  assert.equal(Number(row.daily_revenue_target_ngn), 28000, "accommodated rider default");
+
+  // A per-operator override wins over the accommodation default.
+  await request(`/ops/v1/operators/${id}`, {
+    method: "PATCH", headers: { "Idempotency-Key": `tgt-override-${unique}` },
+    body: JSON.stringify({ daily_revenue_target_ngn: 40000 })
+  });
+  row = await targetOf();
+  assert.equal(Number(row.daily_revenue_target_ngn), 40000, "override wins");
+
+  // Clearing the override falls back to the accommodation default.
+  await request(`/ops/v1/operators/${id}`, {
+    method: "PATCH", headers: { "Idempotency-Key": `tgt-clear-${unique}` },
+    body: JSON.stringify({ daily_revenue_target_ngn: null })
+  });
+  row = await targetOf();
+  assert.equal(Number(row.daily_revenue_target_ngn), 28000, "cleared override returns to the default");
+});
+
 test("onboarding ramp profile bonus params are editable and drive the projected bonus", async () => {
   const profiles = await request("/ops/v1/onboarding/ramp-profiles");
   const rider = profiles.body.data.find((p) => p.operator_class === "rider" && !p.effective_to);

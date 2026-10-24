@@ -151,7 +151,10 @@ export class OnboardingService {
     const dailyTarget = targets[n - 1];
     const graduation = targets[targets.length - 1];
     const scheduledFrom = Number(profile.scheduled_from_day || 7);
-    let multiplier = graduation > 0 ? dailyTarget / graduation : 1;
+    // Revenue target ramps as a fraction of the graduation target, so it scales to
+    // each rider's steady state (25k standard / 28k accommodated / any override).
+    const targetMultiplier = graduation > 0 ? dailyTarget / graduation : 1;
+    let multiplier = targetMultiplier;
     if (profile.parcels_per_hour_mode === "explicit") {
       const byDay = Array.isArray(profile.parcels_per_hour_by_day) ? profile.parcels_per_hour_by_day : null;
       if (byDay && byDay[n - 1] != null) multiplier = Number(byDay[n - 1]);
@@ -162,6 +165,7 @@ export class OnboardingService {
       total_days: targets.length,
       daily_target_ngn: dailyTarget,
       graduation_target_ngn: graduation,
+      target_multiplier: Math.round(targetMultiplier * 1000) / 1000,
       parcels_per_hour_multiplier: Math.round(multiplier * 1000) / 1000,
       phase: n >= scheduledFrom ? "scheduled_and_on_demand" : "on_demand_only",
       scheduled_from_day: scheduledFrom

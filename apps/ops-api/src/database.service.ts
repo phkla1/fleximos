@@ -902,6 +902,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS accommodated BOOLEAN NOT NULL DEFAULT FALSE;
       UPDATE ops_operators SET accommodated = TRUE WHERE accommodation_unit_id IS NOT NULL AND accommodated = FALSE;
       CREATE INDEX IF NOT EXISTS idx_operators_accommodated ON ops_operators(site_id, accommodated);
+
+      -- Accommodated riders carry a higher steady-state daily target than standard
+      -- riders (housing is the trade-off). A null here means "same as standard".
+      ALTER TABLE ops_revenue_pace_profiles ADD COLUMN IF NOT EXISTS daily_target_accommodated_ngn NUMERIC(12, 2);
     `);
 
     await this.seed();
@@ -978,19 +982,19 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         { time: "19:00", expected_pct: 90 },
         { time: "21:00", expected_pct: 100 }
       ];
-      for (const [id, type, target] of [
-        ["pace_car_default", "car", 60000],
-        // Steady-state bike target = the rider onboarding graduation target
-        // (₦30k). Editable in the admin console like any pace profile.
-        ["pace_motorbike_default", "motorbike", 30000]
+      for (const [id, type, target, accommodatedTarget] of [
+        ["pace_car_default", "car", 60000, null],
+        // Rider steady-state daily target per the compensation framework:
+        // ₦25k standard, ₦28k for accommodated riders. Editable in the admin console.
+        ["pace_motorbike_default", "motorbike", 25000, 28000]
       ]) {
         await this.exec(
           `INSERT INTO ops_revenue_pace_profiles
-           (pace_profile_id, vehicle_type, day_type, daily_target_ngn, checkpoints,
+           (pace_profile_id, vehicle_type, day_type, daily_target_ngn, daily_target_accommodated_ngn, checkpoints,
             warning_tolerance_pct, critical_tolerance_pct, effective_from,
             created_by_person_id, created_at, updated_at)
-           VALUES ($1,$2,'all',$3,$4,10,20,'2026-01-01','person_system',$5,$5)`,
-          [id, type, target, checkpoints, timestamp]
+           VALUES ($1,$2,'all',$3,$6,$4,10,20,'2026-01-01','person_system',$5,$5)`,
+          [id, type, target, checkpoints, timestamp, accommodatedTarget]
         );
       }
     }

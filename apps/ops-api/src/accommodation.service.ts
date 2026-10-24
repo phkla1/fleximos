@@ -18,7 +18,9 @@ export class AccommodationService {
   private siteCache: { at: number; sites: Map<string, any> } | null = null;
 
   private async siteCapacities(): Promise<Map<string, any>> {
-    if (this.siteCache && Date.now() - this.siteCache.at < 60_000) return this.siteCache.sites;
+    // Shared foundation-read cache TTL (0 in tests for determinism).
+    const ttl = Number(process.env.FLEXI_AMOEBA_SUPERVISOR_CACHE_MS ?? 60_000);
+    if (this.siteCache && Date.now() - this.siteCache.at < ttl) return this.siteCache.sites;
     try {
       const response = await fetch(`${this.foundationBase}/amoeba/v1/sites`, {
         headers: { Authorization: `Bearer ${this.serviceToken}` },

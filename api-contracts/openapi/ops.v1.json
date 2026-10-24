@@ -6192,6 +6192,10 @@
           "daily_target_ngn": {
             "type": "number"
           },
+          "daily_target_accommodated_ngn": {
+            "type": ["number", "null"],
+            "description": "Steady-state daily target for accommodated riders; null = same as daily_target_ngn."
+          },
           "checkpoints": {
             "type": "array",
             "items": {

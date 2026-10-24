@@ -3,7 +3,7 @@ const opsBase = process.env.OPS_API_BASE || "http://127.0.0.1:4030";
 const token = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
 
 const operators = [
-  { name: "Danjimoh Osheimoh", phone: "+2347050599554", type: "rider", amoeba: "amoeba_mainland", site: "site_mainland_1", target: 27000, account: "platform_bolt_lagos", externalId: "e9a2aa9e-5c68-4f40-a562-33988126d048", plate: "MUS94QR", vehicle: "Motorbike" },
+  { name: "Danjimoh Osheimoh", phone: "+2347050599554", type: "rider", amoeba: "amoeba_mainland", site: "site_mainland_1", account: "platform_bolt_lagos", externalId: "e9a2aa9e-5c68-4f40-a562-33988126d048", plate: "MUS94QR", vehicle: "Motorbike" },
   { name: "Odeh Johnson Sunday", phone: "+2348165407221", amoeba: "amoeba_mainland", site: "site_mainland_2", account: "platform_uber_cars", plate: "FKJ176KM" },
   { name: "Bawa Oseni Umoru", phone: "+2347068757845", amoeba: "amoeba_mainland", site: "site_mainland_2", account: "platform_uber_cars", plate: "FKJ178KM" },
   { name: "Kingsley U Nwokeocha", phone: "+2349051868731", amoeba: "amoeba_mainland", site: "site_mainland_2", account: "platform_uber_cars", plate: "GGE305KL" },
@@ -17,9 +17,9 @@ const operators = [
   { name: "Yakub Aliu", phone: "+2347034270809", amoeba: "amoeba_mainland", site: "site_mainland_2", account: "platform_uber_cars", plate: "AKD731KJ" },
   { name: "John Chukwuemeka Ohakwe", phone: "+2349047938699", amoeba: "amoeba_mainland", site: "site_mainland_2", account: "platform_uber_cars", plate: "FKJ177KM" },
   { name: "Greg Okei Ossai", phone: "+2348166114475", amoeba: "amoeba_mainland", site: "site_mainland_2", account: "platform_uber_cars", plate: "GGE306KL" },
-  { name: "Nnamdi Nwosu", phone: "+2347073772773", type: "rider", amoeba: "amoeba_island", site: "site_island_1", target: 27000, account: "platform_uber_courier", plate: null },
-  { name: "Gakurnan Tapauro Moses", phone: "+2349025732144", type: "rider", amoeba: "amoeba_island", site: "site_island_1", target: 27000, account: "platform_uber_courier", plate: null },
-  { name: "Godfrey Nashel", phone: "+2349012329976", type: "rider", amoeba: "amoeba_island", site: "site_island_1", target: 27000, account: "platform_uber_courier", plate: "KRD137QR", vehicle: "2024 Uber Motorbike" }
+  { name: "Nnamdi Nwosu", phone: "+2347073772773", type: "rider", amoeba: "amoeba_island", site: "site_island_1", account: "platform_uber_courier", plate: null },
+  { name: "Gakurnan Tapauro Moses", phone: "+2349025732144", type: "rider", amoeba: "amoeba_island", site: "site_island_1", account: "platform_uber_courier", plate: null },
+  { name: "Godfrey Nashel", phone: "+2349012329976", type: "rider", amoeba: "amoeba_island", site: "site_island_1", account: "platform_uber_courier", plate: "KRD137QR", vehicle: "2024 Uber Motorbike" }
 ].map((item, index) => ({
   type: "driver",
   target: 60000,

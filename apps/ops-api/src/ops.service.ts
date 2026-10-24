@@ -120,6 +120,20 @@ export class OpsService {
     return result;
   }
 
+  // Normalise a DATE column (the DB driver may hand it back as a JS Date) to a
+  // plain YYYY-MM-DD string for safe comparison against our date strings.
+  private dateOnly(value: unknown): string | null {
+    if (value === null || value === undefined || value === "") return null;
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return String(value).slice(0, 10);
+  }
+
+  // Accommodated daily target: blank/null means "same as the standard target".
+  private accommodatedTarget(value: unknown) {
+    if (value === null || value === undefined || value === "") return null;
+    return this.number(value, "daily_target_accommodated_ngn");
+  }
+
   private signedNumber(value: unknown, field: string) {
     const result = Number(value ?? 0);
     if (!Number.isFinite(result)) throw new BadRequestException(`${field} must be a number.`);
@@ -1049,6 +1063,7 @@ export class OpsService {
     if (existing) {
       const updated = {
         daily_target_ngn: this.number(body.daily_target_ngn, "daily_target_ngn"),
+        daily_target_accommodated_ngn: this.accommodatedTarget(body.daily_target_accommodated_ngn),
         checkpoints: this.checkpoints(body.checkpoints),
         warning_tolerance_pct: this.number(body.warning_tolerance_pct ?? 10, "warning_tolerance_pct"),
         critical_tolerance_pct: this.number(body.critical_tolerance_pct ?? 20, "critical_tolerance_pct"),
@@ -1057,9 +1072,9 @@ export class OpsService {
         effective_to: body.effective_to ? this.date(body.effective_to) : null
       };
       await this.db.exec(
-        `UPDATE ops_revenue_pace_profiles SET daily_target_ngn=$2, checkpoints=$3,
-          warning_tolerance_pct=$4, critical_tolerance_pct=$5, delivery_parcels_per_hour=$6,
-          delivery_journey_buffer_hours=$7, effective_to=$8, updated_at=$9
+        `UPDATE ops_revenue_pace_profiles SET daily_target_ngn=$2, daily_target_accommodated_ngn=$3, checkpoints=$4,
+          warning_tolerance_pct=$5, critical_tolerance_pct=$6, delivery_parcels_per_hour=$7,
+          delivery_journey_buffer_hours=$8, effective_to=$9, updated_at=$10
          WHERE pace_profile_id=$1`,
         [existing.pace_profile_id, ...Object.values(updated), timestamp]
       );
@@ -1075,6 +1090,7 @@ export class OpsService {
       vehicle_type: body.vehicle_type,
       day_type: body.day_type || "all",
       daily_target_ngn: this.number(body.daily_target_ngn, "daily_target_ngn"),
+      daily_target_accommodated_ngn: this.accommodatedTarget(body.daily_target_accommodated_ngn),
       checkpoints: this.checkpoints(body.checkpoints),
       warning_tolerance_pct: this.number(body.warning_tolerance_pct ?? 10, "warning_tolerance_pct"),
       critical_tolerance_pct: this.number(body.critical_tolerance_pct ?? 20, "critical_tolerance_pct"),
@@ -1088,11 +1104,11 @@ export class OpsService {
     };
     await this.db.exec(
       `INSERT INTO ops_revenue_pace_profiles
-       (pace_profile_id, vehicle_type, day_type, daily_target_ngn, checkpoints,
+       (pace_profile_id, vehicle_type, day_type, daily_target_ngn, daily_target_accommodated_ngn, checkpoints,
         warning_tolerance_pct, critical_tolerance_pct, delivery_parcels_per_hour,
         delivery_journey_buffer_hours, effective_from, effective_to,
         created_by_person_id, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       Object.values(profile)
     );
     await this.audit("revenue_pace_profile.created", "revenue_pace_profile", profile.pace_profile_id, null, profile, actorPersonId);
@@ -1674,12 +1690,26 @@ export class OpsService {
       const vehicleType = platformVehicleType || row.vehicle_type;
       const profile: any = profiles.find((item: any) =>
         item.vehicle_type === vehicleType
-        && item.effective_from <= to
-        && (!item.effective_to || item.effective_to >= to)
+        && (this.dateOnly(item.effective_from) ?? "0000-00-00") <= to
+        && (!item.effective_to || (this.dateOnly(item.effective_to) ?? "9999-99-99") >= to)
       );
       const onboarding = ramp.get(row.operator_id) || null;
-      const baseTarget = Number(row.daily_revenue_target_ngn || profile?.daily_target_ngn || 0);
-      const dailyTarget = onboarding ? Number(onboarding.daily_target_ngn) : baseTarget;
+      // Steady-state target = a per-operator override if set, else the amoeba's
+      // pace profile default for the rider's housing status (accommodated riders
+      // carry a higher target). The onboarding ramp scales that steady state.
+      const override = Number(row.daily_revenue_target_ngn || 0);
+      const accommodatedDefault = profile?.daily_target_accommodated_ngn;
+      const defaultTarget = (row.accommodated && accommodatedDefault != null)
+        ? Number(accommodatedDefault)
+        : Number(profile?.daily_target_ngn || 0);
+      const baseTarget = override > 0 ? override : defaultTarget;
+      // During the ramp, scale the steady state by the curve's exact fraction
+      // (ramp-day target ÷ graduation target) so it fits any steady state without
+      // rounding drift — and equals the curve value when they already match.
+      const rampGraduation = Number(onboarding?.graduation_target_ngn || 0);
+      const dailyTarget = onboarding && rampGraduation > 0
+        ? Math.round((Number(onboarding.daily_target_ngn) / rampGraduation) * baseTarget)
+        : baseTarget;
       // Over a range, the target scales by whole days; the final day only
       // counts its intraday checkpoint share when the range ends today.
       const finalDayPct = profile ? this.expectedPct(profile.checkpoints, to) : 100;

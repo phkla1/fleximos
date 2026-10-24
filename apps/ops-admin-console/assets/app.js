@@ -291,6 +291,9 @@ function syncPaceProfileForm() {
   if (!profile) return;
   const checkpoints = Object.fromEntries(profile.checkpoints.map((point) => [point.time, point.expected_pct]));
   el.paceProfileForm.elements.daily_target_ngn.value = Number(profile.daily_target_ngn);
+  if (el.paceProfileForm.elements.daily_target_accommodated_ngn) {
+    el.paceProfileForm.elements.daily_target_accommodated_ngn.value = profile.daily_target_accommodated_ngn != null ? Number(profile.daily_target_accommodated_ngn) : "";
+  }
   el.paceProfileForm.elements.noon_pct.value = Number(checkpoints["12:00"] ?? 0);
   el.paceProfileForm.elements.afternoon_pct.value = Number(checkpoints["16:00"] ?? 0);
   el.paceProfileForm.elements.evening_pct.value = Number(checkpoints["19:00"] ?? 0);
@@ -489,7 +492,7 @@ function render() {
       </div>
       <div><span class="row-label">Vehicle</span>
         <select class="row-field" aria-label="Vehicle" data-operator-vehicle>${rowVehicleOptions(operator.amoeba_id, operator.vehicle_id || "")}</select>
-        <label class="row-target">Target ₦<input type="number" min="0" step="any" aria-label="Daily target (NGN)" data-operator-target value="${Number(operator.daily_revenue_target_ngn || 0)}" /></label></div>
+        <label class="row-target">Target ₦<input type="number" min="0" step="any" aria-label="Daily target override (NGN)" title="Blank = company default for this rider's housing status" placeholder="default" data-operator-target value="${operator.daily_revenue_target_ngn != null ? Number(operator.daily_revenue_target_ngn) : ""}" /></label></div>
       <div><span class="row-label">Platforms</span><strong>${operator.platform_registrations.length}</strong><small>${operator.platform_registrations.map((item) => item.platform_display_name).join(", ") || "Not registered"}</small></div>
       <div class="row-actions">
         <select aria-label="Operator status" data-operator-status>
@@ -1222,6 +1225,7 @@ el.paceProfileForm.addEventListener("submit", async (event) => {
         vehicle_type: values.vehicle_type,
         day_type: "all",
         daily_target_ngn: Number(values.daily_target_ngn),
+        daily_target_accommodated_ngn: values.daily_target_accommodated_ngn === "" ? null : Number(values.daily_target_accommodated_ngn),
         checkpoints: [
           { time: "12:00", expected_pct: Number(values.noon_pct) },
           { time: "16:00", expected_pct: Number(values.afternoon_pct) },
@@ -1732,7 +1736,7 @@ document.addEventListener("click", async (event) => {
           amoeba_id: row.querySelector("[data-operator-amoeba]").value,
           site_id: siteId,
           vehicle_id: row.querySelector("[data-operator-vehicle]").value || null,
-          daily_revenue_target_ngn: target === "" ? undefined : Number(target)
+          daily_revenue_target_ngn: target === "" ? null : Number(target)
         })
       });
       await refresh("Operator updated.");
