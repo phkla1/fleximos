@@ -329,12 +329,12 @@ test.describe("Ops admin console", () => {
   test("summarises teams before exposing individual operators", async ({ page }) => {
     await page.goto(`${url}#team`);
     await expect(page.locator("#notice")).toContainText("Connected");
-    await expect(page.getByRole("heading", { name: "Team summary" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Amoeba summary" })).toBeVisible();
     await expect(page.locator("#teamBoard .operator-tile")).toHaveCount(0);
 
     const teams = page.locator("#teamBoard .team-summary");
     expect(await teams.count()).toBeGreaterThan(0);
-    await teams.first().getByRole("button", { name: "Open team" }).click();
+    await teams.first().getByRole("button", { name: "Open amoeba" }).click();
     await expect(page.locator("#teamDialog")).toBeVisible();
     await expect(page.locator("#teamOperatorList .team-operator-row").first()).toBeVisible();
   });
@@ -364,10 +364,10 @@ test.describe("Ops admin console", () => {
     expect(operatorText).not.toMatch(/^person_/);
 
     await page.getByText("View performance records", { exact: true }).click();
-    await expect(page.locator("#performanceTeamFilter")).toBeVisible();
+    await expect(page.locator("#performanceAmoebaFilter")).toBeVisible();
     await expect(page.locator("#performanceOperatorFilter")).toHaveValue("");
-    await expect(page.locator("#performanceRows")).toContainText("Choose a team");
-    await page.locator("#performanceTeamFilter").selectOption({ index: 1 });
+    await expect(page.locator("#performanceRows")).toContainText("Choose an amoeba");
+    await page.locator("#performanceAmoebaFilter").selectOption({ index: 1 });
     expect(await page.locator("#performanceOperatorFilter option").count()).toBeGreaterThan(1);
     await page.locator("#performanceOperatorFilter").selectOption({ index: 1 });
     expect(await page.locator("#performanceRows tr").count()).toBeGreaterThan(0);

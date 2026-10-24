@@ -57,11 +57,11 @@ const el = Object.fromEntries(
     "jobFilterSummary", "rosterGapList",
     "dateFrom", "dateTo",
     "teamDialog", "teamDialogTitle", "teamDialogSummary", "teamOperatorList",
-    "operatorSummaryCount", "vehicleSummaryCount", "performanceTeamFilter",
+    "operatorSummaryCount", "vehicleSummaryCount", "performanceAmoebaFilter",
     "performanceOperatorFilter", "alertGroupDialog", "alertGroupDialogTitle",
-    "alertGroupDialogSummary", "alertGroupList", "vehicleTeamFilter",
+    "alertGroupDialogSummary", "alertGroupList",
     "vehicleAmoebaFilter", "vehicleSearch", "vehicleFilterSummary",
-    "operatorTeamFilter", "operatorAmoebaFilter", "operatorSearch",
+    "operatorAmoebaFilter", "operatorSearch",
     "operatorFilterSummary", "reportForm", "reportList", "reportDialog",
     "reportDialogTitle", "reportDialogSummary", "reportDialogRows",
     "onboardingRampList", "onboardingRampForm", "cohortList", "cohortForm",
@@ -290,28 +290,23 @@ function updateRegistrationOptions() {
 }
 
 function updatePerformanceFilters() {
-  const previousTeam = el.performanceTeamFilter.value;
+  const previousAmoeba = el.performanceAmoebaFilter.value;
   const previousOperator = el.performanceOperatorFilter.value;
-  el.performanceTeamFilter.innerHTML = `<option value="">Select a team</option>` + state.teams.map((team) =>
-    `<option value="${escapeHtml(team.teamKey)}">${escapeHtml(nameForPerson(team.supervisorId))} · ${escapeHtml(nameForAmoeba(team.amoebaId))} (${team.operators.length})</option>`
+  el.performanceAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
+    `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
   ).join("");
-  if (state.teams.some((team) => team.teamKey === previousTeam)) el.performanceTeamFilter.value = previousTeam;
+  if (state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.performanceAmoebaFilter.value = previousAmoeba;
 
-  const selectedTeam = state.teams.find((team) => team.teamKey === el.performanceTeamFilter.value);
-  const operatorIds = new Set(selectedTeam?.operators.map((item) => item.operator_id) || []);
-  const operators = selectedTeam ? state.operators.filter((operator) => operatorIds.has(operator.operator_id)) : [];
-  el.performanceOperatorFilter.innerHTML = operatorOptions(operators, selectedTeam ? "All operators in team" : "Select a team first");
+  const selectedAmoeba = el.performanceAmoebaFilter.value;
+  const operators = selectedAmoeba
+    ? state.operators.filter((operator) => operator.amoeba_id === selectedAmoeba && operator.operator_status === "active")
+    : [];
+  el.performanceOperatorFilter.innerHTML = operatorOptions(operators, selectedAmoeba ? "All operators in amoeba" : "Select an amoeba first");
   if (operators.some((operator) => operator.operator_id === previousOperator)) el.performanceOperatorFilter.value = previousOperator;
 }
 
 function updateVehicleFilters() {
-  const previousTeam = el.vehicleTeamFilter.value;
   const previousAmoeba = el.vehicleAmoebaFilter.value;
-  el.vehicleTeamFilter.innerHTML = `<option value="">Select a team</option>` + state.teams.map((team) =>
-    `<option value="${escapeHtml(team.teamKey)}">${escapeHtml(nameForPerson(team.supervisorId))} · ${escapeHtml(nameForAmoeba(team.amoebaId))}</option>`
-  ).join("");
-  if (state.teams.some((team) => team.teamKey === previousTeam)) el.vehicleTeamFilter.value = previousTeam;
-
   el.vehicleAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
   ).join("") + `<option value="__all">All operating units</option>`;
@@ -319,13 +314,7 @@ function updateVehicleFilters() {
 }
 
 function updateOperatorFilters() {
-  const previousTeam = el.operatorTeamFilter.value;
   const previousAmoeba = el.operatorAmoebaFilter.value;
-  el.operatorTeamFilter.innerHTML = `<option value="">Select a team</option>` + state.teams.map((team) =>
-    `<option value="${escapeHtml(team.teamKey)}">${escapeHtml(nameForPerson(team.supervisorId))} · ${escapeHtml(nameForAmoeba(team.amoebaId))}</option>`
-  ).join("");
-  if (state.teams.some((team) => team.teamKey === previousTeam)) el.operatorTeamFilter.value = previousTeam;
-
   el.operatorAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
   ).join("") + `<option value="__all">All operating units</option>`;
@@ -482,9 +471,9 @@ function render() {
         </div>
         <div class="progress-label"><span>Revenue ₦${team.revenue.toLocaleString()} · Expected ₦${team.expected.toLocaleString()}</span><strong>${progress}%</strong></div>
         <div class="progress-track"><span style="width:${Math.min(100, progress)}%"></span></div>
-        <button type="button" class="secondary team-open" data-open-team="${escapeHtml(team.teamKey)}">Open team</button>
+        <button type="button" class="secondary team-open" data-open-team="${escapeHtml(team.teamKey)}">Open amoeba</button>
       </article>`;
-  }).join("") : `<div class="empty">No active teams match this view.</div>`;
+  }).join("") : `<div class="empty">No active amoebas match this view.</div>`;
   state.teams = teams;
   updatePerformanceFilters();
   updateVehicleFilters();
@@ -507,22 +496,19 @@ function render() {
   state.alertGroups = alertGroups;
   el.alertList.innerHTML = alertGroups.length ? alertGroups.map((group) => `
     <article class="alert-group tier-${escapeHtml(group.highestTier)}">
-      <div><strong>${escapeHtml(humanize(group.key))}</strong><small>${group.teams.size} affected ${group.teams.size === 1 ? "team" : "teams"} · highest tier ${group.highestTier}</small></div>
+      <div><strong>${escapeHtml(humanize(group.key))}</strong><small>${group.teams.size} affected ${group.teams.size === 1 ? "amoeba" : "amoebas"} · highest tier ${group.highestTier}</small></div>
       <div class="alert-group-count"><strong>${group.people.size}/${activeOperatorTotal}</strong><small>active operators affected</small></div>
       <div><strong>${group.alerts.length}</strong><small>${filter || "matching"} alerts</small></div>
       <button type="button" class="secondary" data-open-alert-group="${escapeHtml(group.key)}">View affected operators</button>
     </article>
   `).join("") : `<div class="empty">No alerts match this view.</div>`;
 
-  const selectedOperatorTeam = state.teams.find((team) => team.teamKey === el.operatorTeamFilter.value);
   const selectedOperatorAmoeba = el.operatorAmoebaFilter.value;
   const operatorQuery = el.operatorSearch.value.trim().toLowerCase();
-  const rosterOperatorIds = new Set(selectedOperatorTeam?.operators.map((item) => item.operator_id) || []);
-  const hasOperatorScope = Boolean(selectedOperatorTeam || selectedOperatorAmoeba || operatorQuery);
+  const hasOperatorScope = Boolean(selectedOperatorAmoeba || operatorQuery);
   const currentOperators = hasOperatorScope ? state.operators.filter((operator) => {
     if (["inactive", "suspended"].includes(operator.operator_status)) return false;
-    if (selectedOperatorTeam && !rosterOperatorIds.has(operator.operator_id)) return false;
-    if (!selectedOperatorTeam && selectedOperatorAmoeba && selectedOperatorAmoeba !== "__all" && operator.amoeba_id !== selectedOperatorAmoeba) return false;
+    if (selectedOperatorAmoeba && selectedOperatorAmoeba !== "__all" && operator.amoeba_id !== selectedOperatorAmoeba) return false;
     const platforms = operator.platform_registrations?.map((item) => item.platform_display_name).join(" ") || "";
     const searchable = `${nameForPerson(operator.person_id)} ${operator.vehicle_plate || ""} ${platforms}`.toLowerCase();
     if (operatorQuery && !searchable.includes(operatorQuery)) return false;
@@ -530,7 +516,7 @@ function render() {
   }) : [];
   el.operatorFilterSummary.textContent = hasOperatorScope
     ? `${currentOperators.length} matching active ${currentOperators.length === 1 ? "operator" : "operators"}`
-    : "Select a team or amoeba, or search by name or vehicle.";
+    : "Select an amoeba, or search by name or vehicle.";
   el.operatorList.innerHTML = currentOperators.length ? currentOperators.map((operator) => `
     <article class="data-row" data-operator-id="${escapeHtml(operator.operator_id)}">
       <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodation_unit_id ? `<span class="pill" title="Company accommodation">🏠 ${escapeHtml(accommodationName(operator.accommodation_unit_id))}</span>` : ""}</div>
@@ -552,29 +538,18 @@ function render() {
     </article>
   `).join("") : `<div class="empty">${hasOperatorScope ? "No operators match this scope." : "Choose a roster scope to view operators."}</div>`;
 
-  const selectedVehicleTeam = state.teams.find((team) => team.teamKey === el.vehicleTeamFilter.value);
   const selectedVehicleAmoeba = el.vehicleAmoebaFilter.value;
   const vehicleQuery = el.vehicleSearch.value.trim().toLowerCase();
-  const teamVehicleIds = new Set();
-  const teamVehiclePlates = new Set();
-  if (selectedVehicleTeam) {
-    const teamOperatorIds = new Set(selectedVehicleTeam.operators.map((item) => item.operator_id));
-    state.operators.filter((operator) => teamOperatorIds.has(operator.operator_id)).forEach((operator) => {
-      if (operator.vehicle_id) teamVehicleIds.add(operator.vehicle_id);
-      if (operator.vehicle_plate) teamVehiclePlates.add(operator.vehicle_plate);
-    });
-  }
-  const hasVehicleScope = Boolean(selectedVehicleTeam || selectedVehicleAmoeba || vehicleQuery);
+  const hasVehicleScope = Boolean(selectedVehicleAmoeba || vehicleQuery);
   const currentVehicles = hasVehicleScope ? state.vehicles.filter((vehicle) => {
     if (vehicle.status !== "active") return false;
-    if (selectedVehicleTeam && !teamVehicleIds.has(vehicle.vehicle_id) && !teamVehiclePlates.has(vehicle.plate)) return false;
-    if (!selectedVehicleTeam && selectedVehicleAmoeba && selectedVehicleAmoeba !== "__all" && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
+    if (selectedVehicleAmoeba && selectedVehicleAmoeba !== "__all" && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
     if (vehicleQuery && !`${vehicle.plate} ${vehicle.make_model || ""}`.toLowerCase().includes(vehicleQuery)) return false;
     return true;
   }) : [];
   el.vehicleFilterSummary.textContent = hasVehicleScope
     ? `${currentVehicles.length} matching active ${currentVehicles.length === 1 ? "vehicle" : "vehicles"}`
-    : "Select a team or amoeba, or search by plate or model.";
+    : "Select an amoeba, or search by plate or model.";
   el.vehicleList.innerHTML = currentVehicles.length ? currentVehicles.map((vehicle) => `
     <article class="data-row">
       <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
@@ -591,12 +566,13 @@ function render() {
     </article>
   `).join("") : `<div class="empty">${hasVehicleScope ? "No vehicles match this scope." : "Choose a fleet scope to view vehicles."}</div>`;
 
-  const selectedTeam = el.performanceTeamFilter.value;
+  const selectedAmoeba = el.performanceAmoebaFilter.value;
   const selectedOperator = el.performanceOperatorFilter.value;
-  const team = state.teams.find((item) => item.teamKey === selectedTeam);
-  const teamOperatorIds = new Set(team?.operators.map((item) => item.operator_id) || []);
-  const performance = selectedTeam ? state.dailyPerformance.filter((record) =>
-    teamOperatorIds.has(record.operator_id) &&
+  const amoebaOperatorIds = new Set(
+    selectedAmoeba ? state.operators.filter((operator) => operator.amoeba_id === selectedAmoeba).map((operator) => operator.operator_id) : []
+  );
+  const performance = selectedAmoeba ? state.dailyPerformance.filter((record) =>
+    amoebaOperatorIds.has(record.operator_id) &&
     (!selectedOperator || record.operator_id === selectedOperator)
   ) : [];
   const recordRows = performance.map((record) => `
@@ -613,9 +589,9 @@ function render() {
   // Operators in the selected scope with no record for the operating date are
   // listed explicitly so a short table is never mistaken for full coverage.
   const coveredIds = new Set(performance.map((record) => record.operator_id));
-  const missingRows = selectedTeam
+  const missingRows = selectedAmoeba
     ? state.operators
-        .filter((operator) => teamOperatorIds.has(operator.operator_id) && operator.operator_status === "active")
+        .filter((operator) => amoebaOperatorIds.has(operator.operator_id) && operator.operator_status === "active")
         .filter((operator) => (!selectedOperator || operator.operator_id === selectedOperator) && !coveredIds.has(operator.operator_id))
         .map((operator) => `
           <tr class="missing-record">
@@ -626,7 +602,7 @@ function render() {
     : [];
   el.performanceRows.innerHTML = recordRows.length || missingRows.length
     ? recordRows.join("") + missingRows.join("")
-    : `<tr><td colspan="7" class="empty">${selectedTeam ? "No active operators in this team." : "Choose a team to view its record coverage, then an operator for detail."}</td></tr>`;
+    : `<tr><td colspan="7" class="empty">${selectedAmoeba ? "No active operators in this amoeba." : "Choose an amoeba to view its record coverage, then an operator for detail."}</td></tr>`;
 
   el.ingestionRuns.innerHTML = state.ingestionRuns.length ? state.ingestionRuns.slice(0, 6).map((run) => `
     <article class="data-row run-row">
@@ -1183,28 +1159,14 @@ el.operatorList.addEventListener("change", (event) => {
 });
 el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrationOptions);
 el.alertFilter.addEventListener("change", render);
-el.performanceTeamFilter.addEventListener("change", () => {
+el.performanceAmoebaFilter.addEventListener("change", () => {
   el.performanceOperatorFilter.value = "";
   render();
 });
 el.performanceOperatorFilter.addEventListener("change", render);
-el.vehicleTeamFilter.addEventListener("change", () => {
-  if (el.vehicleTeamFilter.value) el.vehicleAmoebaFilter.value = "";
-  render();
-});
-el.vehicleAmoebaFilter.addEventListener("change", () => {
-  if (el.vehicleAmoebaFilter.value) el.vehicleTeamFilter.value = "";
-  render();
-});
+el.vehicleAmoebaFilter.addEventListener("change", render);
 el.vehicleSearch.addEventListener("input", render);
-el.operatorTeamFilter.addEventListener("change", () => {
-  if (el.operatorTeamFilter.value) el.operatorAmoebaFilter.value = "";
-  render();
-});
-el.operatorAmoebaFilter.addEventListener("change", () => {
-  if (el.operatorAmoebaFilter.value) el.operatorTeamFilter.value = "";
-  render();
-});
+el.operatorAmoebaFilter.addEventListener("change", render);
 el.operatorSearch.addEventListener("input", render);
 el.paceProfileForm.elements.vehicle_type.addEventListener("change", syncPaceProfileForm);
 el.efficiencyPolicyForm.elements.vehicle_type.addEventListener("change", syncEfficiencyPolicyForm);
@@ -1235,11 +1197,11 @@ for (const tile of document.querySelectorAll(".metrics a[data-jump]")) {
     const target = tile.dataset.jump;
     if (target === "operators") {
       document.getElementById("rosterPanel").open = true;
-      if (!el.operatorTeamFilter.value && !el.operatorAmoebaFilter.value) el.operatorAmoebaFilter.value = "__all";
+      if (!el.operatorAmoebaFilter.value) el.operatorAmoebaFilter.value = "__all";
     }
     if (target === "vehicles") {
       document.getElementById("vehiclePanel").open = true;
-      if (!el.vehicleTeamFilter.value && !el.vehicleAmoebaFilter.value) el.vehicleAmoebaFilter.value = "__all";
+      if (!el.vehicleAmoebaFilter.value) el.vehicleAmoebaFilter.value = "__all";
     }
     render();
   });

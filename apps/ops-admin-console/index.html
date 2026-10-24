@@ -20,7 +20,7 @@
         <nav aria-label="Ops sections">
           <p class="nav-group">Monitor</p>
           <a href="#overview"><span class="nav-ic">◉</span>Overview</a>
-          <a href="#team"><span class="nav-ic">👥</span>Team board</a>
+          <a href="#team"><span class="nav-ic">👥</span>Amoeba board</a>
           <a href="#alerts"><span class="nav-ic">⚠</span>Alerts</a>
           <a href="#reports"><span class="nav-ic">📄</span>Reports</a>
           <a href="#data-health"><span class="nav-ic">🩺</span>Data health</a>
@@ -71,10 +71,10 @@
 
       <section id="team" class="workspace-section view">
         <div class="section-heading">
-          <div><p class="eyebrow">Company operations</p><h2>Team summary</h2></div>
+          <div><p class="eyebrow">Company operations</p><h2>Amoeba summary</h2></div>
           <span id="boardUpdated" class="subtle"></span>
         </div>
-        <p class="section-intro">Teams are grouped by supervisor and operating unit. Open a team to inspect individual operators.</p>
+        <p class="section-intro">Each amoeba is led by one supervisor. Open an amoeba to inspect its operators.</p>
         <div id="teamBoard" class="team-board"></div>
       </section>
 
@@ -90,7 +90,7 @@
             </select>
           </label>
         </div>
-        <p class="section-intro">Conditions are grouped so their scale is visible first. Open a condition to see affected teams and operators. Acknowledging and resolving alerts is the supervisor’s job (escalations go to managers) — this admin view is for monitoring scale and spotting systemic issues.</p>
+        <p class="section-intro">Conditions are grouped so their scale is visible first. Open a condition to see affected amoebas and operators. Acknowledging and resolving alerts is the supervisor’s job (escalations go to managers) — this admin view is for monitoring scale and spotting systemic issues.</p>
         <div id="alertList" class="alert-list"></div>
       </section>
 
@@ -132,7 +132,7 @@
         <details class="management-panel">
           <summary>View performance records</summary>
           <div class="history-filters">
-            <label>Team<select id="performanceTeamFilter"></select></label>
+            <label>Amoeba<select id="performanceAmoebaFilter"></select></label>
             <label>Operator<select id="performanceOperatorFilter"></select></label>
           </div>
           <div class="table-shell">
@@ -193,7 +193,7 @@
         <div class="section-heading">
           <div><p class="eyebrow">Fleet roster</p><h2>Operators</h2><p class="section-count"><strong id="operatorSummaryCount">0</strong> active operators</p></div>
         </div>
-        <p class="section-intro">Use the team summary for daily oversight. Open roster management only to add, reassign, suspend, or inspect an operator.</p>
+        <p class="section-intro">Use the amoeba summary for daily oversight. Open roster management only to add, reassign, suspend, or inspect an operator.</p>
         <details class="management-panel" id="rosterPanel">
           <summary>Manage operator roster</summary>
           <p class="form-hint">This is where a rider or driver is operationally assigned: amoeba, site, field supervisor and daily target. (Access scopes for managers, finance and supervisors — who can <em>see</em> what — are separate and live in the Identity admin console under Access Assignments.)</p>
@@ -213,7 +213,6 @@
           <button type="submit">Add operator</button>
           </form>
           <div class="asset-filters">
-            <label>Team<select id="operatorTeamFilter"></select></label>
             <label>Amoeba<select id="operatorAmoebaFilter"></select></label>
             <label>Name or vehicle<input id="operatorSearch" type="search" placeholder="Search roster" /></label>
           </div>
@@ -247,7 +246,6 @@
           <button type="submit">Add vehicle</button>
           </form>
           <div class="asset-filters">
-            <label>Team<select id="vehicleTeamFilter"></select></label>
             <label>Amoeba<select id="vehicleAmoebaFilter"></select></label>
             <label>Plate or model<input id="vehicleSearch" type="search" placeholder="Search fleet" /></label>
           </div>
@@ -260,7 +258,7 @@
         <div class="section-heading">
           <div><p class="eyebrow">Company housing</p><h2>Accommodation</h2><p class="section-count"><strong id="accommodationBedsSummary">0</strong> beds</p></div>
         </div>
-        <p class="section-intro">Company accommodation is finite. Each unit has a fixed number of beds; assigning a rider consumes one, and deactivating a rider frees it. Assign a rider's unit under Roster. The ₦30k target assumes accommodation — the team board and reports flag who is housed so lower numbers from non-accommodated riders read fairly.</p>
+        <p class="section-intro">Company accommodation is finite. Each unit has a fixed number of beds; assigning a rider consumes one, and deactivating a rider frees it. Assign a rider's unit under Roster. The ₦30k target assumes accommodation — the amoeba board and reports flag who is housed so lower numbers from non-accommodated riders read fairly.</p>
         <div id="accommodationList" class="data-list compact-list"></div>
         <details class="management-panel">
           <summary>Add or edit an accommodation unit</summary>
@@ -526,7 +524,7 @@
 
     <dialog id="teamDialog" class="team-dialog">
       <div class="dialog-body">
-        <div class="dialog-heading"><div><p class="eyebrow">Team detail</p><h2 id="teamDialogTitle">Team</h2></div><button type="button" data-close-team aria-label="Close">×</button></div>
+        <div class="dialog-heading"><div><p class="eyebrow">Amoeba detail</p><h2 id="teamDialogTitle">Amoeba</h2></div><button type="button" data-close-team aria-label="Close">×</button></div>
         <p id="teamDialogSummary" class="subtle"></p>
         <div id="teamOperatorList" class="team-operator-list"></div>
       </div>
