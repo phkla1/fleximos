@@ -168,6 +168,30 @@ async function initDb() {
       UNIQUE (amoeba_id, name)
     );
 
+    -- Site is a first-class location: carries its own address and bed capacity
+    -- (accommodation_capacity may be 0 = no accommodation). Parking / battery
+    -- capacities are deferred.
+    ALTER TABLE amoeba_sites ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE amoeba_sites ADD COLUMN IF NOT EXISTS accommodation_capacity INTEGER NOT NULL DEFAULT 0;
+
+    -- A site can serve more than one amoeba (M:N). amoeba_sites.amoeba_id remains
+    -- the site's PRIMARY amoeba; this join holds every amoeba it serves.
+    CREATE TABLE IF NOT EXISTS amoeba_site_links (
+      amoeba_id TEXT NOT NULL REFERENCES amoebas(amoeba_id),
+      site_id TEXT NOT NULL REFERENCES amoeba_sites(site_id),
+      is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (amoeba_id, site_id)
+    );
+
+    -- Back-populate links from the existing one-amoeba-per-site rows (idempotent).
+    INSERT INTO amoeba_site_links (amoeba_id, site_id, is_primary, created_at, updated_at)
+    SELECT amoeba_id, site_id, is_primary, created_at, updated_at FROM amoeba_sites s
+    WHERE NOT EXISTS (
+      SELECT 1 FROM amoeba_site_links l WHERE l.amoeba_id = s.amoeba_id AND l.site_id = s.site_id
+    );
+
     CREATE TABLE IF NOT EXISTS audit_history (
       history_id TEXT PRIMARY KEY,
       entity_type TEXT NOT NULL,
@@ -312,7 +336,8 @@ async function seedSites() {
       gps_lat: 6.44487546164212,
       gps_lng: 3.47798504327489,
       alert_radius_m: 500,
-      is_primary: true
+      is_primary: true,
+      accommodation_capacity: 10
     },
     {
       site_id: "site_island_2",
@@ -330,7 +355,8 @@ async function seedSites() {
       gps_lat: 6.63418881933445,
       gps_lng: 3.32725882290423,
       alert_radius_m: 1000,
-      is_primary: true
+      is_primary: true,
+      accommodation_capacity: 10
     },
     {
       site_id: "site_mainland_2",
@@ -344,11 +370,11 @@ async function seedSites() {
   ];
 
   for (const site of sites) {
-    const record = { ...site, status: "active", created_at: timestamp, updated_at: timestamp };
+    const record = { address: null, accommodation_capacity: 0, ...site, status: "active", created_at: timestamp, updated_at: timestamp };
     await exec(
       `INSERT INTO amoeba_sites
-        (site_id, amoeba_id, name, gps_lat, gps_lng, alert_radius_m, is_primary, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        (site_id, amoeba_id, name, gps_lat, gps_lng, alert_radius_m, is_primary, status, address, accommodation_capacity, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         record.site_id,
         record.amoeba_id,
@@ -358,9 +384,16 @@ async function seedSites() {
         record.alert_radius_m,
         record.is_primary,
         record.status,
+        record.address,
+        record.accommodation_capacity,
         record.created_at,
         record.updated_at
       ]
+    );
+    await exec(
+      `INSERT INTO amoeba_site_links (amoeba_id, site_id, is_primary, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [record.amoeba_id, record.site_id, record.is_primary, record.created_at, record.updated_at]
     );
     await addHistory("amoeba_site", record.site_id, "person_founder_wole", "seeded", record);
   }
@@ -524,8 +557,27 @@ async function validateSiteInput(body, partial = false) {
   if (body.alert_radius_m !== undefined && (!Number.isInteger(Number(body.alert_radius_m)) || Number(body.alert_radius_m) < 1)) {
     details.push({ field: "alert_radius_m", reason: "invalid_radius" });
   }
+  if (body.accommodation_capacity !== undefined && body.accommodation_capacity !== "" && (!Number.isInteger(Number(body.accommodation_capacity)) || Number(body.accommodation_capacity) < 0)) {
+    details.push({ field: "accommodation_capacity", reason: "invalid_capacity" });
+  }
   if (body.status && !allowedSiteStatuses.has(body.status)) details.push({ field: "status", reason: "invalid_status" });
   return details;
+}
+
+// Attach the full set of amoebas each site serves (M:N) as `amoeba_ids`, falling
+// back to the row's primary amoeba_id when no link rows exist.
+async function attachAmoebaIds(rows) {
+  if (!rows.length) return rows;
+  const links = await many("SELECT amoeba_id, site_id FROM amoeba_site_links");
+  const bySite = new Map();
+  for (const link of links) {
+    if (!bySite.has(link.site_id)) bySite.set(link.site_id, []);
+    bySite.get(link.site_id).push(link.amoeba_id);
+  }
+  for (const row of rows) {
+    row.amoeba_ids = bySite.get(row.site_id) || (row.amoeba_id ? [row.amoeba_id] : []);
+  }
+  return rows;
 }
 
 async function historyPage(entityType, entityId) {
@@ -1002,9 +1054,9 @@ async function handleAmoeba(req, res, parts) {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const amoebaId = url.searchParams.get("amoeba_id");
       const rows = amoebaId
-        ? await many("SELECT * FROM amoeba_sites WHERE amoeba_id = $1 ORDER BY created_at ASC", [amoebaId])
+        ? await many("SELECT s.* FROM amoeba_sites s JOIN amoeba_site_links l ON l.site_id = s.site_id WHERE l.amoeba_id = $1 ORDER BY s.created_at ASC", [amoebaId])
         : await many("SELECT * FROM amoeba_sites ORDER BY created_at ASC");
-      return json(res, 200, page(rows));
+      return json(res, 200, page(await attachAmoebaIds(rows)));
     }
 
     if (!id && req.method === "POST") {
@@ -1029,13 +1081,15 @@ async function handleAmoeba(req, res, parts) {
           alert_radius_m: body.alert_radius_m === undefined || body.alert_radius_m === "" ? 1000 : Number(body.alert_radius_m),
           is_primary: Boolean(body.is_primary),
           status: body.status || "active",
+          address: body.address || null,
+          accommodation_capacity: body.accommodation_capacity === undefined || body.accommodation_capacity === "" ? 0 : Number(body.accommodation_capacity),
           created_at: timestamp,
           updated_at: timestamp
         };
         await exec(
           `INSERT INTO amoeba_sites
-            (site_id, amoeba_id, name, gps_lat, gps_lng, alert_radius_m, is_primary, status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            (site_id, amoeba_id, name, gps_lat, gps_lng, alert_radius_m, is_primary, status, address, accommodation_capacity, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             site.site_id,
             site.amoeba_id,
@@ -1045,10 +1099,18 @@ async function handleAmoeba(req, res, parts) {
             site.alert_radius_m,
             site.is_primary,
             site.status,
+            site.address,
+            site.accommodation_capacity,
             site.created_at,
             site.updated_at
           ]
         );
+        await exec(
+          `INSERT INTO amoeba_site_links (amoeba_id, site_id, is_primary, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [site.amoeba_id, site.site_id, site.is_primary, site.created_at, site.updated_at]
+        );
+        site.amoeba_ids = [site.amoeba_id];
         await addHistory("amoeba_site", site.site_id, auth.actor_person_id, "created", site);
         return { status: 201, body: site };
       });
@@ -1063,7 +1125,7 @@ async function handleAmoeba(req, res, parts) {
     const site = id ? await one("SELECT * FROM amoeba_sites WHERE site_id = $1", [id]) : null;
     if (id && !site) return error(res, 404, "not_found", "Site not found.");
 
-    if (id && !action && req.method === "GET") return json(res, 200, site);
+    if (id && !action && req.method === "GET") return json(res, 200, (await attachAmoebaIds([site]))[0]);
 
     if (id && !action && req.method === "PATCH") {
       const key = await assertIdempotency(req, res);
@@ -1086,6 +1148,8 @@ async function handleAmoeba(req, res, parts) {
           gps_lng: body.gps_lng === undefined || body.gps_lng === "" ? site.gps_lng : Number(body.gps_lng),
           alert_radius_m: body.alert_radius_m === undefined || body.alert_radius_m === "" ? site.alert_radius_m : Number(body.alert_radius_m),
           is_primary: body.is_primary === undefined ? site.is_primary : Boolean(body.is_primary),
+          address: body.address === undefined ? site.address : (body.address || null),
+          accommodation_capacity: body.accommodation_capacity === undefined || body.accommodation_capacity === "" ? site.accommodation_capacity : Number(body.accommodation_capacity),
           updated_at: now()
         };
         await exec(
@@ -1097,7 +1161,9 @@ async function handleAmoeba(req, res, parts) {
             alert_radius_m = $6,
             is_primary = $7,
             status = $8,
-            updated_at = $9
+            address = $9,
+            accommodation_capacity = $10,
+            updated_at = $11
            WHERE site_id = $1`,
           [
             id,
@@ -1108,11 +1174,67 @@ async function handleAmoeba(req, res, parts) {
             updated.alert_radius_m,
             updated.is_primary,
             updated.status,
+            updated.address,
+            updated.accommodation_capacity,
             updated.updated_at
           ]
         );
+        // Keep the primary link in step with a changed primary amoeba.
+        if (updated.amoeba_id !== site.amoeba_id) {
+          await exec(
+            `UPDATE amoeba_site_links SET amoeba_id = $1, updated_at = $2 WHERE site_id = $3 AND is_primary = TRUE`,
+            [updated.amoeba_id, updated.updated_at, id]
+          );
+        }
+        await attachAmoebaIds([updated]);
         await addHistory("amoeba_site", id, auth.actor_person_id, "updated", body);
         return { status: 200, body: updated };
+      });
+      return json(res, response.status, response.body);
+    }
+
+    // Share a site with an additional amoeba (M:N): POST /sites/:id/amoebas {amoeba_id}
+    if (id && action === "amoebas" && !parts[5] && req.method === "POST") {
+      const key = await assertIdempotency(req, res);
+      if (!key) return;
+      const cached = await idempotentResponse(key);
+      if (cached) return json(res, cached.status, cached.body);
+      const body = await readBody(req);
+      if (!body.amoeba_id) return error(res, 400, "validation_failed", "amoeba_id is required.", [{ field: "amoeba_id", reason: "required" }]);
+      if (!(await one("SELECT amoeba_id FROM amoebas WHERE amoeba_id = $1", [body.amoeba_id]))) {
+        return error(res, 400, "validation_failed", "Amoeba not found.", [{ field: "amoeba_id", reason: "not_found" }]);
+      }
+      if (await one("SELECT amoeba_id FROM amoeba_sites WHERE amoeba_id = $1 AND lower(name) = lower($2) AND site_id <> $3", [body.amoeba_id, site.name, id])) {
+        return error(res, 409, "duplicate_site", "That amoeba already has a different site with this name.");
+      }
+      const response = await onceForIdempotency(key, async () => {
+        const timestamp = now();
+        await exec(
+          `INSERT INTO amoeba_site_links (amoeba_id, site_id, is_primary, created_at, updated_at)
+           VALUES ($1, $2, FALSE, $3, $3)
+           ON CONFLICT (amoeba_id, site_id) DO NOTHING`,
+          [body.amoeba_id, id, timestamp]
+        );
+        await addHistory("amoeba_site", id, auth.actor_person_id, "amoeba_linked", { amoeba_id: body.amoeba_id });
+        return { status: 200, body: (await attachAmoebaIds([{ ...site }]))[0] };
+      });
+      return json(res, response.status, response.body);
+    }
+
+    // Stop sharing a site with an amoeba: DELETE /sites/:id/amoebas/:amoeba_id
+    if (id && action === "amoebas" && parts[5] && req.method === "DELETE") {
+      const key = await assertIdempotency(req, res);
+      if (!key) return;
+      const cached = await idempotentResponse(key);
+      if (cached) return json(res, cached.status, cached.body);
+      const linkAmoebaId = parts[5];
+      if (linkAmoebaId === site.amoeba_id) {
+        return error(res, 409, "primary_link", "Can't unlink a site's primary amoeba.");
+      }
+      const response = await onceForIdempotency(key, async () => {
+        await exec("DELETE FROM amoeba_site_links WHERE site_id = $1 AND amoeba_id = $2 AND is_primary = FALSE", [id, linkAmoebaId]);
+        await addHistory("amoeba_site", id, auth.actor_person_id, "amoeba_unlinked", { amoeba_id: linkAmoebaId });
+        return { status: 200, body: (await attachAmoebaIds([{ ...site }]))[0] };
       });
       return json(res, response.status, response.body);
     }

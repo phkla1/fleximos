@@ -302,6 +302,44 @@ test("creates and updates physical sites with history", async () => {
   assert.ok(history.body.data.some((entry) => entry.change_type === "updated"));
 });
 
+test("sites carry accommodation capacity and can be shared across amoebas", async () => {
+  const create = await request("/amoeba/v1/sites", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-create-site-cap-001" },
+    body: JSON.stringify({ amoeba_id: "amoeba_island", name: "Shared Lodge", accommodation_capacity: 8 })
+  });
+  assert.equal(create.response.status, 201);
+  assert.equal(create.body.accommodation_capacity, 8);
+  assert.deepEqual(create.body.amoeba_ids, ["amoeba_island"]);
+  const siteId = create.body.site_id;
+
+  // Share it with a second amoeba (M:N).
+  const link = await request(`/amoeba/v1/sites/${siteId}/amoebas`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-link-site-001" },
+    body: JSON.stringify({ amoeba_id: "amoeba_mainland" })
+  });
+  assert.equal(link.response.status, 200);
+  assert.deepEqual([...link.body.amoeba_ids].sort(), ["amoeba_island", "amoeba_mainland"]);
+
+  // It now appears under the second amoeba's site list.
+  const mainland = await request("/amoeba/v1/sites?amoeba_id=amoeba_mainland");
+  assert.ok(mainland.body.data.some((s) => s.site_id === siteId));
+
+  // The primary amoeba can't be unlinked; a shared one can.
+  const primary = await request(`/amoeba/v1/sites/${siteId}/amoebas/amoeba_island`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "test-unlink-primary-001" }
+  });
+  assert.equal(primary.response.status, 409);
+  const unlink = await request(`/amoeba/v1/sites/${siteId}/amoebas/amoeba_mainland`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": "test-unlink-shared-001" }
+  });
+  assert.equal(unlink.response.status, 200);
+  assert.deepEqual(unlink.body.amoeba_ids, ["amoeba_island"]);
+});
+
 test("creates service account token and authenticates with it", async () => {
   const account = await request("/identity/v1/service-accounts", {
     method: "POST",

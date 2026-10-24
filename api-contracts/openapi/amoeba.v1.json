@@ -249,6 +249,37 @@
           "200": { "description": "History", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AmoebaHistoryPage" } } } }
         }
       }
+    },
+    "/sites/{site_id}/amoebas": {
+      "post": {
+        "tags": ["Sites"],
+        "summary": "Share a site with an additional amoeba (M:N)",
+        "parameters": [
+          { "$ref": "#/components/parameters/SiteId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["amoeba_id"], "properties": { "amoeba_id": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Updated site", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Site" } } } }
+        }
+      }
+    },
+    "/sites/{site_id}/amoebas/{amoeba_id}": {
+      "delete": {
+        "tags": ["Sites"],
+        "summary": "Stop sharing a site with an amoeba (cannot remove the primary)",
+        "parameters": [
+          { "$ref": "#/components/parameters/SiteId" },
+          { "$ref": "#/components/parameters/AmoebaId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "200": { "description": "Updated site", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Site" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -311,7 +342,10 @@
           "gps_lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
           "alert_radius_m": { "type": "integer", "minimum": 1 },
           "is_primary": { "type": "boolean" },
-          "status": { "type": "string", "enum": ["active", "inactive"] }
+          "status": { "type": "string", "enum": ["active", "inactive"] },
+          "address": { "type": ["string", "null"] },
+          "accommodation_capacity": { "type": "integer", "minimum": 0 },
+          "amoeba_ids": { "type": "array", "items": { "type": "string" }, "description": "Every amoeba this site serves (M:N); amoeba_id is the primary." }
         }
       },
       "SitePage": {
@@ -329,7 +363,9 @@
           "gps_lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
           "alert_radius_m": { "type": "integer", "minimum": 1, "default": 1000 },
           "is_primary": { "type": "boolean", "default": false },
-          "status": { "type": "string", "enum": ["active", "inactive"], "default": "active" }
+          "status": { "type": "string", "enum": ["active", "inactive"], "default": "active" },
+          "address": { "type": ["string", "null"] },
+          "accommodation_capacity": { "type": "integer", "minimum": 0, "default": 0 }
         }
       },
       "UpdateSiteRequest": {
@@ -341,7 +377,9 @@
           "gps_lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
           "alert_radius_m": { "type": "integer", "minimum": 1 },
           "is_primary": { "type": "boolean" },
-          "status": { "type": "string", "enum": ["active", "inactive"] }
+          "status": { "type": "string", "enum": ["active", "inactive"] },
+          "address": { "type": ["string", "null"] },
+          "accommodation_capacity": { "type": "integer", "minimum": 0 }
         }
       },
       "ClassifyAmoebaRequest": {

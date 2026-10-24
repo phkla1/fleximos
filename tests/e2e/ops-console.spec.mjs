@@ -310,7 +310,7 @@ test.describe("Ops admin console", () => {
 
   test("keeps ingestion and roster controls out of the supervisor workspace", async ({ page }) => {
     await page.goto(url);
-    await expect(page).toHaveTitle("Fleximotion Administrator Console");
+    await expect(page).toHaveTitle("Fleximotion Operations Administration");
     await expect(page.locator("#notice")).toContainText("Connected");
     // The admin console exposes management surfaces the supervisor app hides,
     // reachable from the sidebar (one view at a time).

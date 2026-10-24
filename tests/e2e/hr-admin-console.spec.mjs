@@ -5,7 +5,7 @@ test.describe("hr-admin console", () => {
 
   test("loads foundation data and reads cleanly (no raw IDs, no dev chrome)", async ({ page }) => {
     await page.goto(adminUrl);
-    await expect(page).toHaveTitle("Fleximotion Admin Console");
+    await expect(page).toHaveTitle("Fleximotion HR Console");
     await expect(page.getByRole("heading", { name: "Identity & organisation" })).toBeVisible();
     await expect(page.locator("#notice")).toContainText("Connected");
     await expect(page.locator("#peopleCount")).not.toHaveText("0");
