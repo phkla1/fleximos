@@ -444,19 +444,28 @@ test.describe("Ops admin console", () => {
 
   test("reassigns an operator inline — amoeba, site and target — and persists it", async ({ page, request }) => {
     const opsBase = "http://127.0.0.1:4530";
-    const headers = { Authorization: "Bearer flexi-dev-service-token", "Content-Type": "application/json" };
-    // Work on a stable seeded operator; read its current amoeba so the test is
-    // idempotent across re-runs (the seed never resets an existing operator).
-    const roster = (await (await request.get(`${opsBase}/ops/v1/operators`, { headers })).json()).data;
-    const target = roster.find((o) => o.vehicle_plate === "FKJ176KM");
-    expect(target, "seeded operator FKJ176KM should exist").toBeTruthy();
+    const headers = {
+      Authorization: "Bearer flexi-dev-service-token",
+      "Content-Type": "application/json",
+      "X-Actor-Person-Id": "person_founder_wole"
+    };
+    // Create a fresh operator in Mainland so the test owns its state — it never
+    // mutates a seeded operator (reassignment clears the amoeba-scoped vehicle,
+    // which would otherwise poison the persistent e2e DB for later runs).
+    const unique = Date.now();
+    const created = await (await request.post(`${opsBase}/ops/v1/operators`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-reassign-op-${unique}` },
+      data: { person_id: `person_e2e_reassign_${unique}`, operator_type: "rider", operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_2" }
+    })).json();
+    const operatorId = created.operator_id || created.data?.operator_id;
+    expect(operatorId).toBeTruthy();
 
     await page.goto(`${url}#operators`);
     await expect(page.locator("#notice")).toContainText("Connected");
     await page.getByText("Manage operator roster", { exact: true }).click();
-    await page.locator("#operatorAmoebaFilter").selectOption(target.amoeba_id);
+    await page.locator("#operatorAmoebaFilter").selectOption("amoeba_mainland");
 
-    const row = page.locator(`[data-operator-id="${target.operator_id}"]`);
+    const row = page.locator(`[data-operator-id="${operatorId}"]`);
     await expect(row).toBeVisible();
 
     // Move the operator to the Island amoeba; the row's Site and Supervisor
@@ -469,7 +478,7 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#notice")).toContainText("Operator updated.");
 
     // The change persisted exactly as entered.
-    const saved = await (await request.get(`${opsBase}/ops/v1/operators/${target.operator_id}`, { headers })).json();
+    const saved = await (await request.get(`${opsBase}/ops/v1/operators/${operatorId}`, { headers })).json();
     expect(saved.amoeba_id).toBe("amoeba_island");
     expect(saved.site_id).toBe("site_island_1");
     expect(Number(saved.daily_revenue_target_ngn)).toBe(31500);
@@ -520,6 +529,62 @@ test.describe("Ops admin console", () => {
 
     await dialog.getByRole("button", { name: "Done" }).click();
     await expect(dialog).toBeHidden();
+  });
+
+  test("assigns a vehicle to an operator inline and blocks double-booking it", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    const headers = {
+      Authorization: "Bearer flexi-dev-service-token",
+      "Content-Type": "application/json",
+      "X-Actor-Person-Id": "person_founder_wole"
+    };
+    const unique = Date.now();
+    // A free vehicle in the Island amoeba, plus two fresh active operators there.
+    const vehicle = await (await request.post(`${opsBase}/ops/v1/vehicles`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-vehicle-${unique}` },
+      data: { plate: `E2EV${String(unique).slice(-6)}`, vehicle_type: "motorbike", amoeba_id: "amoeba_island" }
+    })).json();
+    const vehicleId = vehicle.vehicle_id || vehicle.data?.vehicle_id;
+    expect(vehicleId).toBeTruthy();
+
+    const makeOperator = async (suffix) => {
+      const created = await (await request.post(`${opsBase}/ops/v1/operators`, {
+        headers: { ...headers, "Idempotency-Key": `e2e-vehicle-op-${unique}-${suffix}` },
+        data: { person_id: `person_e2e_vehicle_${unique}_${suffix}`, operator_type: "rider", operator_status: "active", amoeba_id: "amoeba_island", site_id: "site_island_1" }
+      })).json();
+      return created.operator_id || created.data?.operator_id;
+    };
+    const operatorId = await makeOperator("a");
+    const rivalId = await makeOperator("b");
+    expect(operatorId && rivalId).toBeTruthy();
+
+    await page.goto(`${url}#operators`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Manage operator roster", { exact: true }).click();
+    await page.locator("#operatorAmoebaFilter").selectOption("amoeba_island");
+
+    // The free vehicle is offered in the row; assign it and save.
+    const row = page.locator(`[data-operator-id="${operatorId}"]`);
+    await expect(row).toBeVisible();
+    await expect(row.locator(`[data-operator-vehicle] option[value="${vehicleId}"]`)).toHaveCount(1);
+    await row.locator("[data-operator-vehicle]").selectOption(vehicleId);
+    await row.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#notice")).toContainText("Operator updated.");
+
+    const saved = await (await request.get(`${opsBase}/ops/v1/operators/${operatorId}`, { headers })).json();
+    expect(saved.vehicle_id).toBe(vehicleId);
+
+    // The now-taken vehicle disappears from another active operator's row...
+    const rivalRow = page.locator(`[data-operator-id="${rivalId}"]`);
+    await expect(rivalRow).toBeVisible();
+    await expect(rivalRow.locator(`[data-operator-vehicle] option[value="${vehicleId}"]`)).toHaveCount(0);
+
+    // ...and the API refuses a direct double-booking.
+    const conflict = await request.patch(`${opsBase}/ops/v1/operators/${rivalId}`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-vehicle-conflict-${unique}` },
+      data: { vehicle_id: vehicleId }
+    });
+    expect(conflict.status()).toBe(409);
   });
 
   test("saves an efficiency policy version in place and closes the panel", async ({ page }) => {

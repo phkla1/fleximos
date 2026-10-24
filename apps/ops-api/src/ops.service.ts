@@ -285,6 +285,7 @@ export class OpsService {
       created_at: timestamp,
       updated_at: timestamp
     };
+    if (operator.vehicle_id) await this.assertVehicleAssignable(operator.vehicle_id, null);
     await this.db.exec(
       `INSERT INTO ops_operators
         (operator_id, person_id, operator_type, operator_class, operator_status, amoeba_id, site_id,
@@ -295,6 +296,17 @@ export class OpsService {
     );
     await this.audit("operator.created", "operator", operator.operator_id, null, operator);
     return operator;
+  }
+
+  // A vehicle can be held by only one active operator at a time. Blocks assigning
+  // a vehicle another active operator already holds (excluding the operator being
+  // saved). Operators leaving active status don't contend for the vehicle.
+  private async assertVehicleAssignable(vehicleId: string | null, operatorId: string | null) {
+    if (!vehicleId) return;
+    const holder: any = operatorId
+      ? await this.db.one("SELECT operator_id FROM ops_operators WHERE vehicle_id = $1 AND operator_status = 'active' AND operator_id <> $2", [vehicleId, operatorId])
+      : await this.db.one("SELECT operator_id FROM ops_operators WHERE vehicle_id = $1 AND operator_status = 'active'", [vehicleId]);
+    if (holder) throw new ConflictException("That vehicle is already assigned to another active operator.");
   }
 
   async updateOperator(operatorId: string, body: RecordBody) {
@@ -314,6 +326,9 @@ export class OpsService {
       updated.accommodation_unit_id = null;
     } else if ("accommodation_unit_id" in body) {
       updated.accommodation_unit_id = await this.accommodation.assertCanAssign(body.accommodation_unit_id, operatorId);
+    }
+    if ("vehicle_id" in body && updated.vehicle_id) {
+      await this.assertVehicleAssignable(updated.vehicle_id, operatorId);
     }
     await this.db.exec(
       `UPDATE ops_operators SET

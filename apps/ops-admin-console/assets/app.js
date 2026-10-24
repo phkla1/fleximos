@@ -281,6 +281,25 @@ function rowSupervisorOptions(amoebaId, selectedId) {
   return optionHtml(eligible, "person_id", "display_name", selectedId, "Unassigned");
 }
 
+// Active vehicles in the amoeba that aren't already held by another active
+// operator. The operator's own current vehicle is always kept selectable (even
+// if it sits in another amoeba or is inactive) so a save never silently drops it.
+function rowVehicleOptions(amoebaId, selectedId) {
+  const takenByOthers = new Set(
+    state.operators
+      .filter((o) => o.operator_status === "active" && o.vehicle_id && o.vehicle_id !== selectedId)
+      .map((o) => o.vehicle_id)
+  );
+  const vehicles = state.vehicles.filter((v) =>
+    v.amoeba_id === amoebaId && v.status === "active" && !takenByOthers.has(v.vehicle_id)
+  );
+  if (selectedId && !vehicles.some((v) => v.vehicle_id === selectedId)) {
+    const own = state.vehicles.find((v) => v.vehicle_id === selectedId);
+    vehicles.unshift({ vehicle_id: selectedId, plate: own?.plate || selectedId });
+  }
+  return optionHtml(vehicles, "vehicle_id", "plate", selectedId, "No vehicle");
+}
+
 function updateRegistrationOptions() {
   const operator = state.operators.find((item) => item.operator_id === el.ingestionForm.elements.operator_id.value);
   const registrations = operator?.platform_registrations || [];
@@ -525,7 +544,9 @@ function render() {
         <select class="row-field" aria-label="Site" data-operator-site>${rowSiteOptions(operator.amoeba_id, operator.site_id || "")}</select>
         <select class="row-field" aria-label="Supervisor" data-operator-supervisor>${rowSupervisorOptions(operator.amoeba_id, operator.supervisor_person_id || "")}</select>
       </div>
-      <div><span class="row-label">Vehicle</span><strong>${escapeHtml(operator.vehicle_plate || "No vehicle")}</strong><label class="row-target">Target ₦<input type="number" min="0" step="any" aria-label="Daily target (NGN)" data-operator-target value="${Number(operator.daily_revenue_target_ngn || 0)}" /></label></div>
+      <div><span class="row-label">Vehicle</span>
+        <select class="row-field" aria-label="Vehicle" data-operator-vehicle>${rowVehicleOptions(operator.amoeba_id, operator.vehicle_id || "")}</select>
+        <label class="row-target">Target ₦<input type="number" min="0" step="any" aria-label="Daily target (NGN)" data-operator-target value="${Number(operator.daily_revenue_target_ngn || 0)}" /></label></div>
       <div><span class="row-label">Platforms</span><strong>${operator.platform_registrations.length}</strong><small>${operator.platform_registrations.map((item) => item.platform_display_name).join(", ") || "Not registered"}</small></div>
       <div class="row-actions">
         <select aria-label="Operator status" data-operator-status>
@@ -1148,7 +1169,7 @@ el.operatorForm.elements.amoeba_id.addEventListener("change", () => {
   updateSiteOptions();
   updateSupervisorOptions();
 });
-// Reassignment: changing a roster row's amoeba re-scopes its site and supervisor.
+// Reassignment: changing a roster row's amoeba re-scopes its site, supervisor and vehicle.
 el.operatorList.addEventListener("change", (event) => {
   const amoebaSelect = event.target.closest("[data-operator-amoeba]");
   if (!amoebaSelect) return;
@@ -1156,6 +1177,7 @@ el.operatorList.addEventListener("change", (event) => {
   const amoebaId = amoebaSelect.value;
   row.querySelector("[data-operator-site]").innerHTML = rowSiteOptions(amoebaId, "");
   row.querySelector("[data-operator-supervisor]").innerHTML = rowSupervisorOptions(amoebaId, "");
+  row.querySelector("[data-operator-vehicle]").innerHTML = rowVehicleOptions(amoebaId, "");
 });
 el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrationOptions);
 el.alertFilter.addEventListener("change", render);
@@ -1811,6 +1833,7 @@ document.addEventListener("click", async (event) => {
           amoeba_id: row.querySelector("[data-operator-amoeba]").value,
           site_id: siteId,
           supervisor_person_id: row.querySelector("[data-operator-supervisor]").value || null,
+          vehicle_id: row.querySelector("[data-operator-vehicle]").value || null,
           daily_revenue_target_ngn: target === "" ? undefined : Number(target)
         })
       });
