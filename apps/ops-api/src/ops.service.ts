@@ -10,7 +10,13 @@ type RecordBody = Record<string, unknown>;
 @Injectable()
 export class OpsService {
   private readonly paymentsBase = process.env.PAYMENTS_API_BASE || "http://127.0.0.1:4040";
+  private readonly foundationBase = process.env.FOUNDATION_API_BASE || "http://127.0.0.1:4010";
   private readonly serviceToken = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
+  // Each amoeba has exactly one supervisor (owned by foundation). An operator's
+  // supervisor IS their amoeba's supervisor — we mirror it onto ops_operators so
+  // all the existing scope/report SQL keeps working, and keep the mirror in step
+  // with foundation. Cached briefly to avoid hammering the amoeba service.
+  private amoebaSupervisorCache: { at: number; map: Map<string, string | null> } | null = null;
 
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
@@ -24,6 +30,51 @@ export class OpsService {
 
   private now() {
     return new Date().toISOString();
+  }
+
+  // amoeba_id -> supervisor_person_id, read from foundation and cached 60s.
+  private async amoebaSupervisorMap(): Promise<Map<string, string | null>> {
+    const ttl = Number(process.env.FLEXI_AMOEBA_SUPERVISOR_CACHE_MS ?? 60_000);
+    if (this.amoebaSupervisorCache && Date.now() - this.amoebaSupervisorCache.at < ttl) {
+      return this.amoebaSupervisorCache.map;
+    }
+    try {
+      const response = await fetch(`${this.foundationBase}/amoeba/v1/amoebas`, {
+        headers: { Authorization: `Bearer ${this.serviceToken}` },
+        signal: AbortSignal.timeout(3000)
+      });
+      if (!response.ok) throw new Error(`amoebas ${response.status}`);
+      const payload: any = await response.json();
+      const map = new Map<string, string | null>();
+      for (const amoeba of payload.data || payload || []) {
+        map.set(amoeba.amoeba_id, amoeba.supervisor_person_id || null);
+      }
+      this.amoebaSupervisorCache = { at: Date.now(), map };
+      return map;
+    } catch {
+      return this.amoebaSupervisorCache?.map || new Map();
+    }
+  }
+
+  private async supervisorForAmoeba(amoebaId: unknown): Promise<string | null> {
+    if (!amoebaId) return null;
+    return (await this.amoebaSupervisorMap()).get(String(amoebaId)) ?? null;
+  }
+
+  // Bring every operator's mirrored supervisor in line with its amoeba's. Cheap
+  // (one UPDATE per amoeba, touching only mismatched rows); called on reads that
+  // depend on supervisor grouping/scoping.
+  private async syncOperatorSupervisors() {
+    const map = await this.amoebaSupervisorMap();
+    if (!map.size) return;
+    const timestamp = this.now();
+    for (const [amoebaId, supervisor] of map) {
+      await this.db.exec(
+        `UPDATE ops_operators SET supervisor_person_id = $1, updated_at = $2
+         WHERE amoeba_id = $3 AND COALESCE(supervisor_person_id, '') <> COALESCE($1, '')`,
+        [supervisor, timestamp, amoebaId]
+      );
+    }
   }
 
   lagosDate(date = new Date()) {
@@ -219,6 +270,7 @@ export class OpsService {
   }
 
   async listOperators(filters: { status?: string; amoeba_id?: string }, scope: OpsDataScope = {}) {
+    await this.syncOperatorSupervisors();
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (filters.status) {
@@ -277,7 +329,7 @@ export class OpsService {
       operator_status: body.operator_status || "pending_activation",
       amoeba_id: body.amoeba_id,
       site_id: body.site_id,
-      supervisor_person_id: body.supervisor_person_id || null,
+      supervisor_person_id: await this.supervisorForAmoeba(body.amoeba_id),
       vehicle_id: body.vehicle_id || null,
       daily_revenue_target_ngn: body.daily_revenue_target_ngn ?? null,
       activated_at: null,
@@ -311,9 +363,11 @@ export class OpsService {
 
   async updateOperator(operatorId: string, body: RecordBody) {
     const current: any = await this.getOperator(operatorId);
-    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn"];
+    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "vehicle_id", "daily_revenue_target_ngn"];
     const updated: any = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
+    // Supervisor is derived from the amoeba, never set per operator.
+    updated.supervisor_person_id = await this.supervisorForAmoeba(updated.amoeba_id);
     if ("operator_class" in body) updated.operator_class = this.operatorClassOf(body.operator_class, updated.operator_type);
     updated.updated_at = this.now();
     if (updated.operator_status === "active" && current.operator_status !== "active") updated.activated_at = updated.updated_at;
@@ -1555,6 +1609,7 @@ export class OpsService {
     filters: { record_date?: string; date_from?: string; date_to?: string; amoeba_id?: string },
     scope: OpsDataScope = {}
   ) {
+    await this.syncOperatorSupervisors();
     const { from, to, days } = this.dateRange(filters);
     const params: unknown[] = [from, to];
     const clauses = ["o.operator_status = 'active'"];

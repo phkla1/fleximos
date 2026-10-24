@@ -191,7 +191,6 @@ function renderOptions() {
     : `<option value="" disabled selected>No eligible people — grant the Operator role in the Identity console</option>`;
 
   el.operatorForm.elements.amoeba_id.innerHTML = amoebas;
-  updateSupervisorOptions();
   el.vehicleForm.elements.amoeba_id.innerHTML = amoebas;
   el.reportForm.elements.amoeba_id.innerHTML = `<option value="">Whole company</option>${amoebas}`;
   el.ingestionForm.elements.operator_id.innerHTML = operatorOptions(state.operators);
@@ -213,72 +212,16 @@ function updateSiteOptions() {
   el.operatorForm.elements.site_id.innerHTML = optionHtml(sites, "site_id", "name");
 }
 
-// Which amoebas a candidate supervisor/manager actually covers, read from their
-// scoped Access grants — the same thing the API's dataScope() enforces on reads.
-// company grant => unrestricted; amoeba/site grants => a concrete amoeba set.
-// team-scoped or unscoped people have no amoeba-bindable grant, so we can't say
-// they *don't* cover the selected area — they stay selectable.
-function supervisorAmoebaScope(personId) {
-  let unrestricted = false;
-  const amoebaIds = new Set();
-  for (const a of state.roleAssignments || []) {
-    if (a.person_id !== personId) continue;
-    if (a.status && a.status !== "active") continue;
-    if (a.role !== "supervisor" && a.role !== "manager") continue;
-    if (a.scope_type === "company") unrestricted = true;
-    else if (a.scope_type === "amoeba" && a.scope_id) amoebaIds.add(a.scope_id);
-    else if (a.scope_type === "site" && a.scope_id) {
-      const site = state.sites.find((s) => s.site_id === a.scope_id);
-      if (site?.amoeba_id) amoebaIds.add(site.amoeba_id);
-    }
-  }
-  return { unrestricted, amoebaIds };
-}
-
-// People who run teams — the Supervisor role, plus Managers (who also run
-// amoebas/teams) — narrowed to those whose Access grant covers the given amoeba,
-// so an operator can't be handed to a supervisor who could never see them.
-function eligibleSupervisors(amoebaId) {
-  const roles = rolesByPerson();
-  const hasRole = (pid, role) => roles.get(pid)?.has(role);
-  return state.people.filter((p) => {
-    if (!(hasRole(p.person_id, "supervisor") || hasRole(p.person_id, "manager"))) return false;
-    if (!amoebaId) return true;
-    const scope = supervisorAmoebaScope(p.person_id);
-    if (scope.unrestricted) return true;        // company-wide — covers every amoeba
-    if (scope.amoebaIds.size === 0) return true; // team-scoped / unscoped — not amoeba-bound
-    return scope.amoebaIds.has(amoebaId);        // amoeba/site grant must include this area
-  });
-}
-
-// Add-operator form: supervisor options for the amoeba currently chosen on the form.
-function updateSupervisorOptions() {
-  const amoebaId = el.operatorForm.elements.amoeba_id.value;
-  const current = el.operatorForm.elements.supervisor_person_id.value;
-  const eligible = eligibleSupervisors(amoebaId);
-  const keepCurrent = eligible.some((p) => p.person_id === current) ? current : "";
-  el.operatorForm.elements.supervisor_person_id.innerHTML = eligible.length
-    ? optionHtml(eligible, "person_id", "display_name", keepCurrent, "Unassigned")
-    : `<option value="" selected>Unassigned</option><option value="" disabled>No supervisor is scoped to this area — grant a scoped Supervisor role in the Identity console</option>`;
-}
-
-// Inline roster-row reassignment: site and supervisor option lists for a given
-// amoeba. Each keeps the operator's current value selectable even if it is no
-// longer active/eligible, so saving the row never silently drops an assignment.
+// Inline roster-row reassignment: the site option list for a given amoeba. Keeps
+// the operator's current value selectable even if it is no longer active, so
+// saving the row never silently drops an assignment. (Supervisor is derived from
+// the amoeba and shown read-only; it is not chosen per operator.)
 function rowSiteOptions(amoebaId, selectedId) {
   const sites = state.sites.filter((s) => s.amoeba_id === amoebaId && s.status === "active");
   if (selectedId && !sites.some((s) => s.site_id === selectedId)) {
     sites.unshift({ site_id: selectedId, name: nameForSite(selectedId) });
   }
   return optionHtml(sites, "site_id", "name", selectedId);
-}
-
-function rowSupervisorOptions(amoebaId, selectedId) {
-  const eligible = eligibleSupervisors(amoebaId);
-  if (selectedId && !eligible.some((p) => p.person_id === selectedId)) {
-    eligible.unshift({ person_id: selectedId, display_name: nameForPerson(selectedId) });
-  }
-  return optionHtml(eligible, "person_id", "display_name", selectedId, "Unassigned");
 }
 
 // Active vehicles in the amoeba that aren't already held by another active
@@ -542,7 +485,7 @@ function render() {
       <div><span class="row-label">Assignment</span>
         <select class="row-field" aria-label="Amoeba" data-operator-amoeba>${optionHtml(state.amoebas, "amoeba_id", "name", operator.amoeba_id)}</select>
         <select class="row-field" aria-label="Site" data-operator-site>${rowSiteOptions(operator.amoeba_id, operator.site_id || "")}</select>
-        <select class="row-field" aria-label="Supervisor" data-operator-supervisor>${rowSupervisorOptions(operator.amoeba_id, operator.supervisor_person_id || "")}</select>
+        <small class="row-note" data-operator-supervisor-note>Supervisor: ${operator.supervisor_person_id ? escapeHtml(nameForPerson(operator.supervisor_person_id)) : "set on the amoeba (HR console)"}</small>
       </div>
       <div><span class="row-label">Vehicle</span>
         <select class="row-field" aria-label="Vehicle" data-operator-vehicle>${rowVehicleOptions(operator.amoeba_id, operator.vehicle_id || "")}</select>
@@ -1160,19 +1103,21 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
 el.vehicleForm.elements.vehicle_type.addEventListener("change", updateVehicleTrackerUi);
 el.vehicleTrackerProvider.addEventListener("change", updateVehicleTrackerUi);
 updateVehicleTrackerUi();
-el.operatorForm.elements.amoeba_id.addEventListener("change", () => {
-  updateSiteOptions();
-  updateSupervisorOptions();
-});
-// Reassignment: changing a roster row's amoeba re-scopes its site, supervisor and vehicle.
+el.operatorForm.elements.amoeba_id.addEventListener("change", updateSiteOptions);
+// Reassignment: changing a roster row's amoeba re-scopes its site and vehicle, and
+// updates the derived supervisor note (supervisor follows the amoeba).
 el.operatorList.addEventListener("change", (event) => {
   const amoebaSelect = event.target.closest("[data-operator-amoeba]");
   if (!amoebaSelect) return;
   const row = amoebaSelect.closest("[data-operator-id]");
   const amoebaId = amoebaSelect.value;
   row.querySelector("[data-operator-site]").innerHTML = rowSiteOptions(amoebaId, "");
-  row.querySelector("[data-operator-supervisor]").innerHTML = rowSupervisorOptions(amoebaId, "");
   row.querySelector("[data-operator-vehicle]").innerHTML = rowVehicleOptions(amoebaId, "");
+  const note = row.querySelector("[data-operator-supervisor-note]");
+  if (note) {
+    const amoeba = state.amoebas.find((a) => a.amoeba_id === amoebaId);
+    note.textContent = `Supervisor: ${amoeba?.supervisor_person_id ? nameForPerson(amoeba.supervisor_person_id) : "set on the amoeba (HR console)"}`;
+  }
 });
 el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrationOptions);
 el.alertFilter.addEventListener("change", render);
@@ -1233,7 +1178,6 @@ el.operatorForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const body = Object.fromEntries(new FormData(el.operatorForm));
   body.daily_revenue_target_ngn = body.daily_revenue_target_ngn ? Number(body.daily_revenue_target_ngn) : null;
-  if (!body.supervisor_person_id) delete body.supervisor_person_id;
   try {
     await ops("/ops/v1/operators", {
       method: "POST",
@@ -1787,7 +1731,6 @@ document.addEventListener("click", async (event) => {
           accommodated: accommodatedBox ? accommodatedBox.checked : undefined,
           amoeba_id: row.querySelector("[data-operator-amoeba]").value,
           site_id: siteId,
-          supervisor_person_id: row.querySelector("[data-operator-supervisor]").value || null,
           vehicle_id: row.querySelector("[data-operator-vehicle]").value || null,
           daily_revenue_target_ngn: target === "" ? undefined : Number(target)
         })

@@ -196,6 +196,7 @@ textarea { resize: vertical; }
 .row-target input { width: 108px; margin-left: 4px; }
 .row-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .row-check input { margin: 0; }
+.row-note { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
 .pill { display: inline-flex; align-items: center; width: max-content; min-height: 27px; padding: 0 9px; border-radius: 999px; background: #e8f1ed; color: var(--green-dark); font-size: 12px; font-weight: 850; }
 .pill.open { background: #f8ead6; color: #7c4808; }
 .pill.acknowledged { background: #e4edf5; color: var(--blue); }

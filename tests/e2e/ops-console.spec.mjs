@@ -243,10 +243,26 @@ test.describe("Supervisor Ops console", () => {
     }
   });
 
-  test("shows the live vehicle map with remote power control", async ({ page }) => {
-    // person_founder_wole supervises the demo vehicle's operator, so the
-    // fixture-backed position is inside this actor's team scope.
-    await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
+  test("shows the live vehicle map with remote power control", async ({ page, request }) => {
+    // The demo vehicle's operator sits in Island; its supervisor is now derived
+    // from the amoeba. Act as Island's supervisor so the fixture-backed position
+    // is inside the actor's scope. Force an operator read first so the derived
+    // supervisor is materialised before the map's positions are scoped.
+    const opsBase = "http://127.0.0.1:4530";
+    const foundationBase = "http://127.0.0.1:4510";
+    const headers = { Authorization: "Bearer flexi-dev-service-token", "Content-Type": "application/json", "X-Actor-Person-Id": "person_founder_wole" };
+    const amoebas = (await (await request.get(`${foundationBase}/amoeba/v1/amoebas`, { headers })).json()).data;
+    let islandSupervisor = amoebas.find((a) => a.amoeba_id === "amoeba_island")?.supervisor_person_id;
+    if (!islandSupervisor) {
+      islandSupervisor = "person_founder_wole";
+      await request.post(`${foundationBase}/amoeba/v1/amoebas/amoeba_island/assign-supervisor`, {
+        headers: { ...headers, "Idempotency-Key": `e2e-island-sup-map-${Date.now()}` },
+        data: { supervisor_person_id: islandSupervisor }
+      });
+    }
+    await request.get(`${opsBase}/ops/v1/operators`, { headers });
+
+    await page.goto(`${url}&actorPersonId=${islandSupervisor}#board`);
     await expect(page.locator("#notice")).toContainText("Connected");
 
     await page.locator("#boardMapToggle").click();
@@ -406,40 +422,41 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#operatorList")).toContainText("No operators match this scope");
   });
 
-  test("filters the Add-operator Supervisor dropdown to grants that cover the chosen amoeba", async ({ page, request }) => {
+  test("shows an operator's supervisor as derived from the amoeba (read-only, no dropdown)", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
     const foundationBase = "http://127.0.0.1:4510";
     const headers = {
       Authorization: "Bearer flexi-dev-service-token",
       "Content-Type": "application/json",
       "X-Actor-Person-Id": "person_founder_wole"
     };
-    // Tunde (the seeded manager) is the only Supervisor/Manager-role candidate in
-    // the demo. Give him an Access grant scoped to just the Island amoeba, so the
-    // dropdown must narrow to him on Island and drop him on Mainland.
+    // Make Tunde the supervisor of the Island amoeba, then create a rider there.
     const people = (await (await request.get(`${foundationBase}/identity/v1/people`, { headers })).json()).data;
     const tunde = people.find((p) => p.display_name.toLowerCase() === "tunde");
     expect(tunde, "seeded manager Tunde should exist").toBeTruthy();
-    await request.post(`${foundationBase}/identity/v1/role-assignments`, {
-      headers: { ...headers, "Idempotency-Key": "e2e-supervisor-scope-tunde-island" },
-      data: { person_id: tunde.person_id, role: "manager", scope_type: "amoeba", scope_id: "amoeba_island", status: "active" }
+    await request.post(`${foundationBase}/amoeba/v1/amoebas/amoeba_island/assign-supervisor`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-island-sup-${Date.now()}` },
+      data: { supervisor_person_id: tunde.person_id }
     });
+    const unique = Date.now();
+    const created = await (await request.post(`${opsBase}/ops/v1/operators`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-derive-op-${unique}` },
+      data: { person_id: `person_e2e_derive_${unique}`, operator_type: "rider", operator_status: "active", amoeba_id: "amoeba_island", site_id: "site_island_1" }
+    })).json();
+    const operatorId = created.operator_id || created.data?.operator_id;
 
     await page.goto(`${url}#operators`);
     await expect(page.locator("#notice")).toContainText("Connected");
     await page.getByText("Manage operator roster", { exact: true }).click();
+    await page.locator("#operatorAmoebaFilter").selectOption("amoeba_island");
 
-    const amoeba = page.locator('#operatorForm select[name="amoeba_id"]');
-    const supervisor = page.locator('#operatorForm select[name="supervisor_person_id"]');
-    const tundeOption = supervisor.locator("option", { hasText: "Tunde" });
-
-    // Island is within Tunde's grant — he is selectable.
-    await amoeba.selectOption("amoeba_island");
-    await expect(tundeOption).toHaveCount(1);
-
-    // Mainland is outside his grant — he drops out and the gap is made explicit.
-    await amoeba.selectOption("amoeba_mainland");
-    await expect(tundeOption).toHaveCount(0);
-    await expect(supervisor).toContainText("No supervisor is scoped to this area");
+    // No per-operator supervisor dropdown; the row shows the amoeba's supervisor.
+    const row = page.locator(`[data-operator-id="${operatorId}"]`);
+    await expect(row).toBeVisible();
+    await expect(row.locator("[data-operator-supervisor]")).toHaveCount(0);
+    await expect(row.locator("[data-operator-supervisor-note]")).toContainText("Tunde");
+    // The add-operator form no longer has a Supervisor field either.
+    await expect(page.locator('#operatorForm select[name="supervisor_person_id"]')).toHaveCount(0);
   });
 
   test("reassigns an operator inline — amoeba, site and target — and persists it", async ({ page, request }) => {

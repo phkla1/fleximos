@@ -74,6 +74,7 @@ async function startServer() {
     env: {
       ...process.env,
       FLEXI_SEED_DEMO: "true",
+      FLEXI_AMOEBA_SUPERVISOR_CACHE_MS: "0",
       PORT: String(port),
       HOST: "127.0.0.1",
       FLEXI_OPS_DB_DIR: dbDir,
@@ -195,6 +196,16 @@ test("scopes supervisor and operator reads inside the Ops API", async () => {
   const ownPerson = await createIdentity("Assigned Operator", "+2347000000082", ["operator"], "assigned");
   const otherPerson = await createIdentity("Other Operator", "+2347000000083", ["operator"], "other");
 
+  // Supervisor is derived from the amoeba: give the supervisor their own amoeba,
+  // so an operator placed there inherits them as supervisor.
+  const foundationPost = (url, idem, body) => fetch(`${foundationBaseUrl}${url}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": idem, "X-Actor-Person-Id": "person_founder_wole" },
+    body: JSON.stringify(body)
+  }).then((r) => r.json());
+  const scopeAmoeba = await foundationPost("/amoeba/v1/amoebas", "ops-scope-amoeba", { name: "Scope Amoeba", classification: "operating" });
+  await foundationPost(`/amoeba/v1/amoebas/${scopeAmoeba.amoeba_id}/assign-supervisor`, "ops-scope-assign", { supervisor_person_id: supervisor.person_id });
+
   const ownOperator = await request("/ops/v1/operators", {
     method: "POST",
     headers: { "Idempotency-Key": "ops-scope-operator-assigned" },
@@ -202,11 +213,11 @@ test("scopes supervisor and operator reads inside the Ops API", async () => {
       person_id: ownPerson.person_id,
       operator_type: "driver",
       operator_status: "active",
-      amoeba_id: "amoeba_mainland",
-      site_id: "site_mainland_1",
-      supervisor_person_id: supervisor.person_id
+      amoeba_id: scopeAmoeba.amoeba_id,
+      site_id: "site_mainland_1"
     })
   });
+  assert.equal(ownOperator.body.supervisor_person_id, supervisor.person_id, "operator inherits the amoeba's supervisor");
   await request("/ops/v1/operators", {
     method: "POST",
     headers: { "Idempotency-Key": "ops-scope-operator-other" },
@@ -214,9 +225,8 @@ test("scopes supervisor and operator reads inside the Ops API", async () => {
       person_id: otherPerson.person_id,
       operator_type: "driver",
       operator_status: "active",
-      amoeba_id: "amoeba_island",
-      site_id: "site_island_1",
-      supervisor_person_id: "person_founder_wole"
+      amoeba_id: "amoeba_mainland",
+      site_id: "site_mainland_1"
     })
   });
 

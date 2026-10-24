@@ -24,7 +24,7 @@ export default defineConfig({
       timeout: 15000
     },
     {
-      command: "FLEXI_SEED_DEMO=true PORT=4530 FLEXI_OPS_DB_DIR=.data/e2e-ops-pglite FOUNDATION_API_BASE=http://127.0.0.1:4510 TRACKER_FIXTURE_FILE=tests/fixtures/tracker-fixture.json npx tsx apps/ops-api/src/main.ts",
+      command: "FLEXI_SEED_DEMO=true FLEXI_AMOEBA_SUPERVISOR_CACHE_MS=0 PORT=4530 FLEXI_OPS_DB_DIR=.data/e2e-ops-pglite FOUNDATION_API_BASE=http://127.0.0.1:4510 TRACKER_FIXTURE_FILE=tests/fixtures/tracker-fixture.json npx tsx apps/ops-api/src/main.ts",
       url: "http://127.0.0.1:4530/health",
       reuseExistingServer: true,
       timeout: 20000
