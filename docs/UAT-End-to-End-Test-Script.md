@@ -59,14 +59,16 @@ header shows **Connected** (not a connection error). `[ ]`
    real names/phones. Confirm each shows **active**.
 4. `[ ]` **Users & roles** → give each person the role that matches what they are:
    the supervisor a user with the **Supervisor** role, each rider/driver a user
-   with the **Operator** role, plus one **Manager** and one **Finance** user. These
-   roles gate the roster in Stage 2 — only **Operator**-role people can be added as
-   operators, and only **Supervisor**- or **Manager**-role people appear as supervisors, so assign
-   them here first.
-5. `[ ]` **Access** → grant the Manager an amoeba-scoped access grant; confirm it
+   with the **Operator** role, plus one **Manager** and one **Finance** user. The
+   Operator role gates the roster in Stage 2 — only **Operator**-role people can be
+   added as operators — so assign it here first.
+5. `[ ]` **Amoebas** → set each amoeba's **Supervisor** (the person you gave the
+   Supervisor role). An operator's supervisor is **derived from their amoeba**, so
+   this is where supervision is set — not per operator. Confirm it saves on the row.
+6. `[ ]` **Access** → grant the Manager an amoeba-scoped access grant; confirm it
    lists with the scope and can be **deactivated**.
-6. `[ ]` **Service accounts** → confirm one exists and a token can be **issued**.
-7. `[ ]` Edit a person (change phone/email) and **deactivate then reactivate** one —
+7. `[ ]` **Service accounts** → confirm one exists and a token can be **issued**.
+8. `[ ]` Edit a person (change phone/email) and **deactivate then reactivate** one —
    confirm status updates in the table.
 
 ---
@@ -84,16 +86,20 @@ header shows **Connected** (not a connection error). `[ ]`
    tracking status** (✓ tracked · last fix / registered · awaiting fix / no tracker
    fitted) — you shouldn't need to leave the Vehicles view to see it.
 2. `[ ]` **Roster** → *Manage operator roster* → add each rider/driver person as an
-   operator: set type, amoeba, site, **supervisor**, daily target, vehicle. The
-   **Person** list shows only people with the Operator role who aren't already an
-   operator, and the **Supervisor** list only Supervisor- or Manager-role people — so if a
-   dropdown is empty, assign the role back in **Identity → Users & roles** (Stage
-   1.4) first.
-3. `[ ]` Register a platform account for an operator (**Add platform**) so it can
+   operator: set type, amoeba, and site. **Daily target is optional** — leave it
+   blank to use the company default (₦25k, or ₦28k if accommodated); type a number
+   only to override one operator. The **Person** list shows only people with the
+   Operator role who aren't already an operator. There is **no supervisor field** —
+   the supervisor is derived from the amoeba (set in Stage 1.5) and shows read-only
+   on the row.
+3. `[ ]` On the operator's roster row, assign a **Vehicle** from the dropdown (it
+   lists active vehicles in that amoeba not already held by another active
+   operator) → Save. Confirm it sticks; a vehicle can't be double-booked.
+4. `[ ]` Register a platform account for an operator (**Add platform**) so it can
    receive performance data.
-4. `[ ]` Set each operator's status to **active** (Roster row → status → Save).
+5. `[ ]` Set each operator's status to **active** (Roster row → status → Save).
    *(Activation is what starts onboarding/pace clocks.)*
-5. `[ ]` Confirm the roster **scope filters** (team/amoeba/search) narrow the list,
+6. `[ ]` Confirm the roster **scope filters** (amoeba/search) narrow the list,
    and the **Overview** KPI "Active operators" count matches.
 
 ---
@@ -102,8 +108,10 @@ header shows **Connected** (not a connection error). `[ ]`
 *Defines targets, pricing and rules the later stages are judged against.*
 
 1. `[ ]` **Targets & policy** → confirm/adjust a **revenue pace profile** per
-   vehicle type (e.g. bike ₦30k, car ₦60k) and the checkpoint %s. Save a new
-   version and confirm older versions fold into **"N earlier versions"**.
+   vehicle type: bike **₦25k standard** with an **Accommodated daily target ₦28k**
+   (the new field), car **₦60k**, plus the checkpoint %s. Save a new version and
+   confirm older versions fold into **"N earlier versions"**. *(These are the
+   company defaults operators inherit when their roster target is blank.)*
 2. `[ ]` Same view → **efficiency policy** (fuel→distance) and **fleet policy**
    (inspection cadence) — edit and confirm the active value updates.
 3. `[ ]` **Delivery customers & pricing** → create a customer (e.g. *Speedaf*,
@@ -117,19 +125,24 @@ header shows **Connected** (not a connection error). `[ ]`
 
 ---
 
-## Stage 4 — Accommodation (Administrator console → Manage → Accommodation)
-*Finite housing; assignment happens from the Roster.*
+## Stage 4 — Accommodation (site beds in HR console + Roster toggle)
+*Finite housing now lives on the **site**; the Ops console shows occupancy only.*
 
-1. `[ ]` **Accommodation** → add a unit with a small **capacity** (e.g. 1–2 beds);
-   confirm the "beds" summary and the unit shows **0/N**.
-2. `[ ]` **Roster** → on an **active** rider's row, pick the unit in the
-   **Accommodation** select → Save. Confirm a 🏠 chip appears on the row and the
-   unit now reads **1/N**.
-3. `[ ]` Fill the unit to capacity, then try to assign one more → **refused** (unit
-   shown full / error). *(Hard capacity block.)*
-4. `[ ]` **Deactivate** a housed rider (Roster → status inactive → Save) → confirm
-   the unit's occupancy **drops** and a bed frees.
-5. `[ ]` Try to **delete** an occupied unit → refused; delete an empty one → works.
+1. `[ ]` **HR console → Sites** → on a site, set **Accommodation beds** to a small
+   number (e.g. 1–2) → Save. *(This is where capacity lives now — not a separate
+   "unit".)*
+2. `[ ]` **Administrator console → Manage → Accommodation** → confirm this view now
+   shows that **site** with **0/N beds** (read-only occupancy monitor; no add/edit
+   here).
+3. `[ ]` **Roster** → on an **active** rider based at that site, tick the
+   **Accommodated** toggle → Save. Confirm a 🏠 chip appears on the row, the rider's
+   **daily target moves to the accommodated default (₦28k)**, and the Accommodation
+   monitor now reads **1/N**.
+4. `[ ]` Fill the site's beds, then try to accommodate one more rider there → the
+   toggle is blocked / Save is **refused** (site shown full). *(Hard capacity block,
+   per site.)*
+5. `[ ]` **Deactivate** a housed rider (Roster → status inactive → Save) → confirm
+   the site's occupancy **drops** and a bed frees.
 
 ---
 
@@ -153,7 +166,7 @@ header shows **Connected** (not a connection error). `[ ]`
    platform, set trips/revenue/hours/status → Save → "1 record accepted".
 2. `[ ]` Add a few records across operators (mix online/offline, high/low revenue)
    so the board and reports have something to show.
-3. `[ ]` *View performance records* → filter by team/operator and confirm rows.
+3. `[ ]` *View performance records* → filter by amoeba/operator and confirm rows.
 
 ---
 
