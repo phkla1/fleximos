@@ -3,7 +3,7 @@
   "info": {
     "title": "Fleximotion Amoeba API",
     "version": "1.0.0",
-    "description": "Shared reference API for amoeba definitions, hierarchy, classification, coordinator assignment, and operational performance source links."
+    "description": "Shared reference API for amoeba definitions, hierarchy, classification, supervisor assignment, and operational performance source links."
   },
   "servers": [
     { "url": "https://api.fleximotion.example/amoeba/v1", "description": "Production placeholder" },
@@ -36,7 +36,7 @@
                           "classification": "operating",
                           "status": "active",
                           "parent_amoeba_id": null,
-                          "coordinator_person_id": null
+                          "supervisor_person_id": null
                         },
                         {
                           "amoeba_id": "amoeba_mainland",
@@ -44,7 +44,7 @@
                           "classification": "operating",
                           "status": "active",
                           "parent_amoeba_id": null,
-                          "coordinator_person_id": null
+                          "supervisor_person_id": null
                         },
                         {
                           "amoeba_id": "amoeba_central",
@@ -52,7 +52,7 @@
                           "classification": "shared_services",
                           "status": "active",
                           "parent_amoeba_id": null,
-                          "coordinator_person_id": null
+                          "supervisor_person_id": null
                         }
                       ]
                     }
@@ -126,10 +126,10 @@
         }
       }
     },
-    "/amoebas/{amoeba_id}/assign-coordinator": {
+    "/amoebas/{amoeba_id}/assign-supervisor": {
       "post": {
         "tags": ["Amoebas"],
-        "summary": "Assign team coordinator",
+        "summary": "Assign supervisor",
         "parameters": [
           { "$ref": "#/components/parameters/AmoebaId" },
           { "$ref": "#/components/parameters/IdempotencyKey" }
@@ -273,7 +273,7 @@
           "classification": { "type": "string", "enum": ["operating", "shared_services", "investment"] },
           "status": { "type": "string", "enum": ["active", "archived"] },
           "parent_amoeba_id": { "type": ["string", "null"] },
-          "coordinator_person_id": { "type": ["string", "null"] }
+          "supervisor_person_id": { "type": ["string", "null"] }
         }
       },
       "AmoebaPage": {
@@ -297,7 +297,7 @@
           "classification": { "type": "string", "enum": ["operating", "shared_services", "investment"] },
           "status": { "type": "string", "enum": ["active", "archived"] },
           "parent_amoeba_id": { "type": ["string", "null"] },
-          "coordinator_person_id": { "type": ["string", "null"] }
+          "supervisor_person_id": { "type": ["string", "null"] }
         }
       },
       "Site": {
@@ -354,8 +354,8 @@
       },
       "AssignCoordinatorRequest": {
         "type": "object",
-        "required": ["coordinator_person_id"],
-        "properties": { "coordinator_person_id": { "type": "string" } }
+        "required": ["supervisor_person_id"],
+        "properties": { "supervisor_person_id": { "type": "string" } }
       },
       "AmoebaHistoryPage": {
         "type": "object",

@@ -88,10 +88,10 @@ function optionList(items, getValue, getLabel, selected = "", emptyLabel = "") {
 /* ---------- create-form option population ---------- */
 function renderOptions() {
   const people = optionList(state.people, (p) => p.person_id, (p) => p.display_name);
-  const coordinator = optionList(state.people, (p) => p.person_id, (p) => p.display_name, "", "Unassigned");
+  const supervisor = optionList(state.people, (p) => p.person_id, (p) => p.display_name, "", "Unassigned");
   els.userForm.elements.person_id.innerHTML = people;
   els.roleAssignmentForm.elements.person_id.innerHTML = people;
-  els.amoebaForm.elements.coordinator_person_id.innerHTML = coordinator;
+  els.amoebaForm.elements.supervisor_person_id.innerHTML = supervisor;
   els.siteForm.elements.amoeba_id.innerHTML = optionList(state.amoebas, (a) => a.amoeba_id, (a) => a.name);
   renderAssignmentScopeOptions();
 }
@@ -222,14 +222,14 @@ function renderAmoebas() {
       return `<tr data-row="amoebas:${escapeHtml(id)}">
         <td><input data-field="name" value="${escapeHtml(a.name)}" /></td>
         <td><select data-field="classification">${["operating", "shared_services", "investment"].map((v) => `<option value="${v}" ${v === a.classification ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-        <td><select data-field="coordinator_person_id">${optionList(state.people, (p) => p.person_id, (p) => p.display_name, a.coordinator_person_id || "", "Unassigned")}</select></td>
+        <td><select data-field="supervisor_person_id">${optionList(state.people, (p) => p.person_id, (p) => p.display_name, a.supervisor_person_id || "", "Unassigned")}</select></td>
         <td><select data-field="status">${statusOptions("amoeba", a.status)}</select></td>
         ${actionsCell("amoebas", id, a.status, { archive: true })}</tr>`;
     }
     return `<tr data-row="amoebas:${escapeHtml(id)}">
       <td><strong>${escapeHtml(a.name)}</strong></td>
       <td>${escapeHtml(String(a.classification).replaceAll("_", " "))}</td>
-      <td>${escapeHtml(a.coordinator_person_id ? personName(a.coordinator_person_id) : "Unassigned")}</td>
+      <td>${escapeHtml(a.supervisor_person_id ? personName(a.supervisor_person_id) : "Unassigned")}</td>
       <td>${statusPill(a.status)}</td>
       ${actionsCell("amoebas", id, a.status, { archive: true })}</tr>`;
   }).join("") : `<tr><td colspan="5" class="empty">No amoebas match this view.</td></tr>`;
@@ -337,7 +337,7 @@ bindCreate(els.roleAssignmentForm, "/identity/v1/role-assignments", "role-assign
   if (b.valid_to) b.valid_to = new Date(b.valid_to).toISOString(); else delete b.valid_to;
   return b;
 }, "Access grant");
-bindCreate(els.amoebaForm, "/amoeba/v1/amoebas", "amoeba", (b) => { if (!b.coordinator_person_id) delete b.coordinator_person_id; return b; }, "Amoeba");
+bindCreate(els.amoebaForm, "/amoeba/v1/amoebas", "amoeba", (b) => { if (!b.supervisor_person_id) delete b.supervisor_person_id; return b; }, "Amoeba");
 bindCreate(els.siteForm, "/amoeba/v1/sites", "site", (b, form) => {
   b.is_primary = form.elements.is_primary.checked;
   b.gps_lat = cleanOptional(b.gps_lat); b.gps_lng = cleanOptional(b.gps_lng); b.alert_radius_m = Number(b.alert_radius_m);
@@ -392,8 +392,8 @@ const SAVE = {
     return "Access grant updated.";
   },
   amoebas: async (id, row) => {
-    const b = rowBody(row, ["name", "classification", "coordinator_person_id", "status"]);
-    b.coordinator_person_id = cleanOptional(b.coordinator_person_id);
+    const b = rowBody(row, ["name", "classification", "supervisor_person_id", "status"]);
+    b.supervisor_person_id = cleanOptional(b.supervisor_person_id);
     await api(`/amoeba/v1/amoebas/${id}`, { method: "PATCH", headers: { "Idempotency-Key": idempotencyKey("amoeba-update") }, body: JSON.stringify(b) });
     return "Amoeba updated.";
   },

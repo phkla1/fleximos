@@ -225,6 +225,14 @@ for (const item of operators) {
   }
 }
 
+// Amoeba model: an amoeba has exactly one supervisor. Tunde runs the amoebas his
+// operators are in, so set that on the amoeba records (Foundation).
+for (const amoebaId of [...new Set(operators.map((item) => item.amoeba))]) {
+  await post(foundationBase, `/amoeba/v1/amoebas/${amoebaId}/assign-supervisor`, `realistic-seed-amoeba-supervisor-${amoebaId}`, {
+    supervisor_person_id: tunde.person_id
+  });
+}
+
 // Deterministic per-operator/per-date variation so re-runs are idempotent
 // and the generated month looks organic rather than repeated.
 function seededHash(text) {

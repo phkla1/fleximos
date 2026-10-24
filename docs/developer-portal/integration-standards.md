@@ -5,7 +5,7 @@
 Each domain API owns one canonical slice of the business:
 
 - Identity owns canonical people, users, auth, service accounts, and suite-wide roles.
-- Amoeba owns amoeba definitions, hierarchy, classification, and coordinator assignment.
+- Amoeba owns amoeba definitions, hierarchy, classification, and supervisor assignment.
 - HR owns prospects, recruitment lifecycle, verification, approvals, contracts, and Ops handoff.
 - Ops owns operators, vehicles, platform accounts, daily operations, alerts, cash, P&L, and transfer-price impacts.
 - TMS owns backlog, learning, substrates, transfer-price event creation, points, and management snapshots.

@@ -145,10 +145,14 @@ async function initDb() {
       classification TEXT NOT NULL,
       status TEXT NOT NULL,
       parent_amoeba_id TEXT REFERENCES amoebas(amoeba_id),
-      coordinator_person_id TEXT REFERENCES people(person_id),
+      supervisor_person_id TEXT REFERENCES people(person_id),
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
+
+    -- Amoeba = operators under exactly one supervisor (who owns its P&L). The old
+    -- "coordinator" concept is dropped; existing DBs keep that vestigial column.
+    ALTER TABLE amoebas ADD COLUMN IF NOT EXISTS supervisor_person_id TEXT;
 
     CREATE TABLE IF NOT EXISTS amoeba_sites (
       site_id TEXT PRIMARY KEY,
@@ -260,22 +264,25 @@ async function seedDb() {
   );
 
   // Demo amoebas are dev/test scaffolding — a clean install lets HR create them.
-  if (SEED_DEMO) for (const amoeba of [
+  // Distinct created_at per amoeba keeps `ORDER BY created_at ASC` stable
+  // (island, mainland, central) even after an amoeba is later updated — mirroring
+  // production, where amoebas are created at different times.
+  if (SEED_DEMO) for (const [index, amoeba] of [
     { amoeba_id: "amoeba_island", name: "Island", classification: "operating" },
     { amoeba_id: "amoeba_mainland", name: "Mainland", classification: "operating" },
     { amoeba_id: "amoeba_central", name: "Central", classification: "shared_services" }
-  ]) {
+  ].entries()) {
     const record = {
       ...amoeba,
       status: "active",
       parent_amoeba_id: null,
-      coordinator_person_id: null,
-      created_at: timestamp,
+      supervisor_person_id: null,
+      created_at: new Date(Date.parse(timestamp) + index).toISOString(),
       updated_at: timestamp
     };
     await exec(
       `INSERT INTO amoebas
-        (amoeba_id, name, classification, status, parent_amoeba_id, coordinator_person_id, created_at, updated_at)
+        (amoeba_id, name, classification, status, parent_amoeba_id, supervisor_person_id, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         record.amoeba_id,
@@ -283,7 +290,7 @@ async function seedDb() {
         record.classification,
         record.status,
         record.parent_amoeba_id,
-        record.coordinator_person_id,
+        record.supervisor_person_id,
         record.created_at,
         record.updated_at
       ]
@@ -495,8 +502,8 @@ async function validateAmoebaInput(body, partial = false) {
   if (body.parent_amoeba_id && !(await one("SELECT amoeba_id FROM amoebas WHERE amoeba_id = $1", [body.parent_amoeba_id]))) {
     details.push({ field: "parent_amoeba_id", reason: "not_found" });
   }
-  if (body.coordinator_person_id && !(await one("SELECT person_id FROM people WHERE person_id = $1", [body.coordinator_person_id]))) {
-    details.push({ field: "coordinator_person_id", reason: "not_found" });
+  if (body.supervisor_person_id && !(await one("SELECT person_id FROM people WHERE person_id = $1", [body.supervisor_person_id]))) {
+    details.push({ field: "supervisor_person_id", reason: "not_found" });
   }
   return details;
 }
@@ -1134,13 +1141,13 @@ async function handleAmoeba(req, res, parts) {
         classification: body.classification,
         status: "active",
         parent_amoeba_id: body.parent_amoeba_id || null,
-        coordinator_person_id: body.coordinator_person_id || null,
+        supervisor_person_id: body.supervisor_person_id || null,
         created_at: timestamp,
         updated_at: timestamp
       };
       await exec(
         `INSERT INTO amoebas
-          (amoeba_id, name, classification, status, parent_amoeba_id, coordinator_person_id, created_at, updated_at)
+          (amoeba_id, name, classification, status, parent_amoeba_id, supervisor_person_id, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           amoeba.amoeba_id,
@@ -1148,7 +1155,7 @@ async function handleAmoeba(req, res, parts) {
           amoeba.classification,
           amoeba.status,
           amoeba.parent_amoeba_id,
-          amoeba.coordinator_person_id,
+          amoeba.supervisor_person_id,
           amoeba.created_at,
           amoeba.updated_at
         ]
@@ -1183,7 +1190,7 @@ async function handleAmoeba(req, res, parts) {
           classification = $3,
           status = $4,
           parent_amoeba_id = $5,
-          coordinator_person_id = $6,
+          supervisor_person_id = $6,
           updated_at = $7
          WHERE amoeba_id = $1`,
         [
@@ -1192,7 +1199,7 @@ async function handleAmoeba(req, res, parts) {
           updated.classification,
           updated.status,
           updated.parent_amoeba_id,
-          updated.coordinator_person_id,
+          updated.supervisor_person_id,
           updated.updated_at
         ]
       );
@@ -1220,19 +1227,19 @@ async function handleAmoeba(req, res, parts) {
     return json(res, response.status, response.body);
   }
 
-  if (action === "assign-coordinator" && req.method === "POST") {
+  if (action === "assign-supervisor" && req.method === "POST") {
     const key = await assertIdempotency(req, res);
     if (!key) return;
     const cached = await idempotentResponse(key);
     if (cached) return json(res, cached.status, cached.body);
     const body = await readBody(req);
-    const details = await validateAmoebaInput({ coordinator_person_id: body.coordinator_person_id }, true);
-    if (!body.coordinator_person_id) details.push({ field: "coordinator_person_id", reason: "required" });
-    if (details.length) return error(res, 400, "validation_failed", "Coordinator assignment request is invalid.", details);
+    const details = await validateAmoebaInput({ supervisor_person_id: body.supervisor_person_id }, true);
+    if (!body.supervisor_person_id) details.push({ field: "supervisor_person_id", reason: "required" });
+    if (details.length) return error(res, 400, "validation_failed", "Supervisor assignment request is invalid.", details);
     const response = await onceForIdempotency(key, async () => {
-      const updated = { ...amoeba, coordinator_person_id: body.coordinator_person_id, updated_at: now() };
-      await exec("UPDATE amoebas SET coordinator_person_id = $2, updated_at = $3 WHERE amoeba_id = $1", [id, updated.coordinator_person_id, updated.updated_at]);
-      await addHistory("amoeba", id, auth.actor_person_id, "coordinator_assigned", { coordinator_person_id: body.coordinator_person_id });
+      const updated = { ...amoeba, supervisor_person_id: body.supervisor_person_id, updated_at: now() };
+      await exec("UPDATE amoebas SET supervisor_person_id = $2, updated_at = $3 WHERE amoeba_id = $1", [id, updated.supervisor_person_id, updated.updated_at]);
+      await addHistory("amoeba", id, auth.actor_person_id, "supervisor_assigned", { supervisor_person_id: body.supervisor_person_id });
       return { status: 200, body: updated };
     });
     return json(res, response.status, response.body);

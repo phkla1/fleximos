@@ -247,19 +247,19 @@ test("rejects duplicate person contact details", async () => {
   assert.equal(duplicate.body.error.code, "duplicate_person");
 });
 
-test("assigns amoeba coordinator and records history", async () => {
-  const assign = await request("/amoeba/v1/amoebas/amoeba_island/assign-coordinator", {
+test("assigns amoeba supervisor and records history", async () => {
+  const assign = await request("/amoeba/v1/amoebas/amoeba_island/assign-supervisor", {
     method: "POST",
-    headers: { "Idempotency-Key": "test-assign-coordinator-001" },
-    body: JSON.stringify({ coordinator_person_id: "person_founder_wole" })
+    headers: { "Idempotency-Key": "test-assign-supervisor-001" },
+    body: JSON.stringify({ supervisor_person_id: "person_founder_wole" })
   });
 
   assert.equal(assign.response.status, 200);
-  assert.equal(assign.body.coordinator_person_id, "person_founder_wole");
+  assert.equal(assign.body.supervisor_person_id, "person_founder_wole");
 
   const history = await request("/amoeba/v1/amoebas/amoeba_island/history");
   assert.equal(history.response.status, 200);
-  assert.ok(history.body.data.some((entry) => entry.change_type === "coordinator_assigned"));
+  assert.ok(history.body.data.some((entry) => entry.change_type === "supervisor_assigned"));
 });
 
 test("creates and updates physical sites with history", async () => {
