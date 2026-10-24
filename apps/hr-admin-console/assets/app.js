@@ -243,23 +243,25 @@ function renderSites() {
     const id = s.site_id;
     if (editing.sites === id) {
       return `<tr data-row="sites:${escapeHtml(id)}">
-        <td><input data-field="name" value="${escapeHtml(s.name)}" /></td>
+        <td><input data-field="name" value="${escapeHtml(s.name)}" /><input data-field="address" value="${escapeHtml(s.address ?? "")}" placeholder="address" /></td>
         <td><select data-field="amoeba_id">${optionList(state.amoebas, (a) => a.amoeba_id, (a) => a.name, s.amoeba_id)}</select></td>
         <td class="gps-edit"><input data-field="gps_lat" type="number" step="0.000001" value="${escapeHtml(s.gps_lat ?? "")}" placeholder="lat" /><input data-field="gps_lng" type="number" step="0.000001" value="${escapeHtml(s.gps_lng ?? "")}" placeholder="lng" /></td>
         <td><input data-field="alert_radius_m" type="number" min="1" value="${escapeHtml(s.alert_radius_m)}" /></td>
+        <td><input data-field="accommodation_capacity" type="number" min="0" value="${escapeHtml(s.accommodation_capacity ?? 0)}" /></td>
         <td><input data-field="is_primary" type="checkbox" ${s.is_primary ? "checked" : ""} /></td>
         <td><select data-field="status">${statusOptions("site", s.status)}</select></td>
         ${actionsCell("sites", id, s.status)}</tr>`;
     }
     return `<tr data-row="sites:${escapeHtml(id)}">
-      <td><strong>${escapeHtml(s.name)}</strong></td>
+      <td><strong>${escapeHtml(s.name)}</strong>${s.address ? `<small>${escapeHtml(s.address)}</small>` : ""}</td>
       <td>${escapeHtml(amoebaName(s.amoeba_id))}</td>
       <td>${s.gps_lat != null && s.gps_lng != null ? `${Number(s.gps_lat).toFixed(4)}, ${Number(s.gps_lng).toFixed(4)}` : "—"}</td>
       <td>${escapeHtml(s.alert_radius_m)} m</td>
+      <td>${Number(s.accommodation_capacity ?? 0)}${Number(s.accommodation_capacity ?? 0) ? " 🛏" : ""}</td>
       <td>${s.is_primary ? "★" : "—"}</td>
       <td>${statusPill(s.status)}</td>
       ${actionsCell("sites", id, s.status)}</tr>`;
-  }).join("") : `<tr><td colspan="7" class="empty">No sites match this view.</td></tr>`;
+  }).join("") : `<tr><td colspan="8" class="empty">No sites match this view.</td></tr>`;
 }
 
 function renderServiceAccounts() {
@@ -341,6 +343,7 @@ bindCreate(els.amoebaForm, "/amoeba/v1/amoebas", "amoeba", (b) => { if (!b.super
 bindCreate(els.siteForm, "/amoeba/v1/sites", "site", (b, form) => {
   b.is_primary = form.elements.is_primary.checked;
   b.gps_lat = cleanOptional(b.gps_lat); b.gps_lng = cleanOptional(b.gps_lng); b.alert_radius_m = Number(b.alert_radius_m);
+  b.address = cleanOptional(b.address); b.accommodation_capacity = Number(b.accommodation_capacity || 0);
   return b;
 }, "Site");
 bindCreate(els.serviceAccountForm, "/identity/v1/service-accounts", "service-account", (b) => {
@@ -398,8 +401,9 @@ const SAVE = {
     return "Amoeba updated.";
   },
   sites: async (id, row) => {
-    const b = rowBody(row, ["name", "amoeba_id", "gps_lat", "gps_lng", "alert_radius_m", "is_primary", "status"]);
+    const b = rowBody(row, ["name", "amoeba_id", "gps_lat", "gps_lng", "alert_radius_m", "address", "accommodation_capacity", "is_primary", "status"]);
     b.gps_lat = cleanOptional(b.gps_lat); b.gps_lng = cleanOptional(b.gps_lng); b.alert_radius_m = Number(b.alert_radius_m);
+    b.address = cleanOptional(b.address); b.accommodation_capacity = Number(b.accommodation_capacity || 0);
     await api(`/amoeba/v1/sites/${id}`, { method: "PATCH", headers: { "Idempotency-Key": idempotencyKey("site-update") }, body: JSON.stringify(b) });
     return "Site updated.";
   }

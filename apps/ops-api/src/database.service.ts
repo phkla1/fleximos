@@ -894,6 +894,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
       ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS accommodation_unit_id TEXT;
       CREATE INDEX IF NOT EXISTS idx_operators_accommodation ON ops_operators(accommodation_unit_id);
+
+      -- Accommodation now lives on the SITE: an operator is simply "accommodated"
+      -- (housed at their site), capped by the site's accommodation_capacity
+      -- (owned by foundation). The old unit pointer is kept dormant for rollback;
+      -- it is migrated once into the boolean and cleared on any later change.
+      ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS accommodated BOOLEAN NOT NULL DEFAULT FALSE;
+      UPDATE ops_operators SET accommodated = TRUE WHERE accommodation_unit_id IS NOT NULL AND accommodated = FALSE;
+      CREATE INDEX IF NOT EXISTS idx_operators_accommodated ON ops_operators(site_id, accommodated);
     `);
 
     await this.seed();

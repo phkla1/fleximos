@@ -686,34 +686,40 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#cohortList")).toContainText("E2E Monday batch");
   });
 
-  test("tracks finite accommodation and flags housed riders", async ({ page }) => {
-    await page.goto(`${url}#accommodation`);
+  test("tracks finite accommodation and flags housed riders", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    const headers = {
+      Authorization: "Bearer flexi-dev-service-token",
+      "Content-Type": "application/json",
+      "X-Actor-Person-Id": "person_founder_wole"
+    };
+    // Beds live on the site (site_island_1 is seeded with capacity). Create a
+    // fresh active rider there, then house them from the roster.
+    const unique = Date.now();
+    const created = await (await request.post(`${opsBase}/ops/v1/operators`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-accom-op-${unique}` },
+      data: { person_id: `person_e2e_accom_${unique}`, operator_type: "rider", operator_status: "active", amoeba_id: "amoeba_island", site_id: "site_island_1" }
+    })).json();
+    const operatorId = created.operator_id || created.data?.operator_id;
+    expect(operatorId).toBeTruthy();
+
+    await page.goto(`${url}#operators`);
     await expect(page.locator("#notice")).toContainText("Connected");
-
-    // A one-bed unit.
-    const name = `E2E Flat ${Date.now()}`;
-    await page.getByText("Add or edit an accommodation unit", { exact: true }).click();
-    await page.locator('#accommodationForm input[name="name"]').fill(name);
-    await page.locator('#accommodationForm input[name="capacity"]').fill("1");
-    await page.locator("#accommodationForm").getByRole("button", { name: "Save unit" }).click();
-    await expect(page.locator("#notice")).toContainText("Accommodation unit saved");
-    const unitRow = page.locator("#accommodationList .policy-row").filter({ hasText: name });
-    await expect(unitRow).toContainText("0/1 beds");
-
-    // Assign it to a rider from the roster; the bed fills and the rider is flagged.
-    await page.locator('.rail nav a[href="#operators"]').click();
     await page.getByText("Manage operator roster", { exact: true }).click();
-    await page.locator("#operatorAmoebaFilter").selectOption({ index: 1 });
-    const opRow = page.locator("#operatorList .data-row").first();
-    await opRow.locator("[data-operator-status]").selectOption("active");
-    await opRow.locator("[data-operator-accommodation]").selectOption({ label: `${name} (0/1)` });
+    await page.locator("#operatorAmoebaFilter").selectOption("amoeba_island");
+
+    const opRow = page.locator(`[data-operator-id="${operatorId}"]`);
+    await expect(opRow).toBeVisible();
+    await opRow.locator("[data-operator-accommodated]").check();
     await opRow.getByRole("button", { name: "Save" }).click();
     await expect(page.locator("#notice")).toContainText("Operator updated");
-    await expect(page.locator("#operatorList .data-row").first()).toContainText("🏠");
+    await expect(opRow).toContainText("🏠");
 
-    // The unit now reads full.
+    // It persisted, and the housing monitor shows the site with beds in use.
+    const saved = await (await request.get(`${opsBase}/ops/v1/operators/${operatorId}`, { headers })).json();
+    expect(saved.accommodated).toBe(true);
     await page.locator('.rail nav a[href="#accommodation"]').click();
-    await expect(page.locator("#accommodationList .policy-row").filter({ hasText: name })).toContainText("1/1 beds");
+    await expect(page.locator("#accommodationList .policy-row").filter({ hasText: "Lekki Awudu Ekpegha" })).toContainText("beds");
   });
 
   test("registers a Tankvolt bike by VIN, guided by vehicle type, with live tracking status", async ({ page }) => {

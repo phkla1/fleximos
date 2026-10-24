@@ -11,6 +11,93 @@ type Body = Record<string, unknown>;
 export class AccommodationService {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
+  // Accommodation capacity lives on the SITE (owned by foundation). We read it
+  // the same cached, outage-tolerant way attendance reads approved sites.
+  private readonly foundationBase = process.env.FOUNDATION_API_BASE || "http://127.0.0.1:4010";
+  private readonly serviceToken = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
+  private siteCache: { at: number; sites: Map<string, any> } | null = null;
+
+  private async siteCapacities(): Promise<Map<string, any>> {
+    if (this.siteCache && Date.now() - this.siteCache.at < 60_000) return this.siteCache.sites;
+    try {
+      const response = await fetch(`${this.foundationBase}/amoeba/v1/sites`, {
+        headers: { Authorization: `Bearer ${this.serviceToken}` },
+        signal: AbortSignal.timeout(3000)
+      });
+      if (!response.ok) throw new Error(`sites ${response.status}`);
+      const payload: any = await response.json();
+      const sites = new Map<string, any>();
+      for (const site of payload.data || payload || []) {
+        sites.set(site.site_id, {
+          site_id: site.site_id,
+          name: site.name,
+          amoeba_id: site.amoeba_id,
+          accommodation_capacity: Number(site.accommodation_capacity ?? 0)
+        });
+      }
+      this.siteCache = { at: Date.now(), sites };
+      return sites;
+    } catch {
+      return this.siteCache?.sites || new Map();
+    }
+  }
+
+  // Beds taken at a site = active, accommodated operators based there.
+  private async siteOccupancy(siteId: string, excludeOperatorId: string | null = null) {
+    const row = await this.db.one<{ occupied: number }>(
+      `SELECT COUNT(*)::int AS occupied FROM ops_operators
+       WHERE site_id = $1 AND accommodated = TRUE AND operator_status = 'active'
+         AND ($2::text IS NULL OR operator_id <> $2)`,
+      [siteId, excludeOperatorId]
+    );
+    return Number(row?.occupied || 0);
+  }
+
+  // Per-site housing picture for the ops monitor: capacity (from foundation) vs
+  // active accommodated operators (from ops). Sites with no beds are omitted.
+  async listAccommodation() {
+    const sites = await this.siteCapacities();
+    const occ = await this.db.many<{ site_id: string; occupied: number }>(
+      `SELECT site_id, COUNT(*)::int AS occupied FROM ops_operators
+       WHERE accommodated = TRUE AND operator_status = 'active' AND site_id IS NOT NULL
+       GROUP BY site_id`
+    );
+    const occupancy = new Map(occ.map((row) => [row.site_id, Number(row.occupied)]));
+    const rows: any[] = [];
+    for (const site of sites.values()) {
+      const capacity = Number(site.accommodation_capacity || 0);
+      const occupied = occupancy.get(site.site_id) || 0;
+      if (capacity <= 0 && occupied === 0) continue;
+      rows.push({
+        site_id: site.site_id,
+        name: site.name,
+        amoeba_id: site.amoeba_id,
+        capacity,
+        occupied,
+        available: Math.max(capacity - occupied, 0),
+        over_capacity: occupied > capacity
+      });
+    }
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Hard bed cap for an operator being housed at their site. Returns the boolean
+  // to store. Fail-open if foundation capacity can't be read (a blip shouldn't
+  // block roster edits); the monitor surfaces any over-capacity.
+  async assertCanHouse(operatorId: string, siteId: unknown, accommodated: boolean): Promise<boolean> {
+    if (!accommodated) return false;
+    if (!siteId) throw new BadRequestException("An operator needs a site before being accommodated.");
+    const sites = await this.siteCapacities();
+    const site = sites.get(String(siteId));
+    if (!site) return true; // capacity unknown (outage/new site) — don't hard-block
+    const capacity = Number(site.accommodation_capacity || 0);
+    const occupied = await this.siteOccupancy(String(siteId), operatorId);
+    if (occupied >= capacity) {
+      throw new ConflictException(`${site.name} is full (${occupied}/${capacity} beds). Free a bed or house them at another site.`);
+    }
+    return true;
+  }
+
   private id(prefix: string) {
     return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 26)}`;
   }

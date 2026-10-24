@@ -311,7 +311,7 @@ export class OpsService {
 
   async updateOperator(operatorId: string, body: RecordBody) {
     const current: any = await this.getOperator(operatorId);
-    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn", "accommodation_unit_id"];
+    const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "supervisor_person_id", "vehicle_id", "daily_revenue_target_ngn"];
     const updated: any = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
     if ("operator_class" in body) updated.operator_class = this.operatorClassOf(body.operator_class, updated.operator_type);
@@ -320,12 +320,18 @@ export class OpsService {
     if (["inactive", "suspended"].includes(updated.operator_status) && !["inactive", "suspended"].includes(current.operator_status)) {
       updated.deactivated_at = updated.updated_at;
     }
-    // Housing: leaving active status frees the bed; otherwise a requested unit is
-    // capacity-checked (hard block) before it is assigned.
+    // Housing now lives on the site: an operator is simply "accommodated", capped
+    // by their site's beds. Leaving active status frees the bed; toggling it, or
+    // moving an accommodated operator to another site, is capacity-checked (hard
+    // block). The legacy unit pointer is cleared on any accommodation change.
     if (["inactive", "suspended"].includes(updated.operator_status)) {
+      updated.accommodated = false;
       updated.accommodation_unit_id = null;
-    } else if ("accommodation_unit_id" in body) {
-      updated.accommodation_unit_id = await this.accommodation.assertCanAssign(body.accommodation_unit_id, operatorId);
+    } else if ("accommodated" in body) {
+      updated.accommodated = await this.accommodation.assertCanHouse(operatorId, updated.site_id, Boolean(body.accommodated));
+      updated.accommodation_unit_id = null;
+    } else if ("site_id" in body && updated.accommodated && body.site_id !== current.site_id) {
+      await this.accommodation.assertCanHouse(operatorId, updated.site_id, true);
     }
     if ("vehicle_id" in body && updated.vehicle_id) {
       await this.assertVehicleAssignable(updated.vehicle_id, operatorId);
@@ -335,7 +341,7 @@ export class OpsService {
         operator_type = $2, operator_status = $3, amoeba_id = $4, site_id = $5,
         supervisor_person_id = $6, vehicle_id = $7, daily_revenue_target_ngn = $8,
         activated_at = $9, deactivated_at = $10, operator_class = $12,
-        accommodation_unit_id = $13, updated_at = $11
+        accommodation_unit_id = $13, accommodated = $14, updated_at = $11
        WHERE operator_id = $1`,
       [
         operatorId,
@@ -350,7 +356,8 @@ export class OpsService {
         updated.deactivated_at,
         updated.updated_at,
         updated.operator_class || "rider",
-        updated.accommodation_unit_id ?? null
+        updated.accommodation_unit_id ?? null,
+        !!updated.accommodated
       ]
     );
     await this.audit("operator.updated", "operator", operatorId, current, body);
@@ -1558,7 +1565,7 @@ export class OpsService {
     this.addScope(clauses, params, scope);
     const rows = await this.db.many<any>(
       `SELECT o.operator_id, o.person_id, o.amoeba_id, o.site_id, o.operator_status,
-        o.daily_revenue_target_ngn, o.accommodation_unit_id, au.name AS accommodation_name,
+        o.daily_revenue_target_ngn, o.accommodated,
         v.plate AS vehicle_plate, v.vehicle_type,
         COALESCE(d.trips_total, 0) AS trips_total,
         COALESCE(d.trips_completed, 0) AS trips_completed,
@@ -1571,7 +1578,6 @@ export class OpsService {
         COALESCE(a.open_alerts, 0) AS open_alerts
        FROM ops_operators o
        LEFT JOIN ops_vehicles v ON v.vehicle_id = o.vehicle_id
-       LEFT JOIN ops_accommodation_units au ON au.accommodation_unit_id = o.accommodation_unit_id
        LEFT JOIN (
          SELECT records.operator_id,
           SUM(records.trips_total) AS trips_total,
@@ -1627,7 +1633,8 @@ export class OpsService {
       const expectedPct = target > 0 ? (expectedRevenue / target) * 100 : 100;
       return {
         ...row,
-        accommodated: !!row.accommodation_unit_id,
+        accommodated: !!row.accommodated,
+        accommodation_name: row.accommodated ? "Company housing" : null,
         vehicle_type: vehicleType,
         date_from: from,
         date_to: to,

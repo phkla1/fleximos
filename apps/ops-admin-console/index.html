@@ -258,17 +258,8 @@
         <div class="section-heading">
           <div><p class="eyebrow">Company housing</p><h2>Accommodation</h2><p class="section-count"><strong id="accommodationBedsSummary">0</strong> beds</p></div>
         </div>
-        <p class="section-intro">Company accommodation is finite. Each unit has a fixed number of beds; assigning a rider consumes one, and deactivating a rider frees it. Assign a rider's unit under Roster. The ₦30k target assumes accommodation — the amoeba board and reports flag who is housed so lower numbers from non-accommodated riders read fairly.</p>
+        <p class="section-intro">Company accommodation is finite and lives on the site. Each site has a fixed number of beds; marking a rider "Accommodated" under Roster consumes one, and deactivating a rider frees it. Set a site's bed capacity in the HR console (Sites). An accommodated rider carries a higher daily target — the amoeba board and reports flag who is housed so the numbers read fairly. This view is the live occupancy monitor.</p>
         <div id="accommodationList" class="data-list compact-list"></div>
-        <details class="management-panel">
-          <summary>Add or edit an accommodation unit</summary>
-          <form id="accommodationForm" class="entry-form compact-form">
-            <label>Name<input name="name" placeholder="e.g. Surulere Flat A" required /></label>
-            <label>Location<input name="location" placeholder="Optional" /></label>
-            <label>Capacity (beds)<input name="capacity" type="number" min="0" step="1" value="4" required /></label>
-            <button type="submit">Save unit</button>
-          </form>
-        </details>
       </section>
 
       <section id="controls" class="workspace-section view">

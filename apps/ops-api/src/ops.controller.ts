@@ -848,8 +848,18 @@ export class OpsController {
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.graduateSupervisor(onboardingId, body, actor.person_id));
   }
 
-  /* -------------------- Company accommodation -------------------- */
+  /* -------------------- Company accommodation (site-based) -------------------- */
 
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/accommodation")
+  async listAccommodation(@Req() req: Request) {
+    await this.auth(req);
+    return { data: await this.accommodation.listAccommodation(), next_cursor: null };
+  }
+
+  // Legacy unit endpoints — dormant since accommodation moved onto the site;
+  // kept for rollback and left out of the console.
   @ApiTags("Onboarding")
   @ApiBearerAuth()
   @Get("ops/v1/accommodation-units")

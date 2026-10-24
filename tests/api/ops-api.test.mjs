@@ -1834,19 +1834,22 @@ test("supervisor onboarding runs assist phases and graduates by explicit HR acti
   assert.ok(list.body.data.some((r) => r.supervisor_onboarding_id === id), "graduated record is listable");
 });
 
-test("company accommodation: finite capacity, hard block, and freeing on deactivation", async () => {
-  // A unit with two beds.
-  const unit = await request("/ops/v1/accommodation-units", {
-    method: "POST",
-    headers: { "Idempotency-Key": "accom-unit-1" },
-    body: JSON.stringify({ name: "Surulere Flat A", location: "Surulere", capacity: 2 })
-  });
-  assert.equal(unit.response.status, 201);
-  assert.equal(Number(unit.body.capacity), 2);
-  assert.equal(Number(unit.body.available), 2);
-  const unitId = unit.body.accommodation_unit_id;
+test("company accommodation: site beds, hard block, and freeing on deactivation", async () => {
+  // Accommodation capacity lives on the foundation site, so create a 2-bed site.
+  const foundationRequest = (url, options = {}) => fetch(`${foundationBaseUrl}${url}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Actor-Person-Id": "person_founder_wole", ...(options.headers || {}) }
+  }).then(async (r) => ({ response: r, body: await r.json() }));
 
-  // Three active riders.
+  const site = await foundationRequest("/amoeba/v1/sites", {
+    method: "POST",
+    headers: { "Idempotency-Key": "accom-site-1" },
+    body: JSON.stringify({ amoeba_id: "amoeba_mainland", name: "Beds Lodge", accommodation_capacity: 2 })
+  });
+  assert.equal(site.response.status, 201);
+  const siteId = site.body.site_id;
+
+  // Three active riders based at that site.
   const ids = [];
   for (let i = 0; i < 3; i++) {
     const r = await request("/ops/v1/operators", {
@@ -1854,57 +1857,41 @@ test("company accommodation: finite capacity, hard block, and freeing on deactiv
       headers: { "Idempotency-Key": `accom-op-${i}` },
       body: JSON.stringify({
         person_id: `person_accom_${i}`, operator_type: "rider", operator_class: "rider",
-        operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1"
+        operator_status: "active", amoeba_id: "amoeba_mainland", site_id: siteId
       })
     });
     ids.push(r.body.operator_id);
   }
 
-  // Fill the two beds.
+  // Fill the two beds by marking riders accommodated.
   for (let i = 0; i < 2; i++) {
     const assign = await request(`/ops/v1/operators/${ids[i]}`, {
       method: "PATCH",
       headers: { "Idempotency-Key": `accom-assign-${i}` },
-      body: JSON.stringify({ accommodation_unit_id: unitId })
+      body: JSON.stringify({ accommodated: true })
     });
     assert.equal(assign.response.status, 200);
-    assert.equal(assign.body.accommodation_unit_id, unitId);
+    assert.equal(assign.body.accommodated, true);
   }
 
-  // The unit now reports 2/2 occupied.
-  const full = await request("/ops/v1/accommodation-units");
-  const fullRow = full.body.data.find((u) => u.accommodation_unit_id === unitId);
+  // The site now reports 2/2 occupied.
+  const full = await request("/ops/v1/accommodation");
+  const fullRow = full.body.data.find((s) => s.site_id === siteId);
   assert.equal(Number(fullRow.occupied), 2);
   assert.equal(Number(fullRow.available), 0);
 
-  // Third assignment is a hard block.
+  // A third rider is a hard block at the site's finite beds.
   const blocked = await request(`/ops/v1/operators/${ids[2]}`, {
     method: "PATCH",
     headers: { "Idempotency-Key": "accom-assign-blocked" },
-    body: JSON.stringify({ accommodation_unit_id: unitId })
+    body: JSON.stringify({ accommodated: true })
   });
-  assert.equal(blocked.response.status, 409, "cannot exceed the finite bed capacity");
+  assert.equal(blocked.response.status, 409, "cannot exceed the site's finite beds");
 
-  // Capacity cannot be lowered below current occupancy.
-  const shrink = await request(`/ops/v1/accommodation-units/${unitId}`, {
-    method: "PATCH",
-    headers: { "Idempotency-Key": "accom-shrink" },
-    body: JSON.stringify({ capacity: 1 })
-  });
-  assert.equal(shrink.response.status, 409);
-
-  // Occupied unit cannot be deleted.
-  const del = await request(`/ops/v1/accommodation-units/${unitId}`, {
-    method: "DELETE",
-    headers: { "Idempotency-Key": "accom-del-occupied" }
-  });
-  assert.equal(del.response.status, 409);
-
-  // The team board flags accommodation status without changing any target.
+  // The team board flags accommodation status.
   const board = await request(`/ops/v1/team-board?record_date=2026-06-05`);
   const housed = board.body.data.find((r) => r.operator_id === ids[0]);
   assert.equal(housed.accommodated, true);
-  assert.equal(housed.accommodation_name, "Surulere Flat A");
 
   // Deactivating a housed rider frees the bed automatically.
   await request(`/ops/v1/operators/${ids[0]}`, {
@@ -1912,15 +1899,15 @@ test("company accommodation: finite capacity, hard block, and freeing on deactiv
     headers: { "Idempotency-Key": "accom-deactivate" },
     body: JSON.stringify({ operator_status: "inactive" })
   });
-  const after = await request("/ops/v1/accommodation-units");
-  const afterRow = after.body.data.find((u) => u.accommodation_unit_id === unitId);
-  assert.equal(Number(afterRow.occupied), 1, "deactivation freed a slot");
+  const after = await request("/ops/v1/accommodation");
+  const afterRow = after.body.data.find((s) => s.site_id === siteId);
+  assert.equal(Number(afterRow.occupied), 1, "deactivation freed a bed");
 
-  // The freed bed can now take the third rider.
+  // The freed bed now accepts the third rider.
   const nowFits = await request(`/ops/v1/operators/${ids[2]}`, {
     method: "PATCH",
     headers: { "Idempotency-Key": "accom-assign-refit" },
-    body: JSON.stringify({ accommodation_unit_id: unitId })
+    body: JSON.stringify({ accommodated: true })
   });
-  assert.equal(nowFits.response.status, 200, "the reopened bed accepts a new operator");
+  assert.equal(nowFits.response.status, 200, "the reopened bed accepts a new rider");
 });
