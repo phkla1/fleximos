@@ -385,7 +385,7 @@ async function load() {
       <span class="leader-rank">${mine.rank}</span>
       <div><strong>You</strong><span>Acceptance ${mine.components.acceptance_score} · Online ${mine.components.time_online_score} · Cash ${mine.components.cash_receipt_score}</span></div>
       <strong class="leader-score">${Math.round(mine.performance_score)}</strong>
-    </div>` : "") : `<div class="empty">No team activity in the last 7 days.</div>`;
+    </div>` : "") : `<div class="empty">No amoeba activity in the last 7 days.</div>`;
 
   el.mileage.innerHTML = mileage ? `
     <div class="card-row"><strong>${mileage.fuel_quantity === null ? "Fuel not yet confirmed" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} issued`}</strong>

@@ -88,7 +88,7 @@ test.describe("Supervisor Ops console", () => {
 
     // Quick-range chips are one tap.
     await page.locator("[data-quick-range='week']").click();
-    await expect(page.locator("#notice")).toContainText(/Showing team activity/);
+    await expect(page.locator("#notice")).toContainText(/Showing amoeba activity/);
 
     await page.locator("[data-tab-link='board']").click();
     const driverTable = page.locator("#driverTable");
@@ -137,7 +137,7 @@ test.describe("Supervisor Ops console", () => {
   test("rolls the range into a team summary with contribution", async ({ page }) => {
     await page.goto(`${url}#closeout`);
     await expect(page.locator("#notice")).toContainText("Connected");
-    await expect(page.getByRole("heading", { name: "Team summary" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Amoeba summary" })).toBeVisible();
     const summaryCard = page.locator("#weeklySummary .closeout-card").first();
     await expect(summaryCard).toBeVisible();
     await expect(summaryCard).toContainText("Contribution");
@@ -145,7 +145,7 @@ test.describe("Supervisor Ops console", () => {
 
     const download = page.waitForEvent("download");
     await page.locator("#exportWeeklyCsv").click();
-    expect((await download).suggestedFilename()).toMatch(/^team-summary-.*\.csv$/);
+    expect((await download).suggestedFilename()).toMatch(/^amoeba-summary-.*\.csv$/);
   });
 
   test("logs a supervisor incident with category, action and cost", async ({ page }) => {

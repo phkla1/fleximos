@@ -5,7 +5,7 @@ test.describe("role consoles", () => {
     await page.goto("/apps/manager-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510");
 
     await expect(page).toHaveTitle("Fleximotion Manager Console");
-    await expect(page.getByRole("heading", { name: "Operations across your teams" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Operations across your amoebas" })).toBeVisible();
     await expect(page.locator("#notice")).toContainText("Manager view is limited");
     await expect(page.locator("#activeCount")).not.toHaveText("0");
     await expect(page.locator("#teamPortfolio .summary-card")).not.toHaveCount(0);

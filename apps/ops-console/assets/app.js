@@ -610,7 +610,7 @@ function renderVehicleMap() {
 
   el.mapStatus.textContent = positions.length
     ? `${positions.length} vehicle${positions.length === 1 ? "" : "s"} reporting a position${usingLeaflet ? "" : " — map library unavailable, showing the list only"}.`
-    : "No vehicle in your team is reporting a position yet — tracker feeds appear here as they connect.";
+    : "No vehicle in your amoeba is reporting a position yet — tracker feeds appear here as they connect.";
   el.mapPositionList.innerHTML = positions.map(positionRow).join("");
   el.mapNoFeed.innerHTML = noFeed.length ? noFeed.map((row) => `
     <article class="mileage-row">
@@ -878,7 +878,7 @@ function renderField() {
         ${incident.status !== "resolved" ? `<button type="button" class="secondary" data-incident-action="resolve" data-incident-id="${escapeHtml(incident.incident_id)}">Resolve</button>` : ""}
       </div>
     </article>`;
-  }).join("") : `<div class="empty">No incidents reported by your team.</div>`;
+  }).join("") : `<div class="empty">No incidents reported by your amoeba.</div>`;
 
   if (state.compliance) {
     const scoped = state.compliance.vehicles;
@@ -1014,7 +1014,7 @@ function renderCloseout(analysis) {
         <div><dt>Incidents</dt><dd>${summary.incidents}</dd></div>
         <div><dt>Exceptions</dt><dd>${summary.exceptions}</dd></div>
       </dl>
-    </article>`).join("") : `<div class="empty">No teams in scope.</div>`;
+    </article>`).join("") : `<div class="empty">No amoebas in scope.</div>`;
 }
 
 function renderDeliveries() {
@@ -1436,7 +1436,7 @@ function renderOperatorDialog(operatorId) {
 
 async function refresh(message = "Connected to Fleximotion Ops.") {
   setConnection("", "Connecting");
-  setNotice("Loading team data...");
+  setNotice("Loading amoeba data...");
   const [people, operators, allPerformance] = await Promise.all([
     foundation("/identity/v1/people"),
     ops("/ops/v1/operators"),
@@ -1531,7 +1531,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     dateTo
   });
   render();
-  setConnection("connected", "Team data connected");
+  setConnection("connected", "Amoeba data connected");
   setNotice(message);
 }
 
@@ -1573,8 +1573,8 @@ el.exportVehiclesCsv.addEventListener("click", () =>
 el.exportWeeklyCsv.addEventListener("click", () => {
   if (!latestAnalysis) return;
   const columns = ["team", "drivers", "earnings", "target", "targetPct", "trips", "km", "fuelCost", "maintenanceCost", "contribution", "absent", "incidents", "exceptions"]
-    .map((key) => ({ key, label: key }));
-  downloadCsv(`team-summary-${state.dateFrom}-to-${state.dateTo}.csv`, columns, teamSummaries(latestAnalysis));
+    .map((key) => ({ key, label: key === "team" ? "amoeba" : key }));
+  downloadCsv(`amoeba-summary-${state.dateFrom}-to-${state.dateTo}.csv`, columns, teamSummaries(latestAnalysis));
 });
 
 
@@ -1644,8 +1644,8 @@ el.controlDialog.addEventListener("close", async () => {
 el.alertFilter.addEventListener("change", renderAlerts);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 const describeRange = () => el.dateFrom.value === el.dateTo.value
-  ? `Showing team activity for ${el.dateTo.value}.`
-  : `Showing team activity from ${el.dateFrom.value} to ${el.dateTo.value}.`;
+  ? `Showing amoeba activity for ${el.dateTo.value}.`
+  : `Showing amoeba activity from ${el.dateFrom.value} to ${el.dateTo.value}.`;
 el.dateFrom.addEventListener("change", () => refresh(describeRange()).catch(showError));
 el.dateTo.addEventListener("change", () => refresh(describeRange()).catch(showError));
 

@@ -109,7 +109,7 @@ function renderPortfolio() {
         return `<div class="progress-label"><span>📦 ${batches.length} batch${batches.length === 1 ? "" : "es"} · ${delivered} delivered · ${left} left</span><strong class="${exceptions ? "risk-text" : ""}">${exceptions ? `${exceptions} exception${exceptions === 1 ? "" : "s"}` : "No exceptions"}</strong></div>`;
       })()}
     </article>`;
-  }).join("") : '<div class="empty">No teams are visible in this Manager scope.</div>';
+  }).join("") : '<div class="empty">No amoebas are visible in this Manager scope.</div>';
 }
 
 
