@@ -20,6 +20,18 @@ test.describe("hr-admin console", () => {
     await expect(page.locator("#apiBase")).not.toBeVisible();
   });
 
+  test("the amoeba Supervisor dropdown lists only Supervisor/Manager people", async ({ page }) => {
+    await page.goto(adminUrl);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.locator('.rail nav a[href="#amoebas"]').click();
+    const row = page.locator("#amoebaRows tr").first();
+    await row.getByRole("button", { name: "Edit" }).click();
+    const options = page.locator('#amoebaRows select[data-field="supervisor_person_id"] option');
+    // Tunde (seeded manager) is eligible; Danjimoh (an operator) is not.
+    await expect(options.filter({ hasText: "Tunde" })).toHaveCount(1);
+    await expect(options.filter({ hasText: "Danjimoh" })).toHaveCount(0);
+  });
+
   test("creates, edits and deactivates a person", async ({ page }) => {
     await page.goto(adminUrl);
     await expect(page.locator("#notice")).toContainText("Connected");

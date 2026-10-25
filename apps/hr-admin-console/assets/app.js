@@ -85,13 +85,35 @@ function optionList(items, getValue, getLabel, selected = "", emptyLabel = "") {
   }).join("");
 }
 
+/* ---------- supervisor eligibility ---------- */
+// People who may supervise an amoeba = those with an active user holding the
+// Supervisor or Manager role. (Managers oversee amoebas too.)
+function supervisorPeople() {
+  const eligible = new Set();
+  for (const u of state.users) {
+    if (u.status && u.status !== "active") continue;
+    const roles = u.roles || [];
+    if (roles.includes("supervisor") || roles.includes("manager")) eligible.add(u.person_id);
+  }
+  return state.people.filter((p) => eligible.has(p.person_id));
+}
+// Options for an amoeba's Supervisor; keeps the current holder selectable even if
+// they no longer qualify, so saving a row never silently drops the assignment.
+function supervisorOptions(selectedId = "") {
+  const eligible = supervisorPeople();
+  if (selectedId && !eligible.some((p) => p.person_id === selectedId)) {
+    const current = state.people.find((p) => p.person_id === selectedId);
+    if (current) eligible.unshift(current);
+  }
+  return optionList(eligible, (p) => p.person_id, (p) => p.display_name, selectedId, "Unassigned");
+}
+
 /* ---------- create-form option population ---------- */
 function renderOptions() {
   const people = optionList(state.people, (p) => p.person_id, (p) => p.display_name);
-  const supervisor = optionList(state.people, (p) => p.person_id, (p) => p.display_name, "", "Unassigned");
+  els.amoebaForm.elements.supervisor_person_id.innerHTML = supervisorOptions("");
   els.userForm.elements.person_id.innerHTML = people;
   els.roleAssignmentForm.elements.person_id.innerHTML = people;
-  els.amoebaForm.elements.supervisor_person_id.innerHTML = supervisor;
   els.siteForm.elements.amoeba_id.innerHTML = optionList(state.amoebas, (a) => a.amoeba_id, (a) => a.name);
   renderAssignmentScopeOptions();
 }
@@ -222,7 +244,7 @@ function renderAmoebas() {
       return `<tr data-row="amoebas:${escapeHtml(id)}">
         <td><input data-field="name" value="${escapeHtml(a.name)}" /></td>
         <td><select data-field="classification">${["operating", "shared_services", "investment"].map((v) => `<option value="${v}" ${v === a.classification ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-        <td><select data-field="supervisor_person_id">${optionList(state.people, (p) => p.person_id, (p) => p.display_name, a.supervisor_person_id || "", "Unassigned")}</select></td>
+        <td><select data-field="supervisor_person_id">${supervisorOptions(a.supervisor_person_id || "")}</select></td>
         <td><select data-field="status">${statusOptions("amoeba", a.status)}</select></td>
         ${actionsCell("amoebas", id, a.status, { archive: true })}</tr>`;
     }
