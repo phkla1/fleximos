@@ -1271,6 +1271,34 @@ test("stores tracker distances daily and reconciles against them", async () => {
   assert.equal(manualList.body.data.length, 1);
 });
 
+test("registered vehicles show in the inventory even when their provider has no live connector", async () => {
+  // Only the fixture connector is configured in this suite. A Tankvolt bike
+  // (registered-only provider, no connector here) must still appear on the
+  // mapping screen from the roster, flagged that no live pull is possible yet.
+  const before = await request("/ops/v1/tracker/devices");
+  const baseCount = before.body.device_count;
+
+  const vin = "LB7KP2104TF099999";
+  const create = await request("/ops/v1/vehicles", {
+    method: "POST",
+    headers: { "Idempotency-Key": "tankvolt-inv-test-1" },
+    body: JSON.stringify({
+      plate: "TVINV01", vehicle_type: "motorbike", amoeba_id: "amoeba_island",
+      make_model: "Tankvolt T22 (EV)", tracker_provider: "tankvolt", tracker_device_id: vin
+    })
+  });
+  assert.equal(create.response.status, 201);
+
+  const after = await request("/ops/v1/tracker/devices");
+  assert.equal(after.body.device_count, baseCount + 1, "the registered bike is listed despite no Tankvolt connector");
+  assert.deepEqual(after.body.connected_providers, ["fixture"], "only the fixture connector is live");
+  const bike = after.body.devices.find((device) => device.device_id === vin);
+  assert.ok(bike, "the Tankvolt VIN appears in the inventory");
+  assert.equal(bike.provider, "tankvolt");
+  assert.equal(bike.vehicle_plate, "TVINV01", "mapped to its vehicle from the roster");
+  assert.equal(bike.connector_configured, false, "flagged: no live connector, pull pending");
+});
+
 test("maps live positions and enforces the power-cut safety interlock", async () => {
   // Positions: the fixture reports FLEXI-001 moving at 45 km/h.
   const positions = await request("/ops/v1/vehicle-positions");

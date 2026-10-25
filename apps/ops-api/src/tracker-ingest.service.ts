@@ -37,6 +37,9 @@ type InventoryDevice = {
   vehicle_id: string | null;
   vehicle_plate: string | null;
   matched_by: string | null;
+  // false when the vehicle's tracker provider has no configured live connector
+  // (the mapping is known from the roster, but no GPS can be pulled yet).
+  connector_configured: boolean;
 };
 
 @Injectable()
@@ -78,7 +81,8 @@ export class TrackerIngestService {
           last_seen_at: null,
           vehicle_id: vehicle.vehicle_id,
           vehicle_plate: vehicle.plate,
-          matched_by: "registered"
+          matched_by: "registered",
+          connector_configured: true
         }));
     }
     const devices = await connector.listDevices();
@@ -93,26 +97,59 @@ export class TrackerIngestService {
         last_seen_at: device.last_seen_at,
         vehicle_id: match?.vehicle.vehicle_id || null,
         vehicle_plate: match?.vehicle.plate || null,
-        matched_by: match?.matched_by || null
+        matched_by: match?.matched_by || null,
+        connector_configured: true
       };
     });
   }
 
+  // Roster vehicles that carry a tracker provider + device id but whose provider
+  // has no configured live connector. Their device↔vehicle mapping is known from
+  // the roster, so they still belong on the mapping screen — otherwise a
+  // registered-only fleet (e.g. Tankvolt) disappears entirely until the API key
+  // is set, which is confusing: "I registered the VINs but see nothing."
+  private registeredWithoutConnector(vehicles: any[], coveredProviders: Set<string>): InventoryDevice[] {
+    return vehicles
+      .filter((vehicle) => vehicle.tracker_provider && vehicle.tracker_device_id
+        && !coveredProviders.has(vehicle.tracker_provider))
+      .map((vehicle) => ({
+        provider: vehicle.tracker_provider,
+        device_id: String(vehicle.tracker_device_id),
+        name: `${vehicle.plate} (${vehicle.tracker_device_id})`,
+        online: null,
+        group: null,
+        last_seen_at: null,
+        vehicle_id: vehicle.vehicle_id,
+        vehicle_plate: vehicle.plate,
+        matched_by: "registered",
+        connector_configured: false
+      }));
+  }
+
   async deviceInventory() {
     const connectors = this.connectors();
-    if (!connectors.length) {
-      return { configured: false, provider: null, providers: [], device_count: 0, mapped_count: 0, devices: [] };
-    }
+    // The roster is read regardless of connectors: registered-only vehicles
+    // (e.g. Tankvolt VINs) map to a vehicle from the roster alone, so they must
+    // show on the mapping screen even before their live API key is configured.
     const vehicles = await this.db.many<any>(
       "SELECT vehicle_id, plate, vehicle_type, status, tracker_device_id, tracker_provider FROM ops_vehicles");
     const devices: InventoryDevice[] = [];
+    const coveredProviders = new Set<string>();
     for (const connector of connectors) {
       devices.push(...await this.connectorDevices(connector, vehicles));
+      coveredProviders.add(connector.provider);
     }
+    const registeredOnly = this.registeredWithoutConnector(vehicles, coveredProviders);
+    devices.push(...registeredOnly);
+    const providers = [...new Set(devices.map((device) => device.provider))];
     return {
-      configured: true,
-      provider: connectors.map((connector) => connector.provider).join(" + "),
-      providers: connectors.map((connector) => connector.provider),
+      // "configured" = at least one live connector can pull telemetry. Registered
+      // vehicles can be listed without one, so the console renders whenever there
+      // are devices, and uses this only for the "pull" affordance / wording.
+      configured: connectors.length > 0,
+      provider: providers.join(" + ") || null,
+      providers,
+      connected_providers: connectors.map((connector) => connector.provider),
       device_count: devices.length,
       mapped_count: devices.filter((device) => device.vehicle_id).length,
       devices
