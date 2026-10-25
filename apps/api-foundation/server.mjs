@@ -773,6 +773,10 @@ async function handleIdentity(req, res, parts) {
     if (!(await one("SELECT person_id FROM people WHERE person_id = $1", [body.person_id]))) {
       return error(res, 400, "validation_failed", "person_id must reference an existing person.");
     }
+    // One active login per person: if they already have one, edit it instead.
+    if (await one("SELECT user_id FROM users WHERE person_id = $1 AND status = 'active'", [body.person_id])) {
+      return error(res, 409, "duplicate_user", "This person already has an active user account — edit that account instead of creating another.");
+    }
     const response = await onceForIdempotency(key, async () => {
       const timestamp = now();
       const user = {
@@ -817,6 +821,11 @@ async function handleIdentity(req, res, parts) {
     if (!user) return error(res, 404, "not_found", "User not found.");
     if (body.status && !allowedUserStatuses.has(body.status)) {
       return error(res, 400, "validation_failed", "User status is invalid.", [{ field: "status", reason: "invalid_status" }]);
+    }
+    // Keep the one-active-login-per-person invariant on (re)activation too.
+    if ((body.status || user.status) === "active"
+      && (await one("SELECT user_id FROM users WHERE person_id = $1 AND status = 'active' AND user_id <> $2", [user.person_id, id]))) {
+      return error(res, 409, "duplicate_user", "Another active user account already exists for this person — deactivate it first.");
     }
     const response = await onceForIdempotency(key, async () => {
       const updated = { ...user, ...body, updated_at: now() };

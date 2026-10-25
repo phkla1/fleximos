@@ -92,6 +92,14 @@ test("creates, returns, and deactivates scoped role assignments", async () => {
   });
   assert.equal(user.response.status, 201);
 
+  // One active user per person: a second account for the same person is refused.
+  const dupUser = await request("/identity/v1/users", {
+    method: "POST",
+    headers: { "Idempotency-Key": "test-role-user-dup-001" },
+    body: JSON.stringify({ person_id: person.body.person_id, roles: ["supervisor"], status: "active" })
+  });
+  assert.equal(dupUser.response.status, 409, "a person can't have two active user accounts");
+
   const assignment = await request("/identity/v1/role-assignments", {
     method: "POST",
     headers: { "Idempotency-Key": "test-role-assignment-001" },
