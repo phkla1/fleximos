@@ -609,11 +609,13 @@ test.describe("Ops admin console", () => {
   test("saves an efficiency policy version in place and closes the panel", async ({ page }) => {
     await page.goto(`${url}#controls`);
     await expect(page.locator("#notice")).toContainText("Connected");
-    const panel = page.locator("#efficiencyPolicyForm").locator("xpath=ancestor::details");
-    await page.getByText("Update the efficiency policy for a vehicle type", { exact: true }).click();
+    const panel = page.locator("#efficiencyPolicyPanel");
+    await panel.locator("> summary").click();
     const form = page.locator("#efficiencyPolicyForm");
+    // The current version is loaded, so the form is in "correct this version" mode.
+    await expect(form.locator("#efficiencySubmit")).toHaveText("Save correction");
     await form.locator('input[name="price_per_unit_ngn"]').fill("1150");
-    await form.getByRole("button", { name: "Save efficiency policy version" }).click();
+    await form.locator("#efficiencySubmit").click();
     await expect(page.locator("#notice")).toContainText("efficiency policy saved");
     // The edit window closes so the click clearly landed.
     await expect(panel).not.toHaveAttribute("open", "");
@@ -622,9 +624,9 @@ test.describe("Ops admin console", () => {
 
     // Saving again with the same effective date corrects in place — no
     // duplicate version rows.
-    await page.getByText("Update the efficiency policy for a vehicle type", { exact: true }).click();
+    await panel.locator("> summary").click();
     await form.locator('input[name="price_per_unit_ngn"]').fill("1175");
-    await form.getByRole("button", { name: "Save efficiency policy version" }).click();
+    await form.locator("#efficiencySubmit").click();
     await expect(page.locator("#notice")).toContainText("efficiency policy saved");
     await expect(page.locator("#efficiencyPolicyList .policy-row")).toHaveCount(rowCount);
     await expect(page.locator("#efficiencyPolicyList")).toContainText("₦1,175");
@@ -633,7 +635,7 @@ test.describe("Ops admin console", () => {
   test("loads the selected vehicle pace profile into the form", async ({ page }) => {
     await page.goto(`${url}#controls`);
     await expect(page.locator("#notice")).toContainText("Connected");
-    await page.getByText("Add or change a pace profile", { exact: true }).click();
+    await page.locator("#paceProfilePanel > summary").click();
     const form = page.locator("#paceProfileForm");
     await expect(form.locator('input[name="daily_target_ngn"]')).toHaveValue("60000");
     await form.locator('select[name="vehicle_type"]').selectOption("motorbike");
@@ -642,6 +644,25 @@ test.describe("Ops admin console", () => {
     await expect(form.locator('input[name="noon_pct"]')).toHaveValue("40");
     await expect(form.locator('input[name="afternoon_pct"]')).toHaveValue("65");
     await expect(form.locator('input[name="evening_pct"]')).toHaveValue("90");
+  });
+
+  test("pace rows show status + accommodated target and Edit loads that version", async ({ page }) => {
+    await page.goto(`${url}#controls`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    const motorbikeRow = page.locator("#paceProfileList .policy-row").filter({ hasText: "motorbike" });
+    await expect(motorbikeRow).toContainText("active");
+    await expect(motorbikeRow).toContainText("accommodated ₦28,000");
+    // Edit loads that exact version into the form, in "correct this version" mode.
+    await motorbikeRow.getByRole("button", { name: "Edit" }).click();
+    const form = page.locator("#paceProfileForm");
+    await expect(form.locator('select[name="vehicle_type"]')).toHaveValue("motorbike");
+    await expect(form.locator('input[name="daily_target_ngn"]')).toHaveValue("25000");
+    await expect(page.locator("#paceSubmit")).toHaveText("Save correction");
+    await expect(page.locator("#paceFormMode")).toContainText("Correcting the version");
+    // Changing the effective date flips it to a new version.
+    await form.locator('input[name="effective_from"]').fill("2027-01-01");
+    await expect(page.locator("#paceSubmit")).toHaveText("Save as new version");
+    await expect(page.locator("#paceFormMode")).toContainText("supersedes");
   });
 
   test("queues a scoped scheduled-job replay", async ({ page }) => {

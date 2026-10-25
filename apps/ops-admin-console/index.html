@@ -278,10 +278,12 @@
         <div class="control-grid">
           <div class="control-panel">
             <h3>Revenue pace profile</h3>
+            <p class="form-hint">One active profile per vehicle type. Keeping the effective date corrects the current version in place; choosing a new date supersedes it and keeps the old one for history.</p>
             <div id="paceProfileList" class="data-list compact-list"></div>
-            <details class="management-panel">
-              <summary>Add or change a pace profile</summary>
+            <details class="management-panel" id="paceProfilePanel">
+              <summary>Add a version, or edit the current one</summary>
               <form id="paceProfileForm" class="entry-form compact-form">
+              <p class="form-mode" id="paceFormMode"></p>
               <label>Vehicle type
                 <select name="vehicle_type"><option value="car">Car</option><option value="motorbike">Motorbike</option></select>
               </label>
@@ -295,16 +297,18 @@
               <label>Delivery parcels / hour<input name="delivery_parcels_per_hour" type="number" min="0.1" step="any" value="5" required /></label>
               <label>Delivery journey buffer (hrs)<input name="delivery_journey_buffer_hours" type="number" min="0" step="any" value="1" required /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
-              <button type="submit">Add pace profile</button>
+              <button type="submit" id="paceSubmit">Save</button>
               </form>
             </details>
           </div>
           <div class="control-panel">
             <h3>Vehicle efficiency policy</h3>
+            <p class="form-hint">One active policy per vehicle type. Keeping the effective date corrects the current version in place; a new date supersedes it and keeps the old one for history.</p>
             <div id="efficiencyPolicyList" class="data-list compact-list"></div>
-            <details class="management-panel">
-              <summary>Update the efficiency policy for a vehicle type</summary>
+            <details class="management-panel" id="efficiencyPolicyPanel">
+              <summary>Add a version, or edit the current one</summary>
               <form id="efficiencyPolicyForm" class="entry-form compact-form">
+              <p class="form-mode" id="efficiencyFormMode"></p>
               <label>Vehicle type
                 <select name="vehicle_type"><option value="car">Car</option><option value="motorbike">Motorbike</option></select>
               </label>
@@ -314,8 +318,7 @@
               <label>Allowed variance %<input name="allowed_variance_pct" type="number" min="0" value="10" required /></label>
               <label>Price per litre/kWh (₦)<input name="price_per_unit_ngn" type="number" min="0" step="0.01" placeholder="e.g. 1050" /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
-              <p class="form-hint">Choosing a vehicle type loads its current policy. Saving creates a new version for that vehicle type only, effective from the chosen date — other vehicle types are not affected and earlier versions stay listed for history.</p>
-              <button type="submit">Save efficiency policy version</button>
+              <button type="submit" id="efficiencySubmit">Save</button>
               </form>
             </details>
           </div>
@@ -391,18 +394,19 @@
           </div>
           <div class="control-panel">
             <h3>Finance economics policy</h3>
+            <p class="form-hint">One active company-wide policy. Keeping the effective date corrects the current version in place; a new date supersedes it and keeps the old one for history.</p>
             <div id="economicsPolicyList" class="data-list compact-list"></div>
-            <details class="management-panel">
-              <summary>Update the economics assumptions</summary>
+            <details class="management-panel" id="economicsPolicyPanel">
+              <summary>Add a version, or edit the current one</summary>
               <form id="economicsPolicyForm" class="entry-form compact-form">
+              <p class="form-mode" id="economicsFormMode"></p>
               <label>Policy name<input name="policy_name" value="Daily economics policy" required /></label>
               <label>Admin staff daily cost (NGN)<input name="admin_staff_daily_cost_ngn" type="number" min="0" step="100" value="50000" required /></label>
               <label>Operator labour share %<input name="operator_labour_share_pct" type="number" min="0" max="100" step="0.1" value="25" required /></label>
               <label>Daily overhead (NGN)<input name="daily_overhead_ngn" type="number" min="0" step="100" value="75000" required /></label>
               <label>Expected hours / operator<input name="expected_hours_per_operator" type="number" min="0" step="0.1" value="10" required /></label>
               <label>Effective from<input name="effective_from" type="date" required /></label>
-              <p class="form-hint">The form shows the current company-wide assumptions. Saving creates a new version effective from the chosen date; earlier versions stay listed for history.</p>
-              <button type="submit">Save economics policy version</button>
+              <button type="submit" id="economicsSubmit">Save</button>
               </form>
             </details>
           </div>

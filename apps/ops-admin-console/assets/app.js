@@ -290,28 +290,58 @@ function updateOperatorFilters() {
   if (previousAmoeba === "__all" || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.operatorAmoebaFilter.value = previousAmoeba;
 }
 
-function syncPaceProfileForm() {
-  const type = el.paceProfileForm.elements.vehicle_type.value;
-  const profile = state.paceProfiles
-    .filter((item) => item.vehicle_type === type && item.day_type === "all")
-    .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
-  if (!profile) return;
-  const checkpoints = Object.fromEntries(profile.checkpoints.map((point) => [point.time, point.expected_pct]));
-  el.paceProfileForm.elements.daily_target_ngn.value = Number(profile.daily_target_ngn);
-  if (el.paceProfileForm.elements.daily_target_accommodated_ngn) {
-    el.paceProfileForm.elements.daily_target_accommodated_ngn.value = profile.daily_target_accommodated_ngn != null ? Number(profile.daily_target_accommodated_ngn) : "";
+// Versioned-policy forms (pace, efficiency, economics) share one behaviour:
+// the form always targets one effective date. If that date already exists it
+// CORRECTS that version; a new date creates a NEW version. This makes that
+// explicit via the mode line + the submit-button label, so you always know
+// whether you are editing or adding.
+function versionedFormUi(form, modeId, submitId, existingDates) {
+  const date = form.elements.effective_from.value;
+  const known = Boolean(date) && existingDates.has(date);
+  const submit = document.getElementById(submitId);
+  const mode = document.getElementById(modeId);
+  if (submit) submit.textContent = known ? "Save correction" : "Save as new version";
+  if (mode) {
+    mode.textContent = !date ? ""
+      : known ? `Correcting the version effective ${date} — overwrites it.`
+      : `New version effective ${date} — supersedes the current one.`;
+    mode.className = `form-mode${date && !known ? " is-new" : ""}`;
   }
-  el.paceProfileForm.elements.noon_pct.value = Number(checkpoints["12:00"] ?? 0);
-  el.paceProfileForm.elements.afternoon_pct.value = Number(checkpoints["16:00"] ?? 0);
-  el.paceProfileForm.elements.evening_pct.value = Number(checkpoints["19:00"] ?? 0);
-  el.paceProfileForm.elements.warning_tolerance_pct.value = Number(profile.warning_tolerance_pct);
-  el.paceProfileForm.elements.critical_tolerance_pct.value = Number(profile.critical_tolerance_pct);
-  if (el.paceProfileForm.elements.delivery_parcels_per_hour) {
-    el.paceProfileForm.elements.delivery_parcels_per_hour.value = Number(profile.delivery_parcels_per_hour ?? 5);
-    el.paceProfileForm.elements.delivery_journey_buffer_hours.value = Number(profile.delivery_journey_buffer_hours ?? 1);
-  }
-  el.paceProfileForm.elements.effective_from.value = String(profile.effective_from).slice(0, 10);
 }
+
+function paceVersions(type) {
+  return state.paceProfiles.filter((item) => item.vehicle_type === type && item.day_type === "all");
+}
+function currentPaceProfile(type) {
+  return paceVersions(type).slice().sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+}
+function refreshPaceFormUi() {
+  const type = el.paceProfileForm.elements.vehicle_type.value;
+  versionedFormUi(el.paceProfileForm, "paceFormMode", "paceSubmit",
+    new Set(paceVersions(type).map((p) => String(p.effective_from).slice(0, 10))));
+}
+function fillPaceForm(profile) {
+  if (!profile) return;
+  const f = el.paceProfileForm.elements;
+  const checkpoints = Object.fromEntries(profile.checkpoints.map((point) => [point.time, point.expected_pct]));
+  f.vehicle_type.value = profile.vehicle_type;
+  f.daily_target_ngn.value = Number(profile.daily_target_ngn);
+  if (f.daily_target_accommodated_ngn) {
+    f.daily_target_accommodated_ngn.value = profile.daily_target_accommodated_ngn != null ? Number(profile.daily_target_accommodated_ngn) : "";
+  }
+  f.noon_pct.value = Number(checkpoints["12:00"] ?? 0);
+  f.afternoon_pct.value = Number(checkpoints["16:00"] ?? 0);
+  f.evening_pct.value = Number(checkpoints["19:00"] ?? 0);
+  f.warning_tolerance_pct.value = Number(profile.warning_tolerance_pct);
+  f.critical_tolerance_pct.value = Number(profile.critical_tolerance_pct);
+  if (f.delivery_parcels_per_hour) {
+    f.delivery_parcels_per_hour.value = Number(profile.delivery_parcels_per_hour ?? 5);
+    f.delivery_journey_buffer_hours.value = Number(profile.delivery_journey_buffer_hours ?? 1);
+  }
+  f.effective_from.value = String(profile.effective_from).slice(0, 10);
+  refreshPaceFormUi();
+}
+function syncPaceProfileForm() { fillPaceForm(currentPaceProfile(el.paceProfileForm.elements.vehicle_type.value)); }
 
 function policyStatus(policy, peers) {
   // Judge against the real calendar day — the data-snapped operating
@@ -338,22 +368,36 @@ function currentEfficiencyPolicy(vehicleType) {
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
 }
 
-function syncEfficiencyPolicyForm() {
-  const form = el.efficiencyPolicyForm.elements;
-  const policy = currentEfficiencyPolicy(form.vehicle_type.value);
+function refreshEfficiencyFormUi() {
+  const type = el.efficiencyPolicyForm.elements.vehicle_type.value;
+  versionedFormUi(el.efficiencyPolicyForm, "efficiencyFormMode", "efficiencySubmit",
+    new Set(state.efficiencyPolicies.filter((p) => p.vehicle_type === type).map((p) => String(p.effective_from).slice(0, 10))));
+}
+function fillEfficiencyForm(policy) {
   if (!policy) return;
+  const form = el.efficiencyPolicyForm.elements;
+  form.vehicle_type.value = policy.vehicle_type;
   form.make_model.value = policy.make_model || "";
   form.standard_daily_fuel_quantity.value = Number(policy.standard_daily_fuel_quantity);
   form.expected_distance_km.value = Number(policy.expected_distance_km);
   form.allowed_variance_pct.value = Number(policy.allowed_variance_pct);
   form.price_per_unit_ngn.value = policy.price_per_unit_ngn === null || policy.price_per_unit_ngn === undefined
     ? "" : Number(policy.price_per_unit_ngn);
+  form.effective_from.value = String(policy.effective_from).slice(0, 10);
+  refreshEfficiencyFormUi();
 }
+function syncEfficiencyPolicyForm() { fillEfficiencyForm(currentEfficiencyPolicy(el.efficiencyPolicyForm.elements.vehicle_type.value)); }
 
-function syncEconomicsPolicyForm() {
-  const policy = state.economicsPolicies
+function currentEconomicsPolicy() {
+  return state.economicsPolicies
     .filter((item) => String(item.effective_from).slice(0, 10) <= (state.operatingDate || todayLagos))
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+}
+function refreshEconomicsFormUi() {
+  versionedFormUi(el.economicsPolicyForm, "economicsFormMode", "economicsSubmit",
+    new Set(state.economicsPolicies.map((p) => String(p.effective_from).slice(0, 10))));
+}
+function fillEconomicsForm(policy) {
   if (!policy) return;
   const form = el.economicsPolicyForm.elements;
   form.policy_name.value = policy.policy_name;
@@ -361,7 +405,10 @@ function syncEconomicsPolicyForm() {
   form.operator_labour_share_pct.value = Number(policy.operator_labour_share_pct);
   form.daily_overhead_ngn.value = Number(policy.daily_overhead_ngn);
   form.expected_hours_per_operator.value = Number(policy.expected_hours_per_operator);
+  form.effective_from.value = String(policy.effective_from).slice(0, 10);
+  refreshEconomicsFormUi();
 }
+function syncEconomicsPolicyForm() { fillEconomicsForm(currentEconomicsPolicy()); }
 
 
 /* ---------- double-submit guard ----------
@@ -596,12 +643,18 @@ function render() {
     </article>
   `).join("") : `<div class="empty">No ingestion runs yet.</div>`;
 
-  el.paceProfileList.innerHTML = state.paceProfiles.map((profile) => `
-    <article class="policy-row">
-      <div><strong>${escapeHtml(profile.vehicle_type)}</strong><small>Target ₦${Number(profile.daily_target_ngn).toLocaleString()}</small></div>
-      <div><strong>${profile.checkpoints.map((point) => `${point.time} ${point.expected_pct}%`).join(" · ")}</strong><small>Warn ${profile.warning_tolerance_pct}% · Critical ${profile.critical_tolerance_pct}%</small></div>
-    </article>
-  `).join("") || `<div class="empty">No pace profiles configured.</div>`;
+  el.paceProfileList.innerHTML = state.paceProfiles.map((profile) => {
+    const status = policyStatus(profile, paceVersions(profile.vehicle_type));
+    const accommodated = profile.daily_target_accommodated_ngn != null
+      ? ` · accommodated ₦${Number(profile.daily_target_accommodated_ngn).toLocaleString()}`
+      : " · accommodated = same";
+    return `
+    <article class="policy-row ${status}">
+      <div><strong>${escapeHtml(profile.vehicle_type)}</strong><small>Target ₦${Number(profile.daily_target_ngn).toLocaleString()}${accommodated}</small><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
+      <div><strong>${profile.checkpoints.map((point) => `${point.time} ${point.expected_pct}%`).join(" · ")}</strong><small>Warn ${profile.warning_tolerance_pct}% · Critical ${profile.critical_tolerance_pct}% · Effective ${escapeHtml(effectiveWindow(profile))}</small>
+        <span class="row-actions"><button type="button" class="linklike" data-edit-pace="${escapeHtml(profile.pace_profile_id)}">Edit</button></span></div>
+    </article>`;
+  }).join("") || `<div class="empty">No pace profiles configured.</div>`;
 
   const inventory = state.trackerInventory;
   const trackerSummary = document.getElementById("trackerSummary");
@@ -662,7 +715,8 @@ function render() {
     return `
     <article class="policy-row ${status}">
       <div><strong>${escapeHtml(policy.vehicle_type)}</strong><small>${escapeHtml(policy.make_model || "All models")}</small><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
-      <div><strong>${Number(policy.standard_daily_fuel_quantity)} ${escapeHtml(policy.fuel_unit)} → ${Number(policy.expected_distance_km)} km</strong><small>Allowed variance ±${Number(policy.allowed_variance_pct)}%${policy.price_per_unit_ngn ? ` · ₦${Number(policy.price_per_unit_ngn).toLocaleString()}/${policy.fuel_unit === "kWh" ? "kWh" : "litre"}` : " · No unit price set"} · Effective ${escapeHtml(effectiveWindow(policy))}</small></div>
+      <div><strong>${Number(policy.standard_daily_fuel_quantity)} ${escapeHtml(policy.fuel_unit)} → ${Number(policy.expected_distance_km)} km</strong><small>Allowed variance ±${Number(policy.allowed_variance_pct)}%${policy.price_per_unit_ngn ? ` · ₦${Number(policy.price_per_unit_ngn).toLocaleString()}/${policy.fuel_unit === "kWh" ? "kWh" : "litre"}` : " · No unit price set"} · Effective ${escapeHtml(effectiveWindow(policy))}</small>
+        <span class="row-actions"><button type="button" class="linklike" data-edit-efficiency="${escapeHtml(policy.efficiency_policy_id)}">Edit</button></span></div>
     </article>`;
   }).join("") || `<div class="empty">No efficiency policies configured.</div>`;
 
@@ -671,7 +725,8 @@ function render() {
     return `
     <article class="policy-row ${status}">
       <div><strong>${escapeHtml(policy.policy_name)}</strong><small>Effective ${escapeHtml(effectiveWindow(policy))}</small><span class="pill ${status === "active" ? "" : status}">${status}</span></div>
-      <div><strong>₦${Number(policy.admin_staff_daily_cost_ngn).toLocaleString()} fixed + ${Number(policy.operator_labour_share_pct)}% operators</strong><small>Overhead ₦${Number(policy.daily_overhead_ngn).toLocaleString()} · ${Number(policy.expected_hours_per_operator)}h/operator</small></div>
+      <div><strong>₦${Number(policy.admin_staff_daily_cost_ngn).toLocaleString()} fixed + ${Number(policy.operator_labour_share_pct)}% operators</strong><small>Overhead ₦${Number(policy.daily_overhead_ngn).toLocaleString()} · ${Number(policy.expected_hours_per_operator)}h/operator</small>
+        <span class="row-actions"><button type="button" class="linklike" data-edit-economics="${escapeHtml(policy.economics_policy_id)}">Edit</button></span></div>
     </article>`;
   }).join("") || `<div class="empty">No economics policies configured.</div>`;
 
@@ -1186,6 +1241,11 @@ el.operatorAmoebaFilter.addEventListener("change", render);
 el.operatorSearch.addEventListener("input", render);
 el.paceProfileForm.elements.vehicle_type.addEventListener("change", syncPaceProfileForm);
 el.efficiencyPolicyForm.elements.vehicle_type.addEventListener("change", syncEfficiencyPolicyForm);
+// Changing the effective date flips the form between "correct this version" and
+// "new version", so keep the mode line + submit label in step as it is typed.
+el.paceProfileForm.elements.effective_from.addEventListener("input", refreshPaceFormUi);
+el.efficiencyPolicyForm.elements.effective_from.addEventListener("input", refreshEfficiencyFormUi);
+el.economicsPolicyForm.elements.effective_from.addEventListener("input", refreshEconomicsFormUi);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 
 document.addEventListener("click", (event) => {
@@ -1358,6 +1418,13 @@ el.fleetPolicyForm.addEventListener("submit", async (event) => {
 el.leaderboardConfigForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(el.leaderboardConfigForm));
+  // The four weights define shares of one score, so they must add up to 1.
+  const weightSum = ["acceptance_weight", "online_weight", "cash_weight", "revenue_weight"]
+    .reduce((total, field) => total + Number(values[field] || 0), 0);
+  if (Math.abs(weightSum - 1) > 0.001) {
+    showError(new Error(`The four weights must add up to 1.00 — they currently total ${weightSum.toFixed(2)}.`));
+    return;
+  }
   try {
     await ops("/ops/v1/leaderboard-config", {
       method: "POST",
@@ -1401,6 +1468,30 @@ el.allocatedPriceList.addEventListener("click", async (event) => {
     });
     await refresh("Allocated price deleted.");
   } catch (error) { showError(error); }
+});
+
+// Edit a specific policy version: load that exact row into its form, open the
+// panel, and let the mode line / submit label show "correct" vs "new version".
+function openPolicyPanel(id) {
+  const panel = document.getElementById(id);
+  if (!panel) return;
+  panel.open = true;
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+document.addEventListener("click", (event) => {
+  const editPace = event.target.closest("[data-edit-pace]");
+  const editEff = event.target.closest("[data-edit-efficiency]");
+  const editEcon = event.target.closest("[data-edit-economics]");
+  if (editPace) {
+    const profile = state.paceProfiles.find((x) => x.pace_profile_id === editPace.dataset.editPace);
+    if (profile) { fillPaceForm(profile); openPolicyPanel("paceProfilePanel"); }
+  } else if (editEff) {
+    const policy = state.efficiencyPolicies.find((x) => x.efficiency_policy_id === editEff.dataset.editEfficiency);
+    if (policy) { fillEfficiencyForm(policy); openPolicyPanel("efficiencyPolicyPanel"); }
+  } else if (editEcon) {
+    const policy = state.economicsPolicies.find((x) => x.economics_policy_id === editEcon.dataset.editEconomics);
+    if (policy) { fillEconomicsForm(policy); openPolicyPanel("economicsPolicyPanel"); }
+  }
 });
 
 // Inline edit for delivery customers (contract price / contact / status).

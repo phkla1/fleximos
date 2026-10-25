@@ -192,6 +192,9 @@ textarea { resize: vertical; }
 .tracker-health.status-ok { color: var(--green, #1a7f4b); }
 .tracker-health.status-degraded { color: var(--amber, #b26a00); }
 .tracker-health.status-down { color: var(--red, #b3261e); }
+.form-mode { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.form-mode.is-new { color: var(--amber, #b26a00); }
+.form-mode:empty { display: none; }
 .alert-row { grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(120px, 1fr)) auto; border-left: 4px solid var(--amber); }
 .alert-row.tier-2, .alert-row.tier-3 { border-left-color: var(--red); }
 .data-row strong, .alert-row strong { display: block; }
