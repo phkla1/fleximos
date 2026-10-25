@@ -302,6 +302,19 @@ test("creates and updates physical sites with history", async () => {
   assert.ok(history.body.data.some((entry) => entry.change_type === "updated"));
 });
 
+test("amoeba supervisor persists via the row-edit PATCH path", async () => {
+  // Mirror the hr-admin row edit: PATCH /amoebas/:id with supervisor_person_id.
+  const patch = await request("/amoeba/v1/amoebas/amoeba_island", {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "test-amoeba-patch-supervisor" },
+    body: JSON.stringify({ name: "Island", classification: "operating", status: "active", supervisor_person_id: "person_founder_wole" })
+  });
+  assert.equal(patch.response.status, 200);
+  assert.equal(patch.body.supervisor_person_id, "person_founder_wole");
+  const got = await request("/amoeba/v1/amoebas/amoeba_island");
+  assert.equal(got.body.supervisor_person_id, "person_founder_wole", "supervisor persisted after PATCH");
+});
+
 test("sites carry accommodation capacity and can be shared across amoebas", async () => {
   const create = await request("/amoeba/v1/sites", {
     method: "POST",
