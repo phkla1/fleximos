@@ -61,19 +61,31 @@ Monnify) uses:
 FLEXI_INTEGRATIONS_ENV=test          # test (default) | production
 ```
 
-For each integration variable `FOO_BAR`, the resolver prefers the mode-specific
-`FOO_TEST_BAR` / `FOO_PROD_BAR` and otherwise falls back to the bare `FOO_BAR`.
+This switch applies **only** to the integration-credential variables listed
+below (`CARTRACKER_*`, `TANKVOLT_*`, `ORBIT_*`, `SPEEDAF_*`, `MONNIFY_*`). Every
+other env var (ports, DB URLs, feature flags like `MEDIA_STRICT_CAPTURE`) is read
+plainly and is unaffected — never add `_TEST`/`_PROD` to those.
+
+For an integration variable, the rule is just **append `_TEST` or `_PROD` to the
+end**. The resolver prefers the suffixed name for the active mode and otherwise
+falls back to the bare variable. For example, for `TANKVOLT_API_KEY`:
+
+```bash
+TANKVOLT_API_KEY_TEST=<test key>     # used when FLEXI_INTEGRATIONS_ENV=test
+TANKVOLT_API_KEY_PROD=<prod key>     # used when FLEXI_INTEGRATIONS_ENV=production
+```
+
 So you can:
 
-- keep a **single bare value** (it is used in whatever mode is active — fine for
-  one environment), or
-- hold **both at once** by setting `*_TEST_*` and `*_PROD_*`, then switch the
-  whole suite by flipping `FLEXI_INTEGRATIONS_ENV`. You never re-enter a value you
-  already have; going live means adding only the `*_PROD_*` values that differ.
+- keep a **single bare value** (`TANKVOLT_API_KEY=…`) — used in whatever mode is
+  active, fine when you only run one environment; or
+- hold **both at once** with `…_TEST` and `…_PROD`, then switch the whole suite by
+  flipping `FLEXI_INTEGRATIONS_ENV`. You never re-enter a value you already have;
+  going live means adding only the `…_PROD` values that differ.
 
 Safety: the Tankvolt test host and the Monnify sandbox host are assumed **only**
 in test mode. In production mode the host must be set explicitly
-(`TANKVOLT_PROD_API_BASE`/`TANKVOLT_API_BASE`, `MONNIFY_PROD_BASE_URL`/`MONNIFY_BASE_URL`)
+(`TANKVOLT_API_BASE_PROD`/`TANKVOLT_API_BASE`, `MONNIFY_BASE_URL_PROD`/`MONNIFY_BASE_URL`)
 or the connector stays off — a production key can never silently hit a test host.
 The ops-admin **Trackers** screen shows a `TEST credentials` / `PRODUCTION
 credentials` badge so the active environment is never ambiguous.
@@ -90,11 +102,11 @@ needs the partner attribute enabled on the key — confirmed working 30 Sep 2026
 ```bash
 # Test (UAT) — the test host is the default in test mode, so the key alone is enough:
 TANKVOLT_API_KEY=<test key assigned by Tankvolt>
-# TANKVOLT_TEST_API_BASE=https://devweb.tankvolt.net   # the default in test mode
+# TANKVOLT_API_BASE_TEST=https://devweb.tankvolt.net   # the default in test mode
 
 # Production (at go-live) — add these and set FLEXI_INTEGRATIONS_ENV=production:
-# TANKVOLT_PROD_API_KEY=<production key>
-# TANKVOLT_PROD_API_BASE=<production host Tankvolt provides>
+# TANKVOLT_API_KEY_PROD=<production key>
+# TANKVOLT_API_BASE_PROD=<production host Tankvolt provides>
 ```
 
 Tankvolt has no device list, so each bike must be **registered as a vehicle

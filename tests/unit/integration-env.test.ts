@@ -11,19 +11,19 @@ test("integrationsMode defaults to test and recognises production aliases", () =
   assert.equal(integrationsMode({ FLEXI_INTEGRATIONS_ENV: "live" } as any), "production");
 });
 
-test("integrationVar prefers the mode-specific value, else falls back to the bare name", () => {
+test("integrationVar prefers the suffixed value, else falls back to the bare name", () => {
   const env: any = {
     FLEXI_INTEGRATIONS_ENV: "test",
     TANKVOLT_API_KEY: "bare-key",
-    TANKVOLT_TEST_API_KEY: "test-key",
-    TANKVOLT_PROD_API_KEY: "prod-key"
+    TANKVOLT_API_KEY_TEST: "test-key",
+    TANKVOLT_API_KEY_PROD: "prod-key"
   };
   assert.equal(integrationVar(env, "TANKVOLT_API_KEY"), "test-key");
   assert.equal(integrationVar({ ...env, FLEXI_INTEGRATIONS_ENV: "production" }, "TANKVOLT_API_KEY"), "prod-key");
   // Bare value is used when no scoped override exists (existing single-value setups).
   assert.equal(integrationVar({ FLEXI_INTEGRATIONS_ENV: "production", TANKVOLT_API_KEY: "bare-key" } as any, "TANKVOLT_API_KEY"), "bare-key");
   // Blank override does not mask the bare value.
-  assert.equal(integrationVar({ TANKVOLT_TEST_API_KEY: "", TANKVOLT_API_KEY: "bare-key" } as any, "TANKVOLT_API_KEY"), "bare-key");
+  assert.equal(integrationVar({ TANKVOLT_API_KEY_TEST: "", TANKVOLT_API_KEY: "bare-key" } as any, "TANKVOLT_API_KEY"), "bare-key");
 });
 
 test("Tankvolt assumes its test host only in test mode; production needs an explicit host", () => {
@@ -38,8 +38,8 @@ test("Tankvolt assumes its test host only in test mode; production needs an expl
   // Production mode with an explicit prod host: connector is ON.
   const prodWithHost = createTrackerConnectors({
     FLEXI_INTEGRATIONS_ENV: "production",
-    TANKVOLT_PROD_API_KEY: "k",
-    TANKVOLT_PROD_API_BASE: "https://prod.tankvolt.example"
+    TANKVOLT_API_KEY_PROD: "k",
+    TANKVOLT_API_BASE_PROD: "https://prod.tankvolt.example"
   } as any);
   assert.ok(prodWithHost.some((c) => c.provider === "tankvolt"), "tankvolt on with explicit prod host");
 });

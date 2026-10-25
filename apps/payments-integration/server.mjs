@@ -10,14 +10,12 @@ const opsBase = process.env.OPS_API_BASE || "http://127.0.0.1:4030";
 const foundationBase = process.env.FOUNDATION_API_BASE || "http://127.0.0.1:4010";
 // One switch picks test vs real credentials for every integration (see
 // apps/ops-api/src/integration-env.ts). Resolve MONNIFY_* via the active mode:
-// prefer MONNIFY_PROD_*/MONNIFY_TEST_*, else the bare MONNIFY_* value.
+// prefer the suffixed MONNIFY_*_PROD / MONNIFY_*_TEST, else the bare value.
 const integrationsMode = ["production", "prod", "live"].includes(String(process.env.FLEXI_INTEGRATIONS_ENV || "test").toLowerCase())
   ? "production" : "test";
 const integrationVar = (name) => {
-  const prefix = integrationsMode === "production" ? "PROD" : "TEST";
-  const u = name.indexOf("_");
-  const scoped = u === -1 ? `${name}_${prefix}` : `${name.slice(0, u)}_${prefix}${name.slice(u)}`;
-  const s = process.env[scoped];
+  const suffix = integrationsMode === "production" ? "_PROD" : "_TEST";
+  const s = process.env[`${name}${suffix}`];
   if (s !== undefined && s !== "") return s;
   const bare = process.env[name];
   return bare !== undefined && bare !== "" ? bare : undefined;
