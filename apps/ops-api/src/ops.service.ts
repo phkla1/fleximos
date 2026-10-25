@@ -361,7 +361,9 @@ export class OpsService {
       Object.values(operator)
     );
     await this.audit("operator.created", "operator", operator.operator_id, null, operator);
-    return operator;
+    // Active-with-vehicle operators are auto-placed into their week's cohort.
+    await this.onboarding.ensureCohortForOperator(operator.operator_id, this.lagosDate());
+    return this.getOperator(operator.operator_id);
   }
 
   // A vehicle can be held by only one active operator at a time. Blocks assigning
@@ -435,6 +437,8 @@ export class OpsService {
       ]
     );
     await this.audit("operator.updated", "operator", operatorId, current, body);
+    // Auto-place into the week's cohort once active-with-vehicle (idempotent).
+    await this.onboarding.ensureCohortForOperator(operatorId, this.lagosDate());
     return this.getOperator(operatorId);
   }
 

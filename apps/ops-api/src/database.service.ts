@@ -863,6 +863,18 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       -- and anchor on activated_at instead.
       ALTER TABLE ops_operators ADD COLUMN IF NOT EXISTS onboarding_cohort_id TEXT;
 
+      -- Company-wide onboarding settings (singleton). cohort_anchor_dow is the
+      -- weekday that counts as every cohort's official Day 1 (0=Sun .. 6=Sat;
+      -- default 3 = Wednesday). Cohorts are auto-created per week; this sets the
+      -- anchor weekday.
+      CREATE TABLE IF NOT EXISTS ops_onboarding_settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        cohort_anchor_dow INTEGER NOT NULL DEFAULT 3,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+      INSERT INTO ops_onboarding_settings (id, cohort_anchor_dow, updated_at)
+        VALUES (1, 3, now()) ON CONFLICT (id) DO NOTHING;
+
       -- Supervisor onboarding: an assist assignment, not a numeric ramp.
       CREATE TABLE IF NOT EXISTS ops_supervisor_onboardings (
         supervisor_onboarding_id TEXT PRIMARY KEY,

@@ -702,7 +702,7 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#notice")).toContainText("1 record accepted");
   });
 
-  test("configures an onboarding ramp and starts a cohort", async ({ page }) => {
+  test("configures an onboarding ramp and sets the cohort Day-1 weekday", async ({ page }) => {
     await page.goto(`${url}#onboarding`);
     await expect(page.locator("#notice")).toContainText("Connected");
     // Seeded rider ramp profile is listed.
@@ -718,13 +718,22 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#onboardingRampList")).toContainText("₦25,000");
     await expect(rampPanel).not.toHaveAttribute("open", "");
 
-    // Start a cohort.
-    await page.getByText("Start a cohort", { exact: true }).click();
-    await page.locator('#cohortForm input[name="name"]').fill("E2E Monday batch");
-    await page.locator('#cohortForm input[name="start_date"]').fill("2026-06-01");
-    await page.locator("#cohortForm").getByRole("button", { name: "Create cohort" }).click();
-    await expect(page.locator("#notice")).toContainText("Cohort created");
-    await expect(page.locator("#cohortList")).toContainText("E2E Monday batch");
+    // Cohorts are auto-created; there is no manual "start a cohort" form.
+    await expect(page.getByText("Start a cohort", { exact: true })).toHaveCount(0);
+    // The Day-1 weekday is settable (default Wednesday).
+    await page.getByText("Set the official Day-1 weekday", { exact: true }).click();
+    const daySelect = page.locator('#onboardingSettingsForm select[name="cohort_anchor_dow"]');
+    await expect(daySelect).toHaveValue("3");
+    await daySelect.selectOption("1");
+    await page.locator("#onboardingSettingsForm").getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#notice")).toContainText("Day-1 weekday saved");
+    // The saved value is reflected after refresh.
+    await expect(daySelect).toHaveValue("1");
+    // Reset to Wednesday so the setting doesn't leak into other tests (panel stays open).
+    await daySelect.selectOption("3");
+    await page.locator("#onboardingSettingsForm").getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#notice")).toContainText("Day-1 weekday saved");
+    await expect(daySelect).toHaveValue("3");
   });
 
   test("tracks finite accommodation and flags housed riders", async ({ page, request }) => {

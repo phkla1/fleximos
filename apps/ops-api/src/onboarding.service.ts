@@ -212,15 +212,57 @@ export class OnboardingService {
     );
   }
 
-  async createCohort(body: Body, actor: string) {
+  /* ---------------- onboarding settings + auto cohorts ---------------- */
+
+  // Company-wide onboarding settings (singleton row). cohort_anchor_dow is the
+  // weekday that is every cohort's official Day 1 (0=Sun .. 6=Sat; default Wed).
+  async getSettings() {
+    const row = await this.db.one<any>("SELECT cohort_anchor_dow::int AS cohort_anchor_dow FROM ops_onboarding_settings WHERE id=1");
+    return { cohort_anchor_dow: row ? Number(row.cohort_anchor_dow) : 3 };
+  }
+
+  async updateSettings(body: Body, actor: string) {
+    const dow = Number(body.cohort_anchor_dow);
+    if (!Number.isInteger(dow) || dow < 0 || dow > 6) {
+      throw new BadRequestException("cohort_anchor_dow must be an integer 0 (Sun) to 6 (Sat).");
+    }
+    await this.db.exec(
+      "UPDATE ops_onboarding_settings SET cohort_anchor_dow=$1, updated_at=$2 WHERE id=1",
+      [dow, this.now()]
+    );
+    await this.audit("onboarding_settings.updated", "onboarding_settings", "1", null, { cohort_anchor_dow: dow }, actor);
+    return { cohort_anchor_dow: dow };
+  }
+
+  // The anchor (official Day 1) for the Mon–Sun week that contains `date`:
+  // the configured weekday within that same week. It may be a few days before
+  // or after `date` — a mid-week joiner starts "behind" on that week's anchor.
+  cohortAnchorDate(date: string, anchorDow: number): string {
+    const d = Date.parse(`${date}T00:00:00Z`);
+    const jsDow = new Date(d).getUTCDay();           // 0 Sun .. 6 Sat
+    const daysSinceMonday = (jsDow + 6) % 7;         // Mon=0 .. Sun=6
+    const monday = d - daysSinceMonday * 86400000;
+    const offset = (anchorDow + 6) % 7;              // Monday → anchor weekday
+    return new Date(monday + offset * 86400000).toISOString().slice(0, 10);
+  }
+
+  // Find-or-create the cohort for (week anchor, class, amoeba). No unique index
+  // (a pre-existing manual cohort could block its creation), so this selects
+  // first and inserts only when missing.
+  private async findOrCreateCohort(startDate: string, operatorClass: string, amoebaId: string): Promise<string> {
+    const existing = await this.db.one<any>(
+      "SELECT cohort_id FROM ops_onboarding_cohorts WHERE start_date::text=$1 AND operator_class=$2 AND amoeba_id=$3",
+      [startDate, operatorClass, amoebaId]
+    );
+    if (existing) return existing.cohort_id;
     const cohort = {
       cohort_id: this.id("cohort"),
-      name: String(body.name || "").trim() || `Cohort ${this.dateStr(body.start_date || this.now(), "start_date")}`,
-      operator_class: String(body.operator_class || "rider"),
-      amoeba_id: body.amoeba_id ? String(body.amoeba_id) : null,
-      start_date: this.dateStr(body.start_date || this.now(), "start_date"),
+      name: `${operatorClass === "driver" ? "Drivers" : "Riders"} · week of ${startDate}`,
+      operator_class: operatorClass,
+      amoeba_id: amoebaId,
+      start_date: startDate,
       status: "active",
-      created_by_person_id: actor,
+      created_by_person_id: "person_system",
       created_at: this.now(),
       updated_at: this.now()
     };
@@ -230,8 +272,28 @@ export class OnboardingService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       Object.values(cohort)
     );
-    await this.audit("onboarding_cohort.created", "onboarding_cohort", cohort.cohort_id, null, cohort, actor);
-    return cohort;
+    await this.audit("onboarding_cohort.auto_created", "onboarding_cohort", cohort.cohort_id, null, cohort, "person_system");
+    return cohort.cohort_id;
+  }
+
+  // Called when an operator changes: a rider/driver that is ACTIVE and has a
+  // VEHICLE joins the cohort for the week they reached that state. Idempotent —
+  // never reshuffles an operator that already has a cohort.
+  async ensureCohortForOperator(operatorId: string, today: string) {
+    const op = await this.db.one<any>(
+      "SELECT operator_status, vehicle_id, operator_class, amoeba_id, onboarding_cohort_id FROM ops_operators WHERE operator_id=$1",
+      [operatorId]
+    );
+    if (!op) return;
+    if (op.onboarding_cohort_id) return;
+    if (op.operator_status !== "active" || !op.vehicle_id || !op.amoeba_id) return;
+    const { cohort_anchor_dow } = await this.getSettings();
+    const startDate = this.cohortAnchorDate(today, cohort_anchor_dow);
+    const cohortId = await this.findOrCreateCohort(startDate, op.operator_class || "rider", op.amoeba_id);
+    await this.db.exec(
+      "UPDATE ops_operators SET onboarding_cohort_id=$2, updated_at=$3 WHERE operator_id=$1",
+      [operatorId, cohortId, this.now()]
+    );
   }
 
   async addCohortMembers(cohortId: string, operatorIds: string[], actor: string) {

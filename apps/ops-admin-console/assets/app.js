@@ -28,6 +28,7 @@ const state = {
   allocatedPrices: [],
   onboardingRampProfiles: [],
   cohorts: [],
+  onboardingSettings: { cohort_anchor_dow: 3 },
   cohortBoard: [],
   supervisorOnboardings: [],
   accommodation: [],
@@ -65,7 +66,7 @@ const el = Object.fromEntries(
     "operatorAmoebaFilter", "operatorSearch",
     "operatorFilterSummary", "reportForm", "reportList", "reportDialog",
     "reportDialogTitle", "reportDialogSummary", "reportDialogRows",
-    "onboardingRampList", "onboardingRampForm", "cohortList", "cohortForm",
+    "onboardingRampList", "onboardingRampForm", "cohortList", "onboardingSettingsForm",
     "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
     "cohortBoard", "cohortBoardUpdated",
     "accommodationList", "accommodationBedsSummary",
@@ -93,7 +94,6 @@ el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
 el.economicsPolicyForm.elements.effective_from.value = todayLagos;
 el.allocatedPriceForm.elements.effective_from.value = todayLagos;
 el.onboardingRampForm.elements.effective_from.value = todayLagos;
-el.cohortForm.elements.start_date.value = todayLagos;
 el.supervisorOnboardingForm.elements.start_date.value = todayLagos;
 
 function escapeHtml(value) {
@@ -984,14 +984,17 @@ function renderOnboarding() {
       }).join("")
     : `<div class="empty">No ramp profile configured.</div>`;
 
-  // Cohorts.
+  // Cohorts (auto-created per week). Keep the Day-1 weekday selector in sync.
+  if (el.onboardingSettingsForm && state.onboardingSettings) {
+    el.onboardingSettingsForm.elements.cohort_anchor_dow.value = String(state.onboardingSettings.cohort_anchor_dow ?? 3);
+  }
   el.cohortList.innerHTML = state.cohorts.length
     ? state.cohorts.map((c) => `
       <article class="policy-row ${c.status === "active" ? "" : "superseded"}">
-        <div><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(c.operator_class === "driver" ? "Drivers" : "Riders")} · Day 1 = ${escapeHtml(String(c.start_date).slice(0, 10))}</small>
-          <span class="pill">${Number(c.member_count || 0)} rider${Number(c.member_count) === 1 ? "" : "s"}</span></div>
+        <div><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(c.operator_class === "driver" ? "Drivers" : "Riders")}${c.amoeba_id ? ` · ${escapeHtml(nameForAmoeba(c.amoeba_id))}` : ""} · Day 1 = ${escapeHtml(String(c.start_date).slice(0, 10))}</small>
+          <span class="pill">${Number(c.member_count || 0)} member${Number(c.member_count) === 1 ? "" : "s"}</span></div>
       </article>`).join("")
-    : `<div class="empty">No cohorts yet.</div>`;
+    : `<div class="empty">No cohorts yet — they appear automatically as riders go active with a vehicle.</div>`;
 
   // Supervisor onboarding.
   el.supervisorOnboardingList.innerHTML = state.supervisorOnboardings.length
@@ -1111,7 +1114,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
@@ -1121,7 +1124,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/onboarding/cohorts").catch(() => ({ data: [] })),
     ops("/ops/v1/supervisor-onboardings").catch(() => ({ data: [] })),
     ops("/ops/v1/accommodation").catch(() => ({ data: [] })),
-    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] }))
+    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
+    ops("/ops/v1/onboarding/settings").catch(() => ({ cohort_anchor_dow: 3 }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
@@ -1178,6 +1182,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     allocatedPrices: allocatedPrices.data,
     onboardingRampProfiles: rampProfiles.data,
     cohorts: cohorts.data,
+    onboardingSettings: onboardingSettings || { cohort_anchor_dow: 3 },
     supervisorOnboardings: supervisorOnboardings.data,
     accommodation: accommodation.data,
     fleetPolicy,
@@ -1578,18 +1583,16 @@ el.onboardingRampForm.addEventListener("submit", async (event) => {
   } catch (error) { showError(error); }
 });
 
-el.cohortForm.addEventListener("submit", async (event) => {
+el.onboardingSettingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const values = Object.fromEntries(new FormData(el.cohortForm));
+  const values = Object.fromEntries(new FormData(el.onboardingSettingsForm));
   try {
-    await ops("/ops/v1/onboarding/cohorts", {
+    await ops("/ops/v1/onboarding/settings", {
       method: "POST",
-      headers: { "Idempotency-Key": key("cohort") },
-      body: JSON.stringify({ name: values.name || null, operator_class: values.operator_class, start_date: values.start_date })
+      headers: { "Idempotency-Key": key("onboarding-settings") },
+      body: JSON.stringify({ cohort_anchor_dow: Number(values.cohort_anchor_dow) })
     });
-    el.cohortForm.reset();
-    el.cohortForm.elements.start_date.value = todayLagos;
-    await refresh("Cohort created.");
+    await refresh("Cohort Day-1 weekday saved — applies to cohorts created from now on.");
   } catch (error) { showError(error); }
 });
 

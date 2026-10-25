@@ -753,17 +753,26 @@ export class OpsController {
     return { data: await this.onboarding.listCohorts(), next_cursor: null };
   }
 
+  // Cohorts are auto-created per week from activations; no manual create route.
   @ApiTags("Onboarding")
   @ApiBearerAuth()
-  @Post("ops/v1/onboarding/cohorts")
-  async createCohort(
+  @Get("ops/v1/onboarding/settings")
+  async getOnboardingSettings(@Req() req: Request) {
+    await this.auth(req);
+    return this.onboarding.getSettings();
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Post("ops/v1/onboarding/settings")
+  async updateOnboardingSettings(
     @Req() req: Request,
     @Headers("idempotency-key") rawKey: string | undefined,
     @Body() body: Record<string, unknown>
   ) {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
-    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.onboarding.createCohort(body, actor.person_id));
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.onboarding.updateSettings(body, actor.person_id));
   }
 
   @ApiTags("Onboarding")

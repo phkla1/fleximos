@@ -1745,35 +1745,33 @@ function workingDayN(anchor, date, restDow) {
 
 test("onboarding ramp overrides the daily target and delivery pace for a new rider", async () => {
   const RAMP_TARGETS = [0, 2500, 5000, 7500, 10000, 13000, 16000, 19000, 22000, 25000, 28000, 30000];
-  const START = "2026-06-01"; // Monday
-  const RECORD = "2026-06-12"; // ~11 calendar days later, lands in the scheduled phase
-  const expectedDayN = workingDayN(START, RECORD, 0); // rest day = Sunday
-  assert.ok(expectedDayN >= 7 && expectedDayN <= 12, "test dates land in the scheduled ramp phase");
-  const expectedTarget = RAMP_TARGETS[expectedDayN - 1];
-
-  const cohort = await request("/ops/v1/onboarding/cohorts", {
+  const unique = Date.now();
+  // An active rider WITH a motorbike is auto-placed into this week's cohort
+  // (no manual cohort creation). The cohort's start_date is the anchor.
+  const vehicle = await request("/ops/v1/vehicles", {
     method: "POST",
-    headers: { "Idempotency-Key": "onb-cohort-1" },
-    body: JSON.stringify({ name: "June batch", operator_class: "rider", start_date: START })
+    headers: { "Idempotency-Key": `onb-veh-1-${unique}` },
+    body: JSON.stringify({ plate: `ONB${String(unique).slice(-6)}`, vehicle_type: "motorbike", amoeba_id: "amoeba_mainland" })
   });
-  assert.equal(cohort.response.status, 201);
-
   const rider = await request("/ops/v1/operators", {
     method: "POST",
     headers: { "Idempotency-Key": "onb-rider-1" },
     body: JSON.stringify({
       person_id: "person_onb_rider", operator_type: "rider", operator_class: "rider",
       operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1",
-      daily_revenue_target_ngn: 30000
+      vehicle_id: vehicle.body.vehicle_id, daily_revenue_target_ngn: 30000
     })
   });
   const operatorId = rider.body.operator_id;
-  const added = await request(`/ops/v1/onboarding/cohorts/${cohort.body.cohort_id}/members`, {
-    method: "POST",
-    headers: { "Idempotency-Key": "onb-members-1" },
-    body: JSON.stringify({ operator_ids: [operatorId] })
-  });
-  assert.equal(added.body.assigned, 1);
+  assert.ok(rider.body.onboarding_cohort_id, "auto-assigned to this week's cohort");
+  const cohorts = await request("/ops/v1/onboarding/cohorts");
+  const cohort = cohorts.body.data.find((c) => c.cohort_id === rider.body.onboarding_cohort_id);
+  const anchor = String(cohort.start_date).slice(0, 10); // the week's Day-1 Wednesday
+  // Pick a record 9 calendar days past the anchor — lands in the scheduled phase.
+  const RECORD = new Date(Date.parse(`${anchor}T00:00:00Z`) + 9 * 86400000).toISOString().slice(0, 10);
+  const expectedDayN = workingDayN(anchor, RECORD, 0); // rest day = Sunday
+  assert.ok(expectedDayN >= 7 && expectedDayN <= 11, `record lands mid-scheduled-phase (day ${expectedDayN})`);
+  const expectedTarget = RAMP_TARGETS[expectedDayN - 1];
 
   // Per-operator onboarding status resolves the ramp day + target.
   const status = await request(`/ops/v1/onboarding/operators/${operatorId}?record_date=${RECORD}`);
@@ -1852,6 +1850,63 @@ test("daily target defaults by housing (25k standard / 28k accommodated) with a 
   assert.equal(Number(row.daily_revenue_target_ngn), 28000, "cleared override returns to the default");
 });
 
+test("cohorts auto-create per week+class+amoeba; manual create is gone; Day-1 weekday is settable", async () => {
+  const unique = String(Date.now()).slice(-7);
+  // Default anchor weekday is Wednesday (3).
+  const settings0 = await request("/ops/v1/onboarding/settings");
+  assert.equal(Number(settings0.body.cohort_anchor_dow), 3);
+
+  // Manual cohort creation no longer exists.
+  const manual = await request("/ops/v1/onboarding/cohorts", {
+    method: "POST",
+    headers: { "Idempotency-Key": `no-manual-${unique}` },
+    body: JSON.stringify({ operator_class: "rider", start_date: "2026-06-01" })
+  });
+  assert.equal(manual.response.status, 404, "no manual cohort-create route");
+
+  async function activeRider(idx, amoeba, site) {
+    const person = await fetch(`${foundationBaseUrl}/identity/v1/people`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": `coh-person-${unique}${idx}` },
+      body: JSON.stringify({ display_name: `Cohort Rider ${unique}${idx}`, phone: `+23470${unique}${idx}` })
+    }).then((r) => r.json());
+    await fetch(`${foundationBaseUrl}/identity/v1/users`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": `coh-user-${unique}${idx}` },
+      body: JSON.stringify({ person_id: person.person_id, roles: ["operator"], status: "active" })
+    });
+    const veh = await request("/ops/v1/vehicles", {
+      method: "POST", headers: { "Idempotency-Key": `coh-veh-${unique}${idx}` },
+      body: JSON.stringify({ plate: `COH${unique}${idx}`, vehicle_type: "motorbike", amoeba_id: amoeba })
+    });
+    const op = await request("/ops/v1/operators", {
+      method: "POST", headers: { "Idempotency-Key": `coh-op-${unique}${idx}` },
+      body: JSON.stringify({ person_id: person.person_id, operator_type: "rider", operator_class: "rider", operator_status: "active", amoeba_id: amoeba, site_id: site, vehicle_id: veh.body.vehicle_id })
+    });
+    return op.body;
+  }
+
+  // Two active-with-vehicle riders in the same amoeba + week share one cohort.
+  const a1 = await activeRider(1, "amoeba_mainland", "site_mainland_1");
+  const a2 = await activeRider(2, "amoeba_mainland", "site_mainland_1");
+  assert.ok(a1.onboarding_cohort_id, "auto-assigned a cohort");
+  assert.equal(a1.onboarding_cohort_id, a2.onboarding_cohort_id, "same week+class+amoeba share a cohort");
+
+  // A different amoeba gets its own cohort for the same week.
+  const b1 = await activeRider(3, "amoeba_island", "site_island_1");
+  assert.notEqual(b1.onboarding_cohort_id, a1.onboarding_cohort_id, "different amoeba => different cohort");
+
+  // The anchor is a Wednesday (default), derived from the activation week.
+  const cohorts = await request("/ops/v1/onboarding/cohorts");
+  const anchor = String(cohorts.body.data.find((c) => c.cohort_id === a1.onboarding_cohort_id).start_date).slice(0, 10);
+  assert.equal(new Date(`${anchor}T00:00:00Z`).getUTCDay(), 3, "Day 1 is a Wednesday");
+
+  // The Day-1 weekday is settable.
+  const set = await request("/ops/v1/onboarding/settings", {
+    method: "POST", headers: { "Idempotency-Key": `set-${unique}` },
+    body: JSON.stringify({ cohort_anchor_dow: 1 })
+  });
+  assert.equal(Number(set.body.cohort_anchor_dow), 1);
+});
+
 test("onboarding ramp profile bonus params are editable and drive the projected bonus", async () => {
   const profiles = await request("/ops/v1/onboarding/ramp-profiles");
   const rider = profiles.body.data.find((p) => p.operator_class === "rider" && !p.effective_to);
@@ -1867,26 +1922,26 @@ test("onboarding ramp profile bonus params are editable and drive the projected 
 
   // A rider with no recorded revenue misses every scoreable day so far, so the
   // projected bonus is reduced 10% per missed day from the ₦20k standard.
-  const cohort = await request("/ops/v1/onboarding/cohorts", {
+  const unique = Date.now();
+  const vehicle = await request("/ops/v1/vehicles", {
     method: "POST",
-    headers: { "Idempotency-Key": "onb-cohort-2" },
-    body: JSON.stringify({ name: "Bonus batch", operator_class: "rider", start_date: "2026-06-01" })
+    headers: { "Idempotency-Key": `onb-veh-2-${unique}` },
+    body: JSON.stringify({ plate: `ONBB${String(unique).slice(-5)}`, vehicle_type: "motorbike", amoeba_id: "amoeba_mainland" })
   });
   const rider2 = await request("/ops/v1/operators", {
     method: "POST",
     headers: { "Idempotency-Key": "onb-rider-2" },
     body: JSON.stringify({
       person_id: "person_onb_rider2", operator_type: "rider", operator_class: "rider",
-      operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1"
+      operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1",
+      vehicle_id: vehicle.body.vehicle_id
     })
   });
-  await request(`/ops/v1/onboarding/cohorts/${cohort.body.cohort_id}/members`, {
-    method: "POST",
-    headers: { "Idempotency-Key": "onb-members-2" },
-    body: JSON.stringify({ operator_ids: [rider2.body.operator_id] })
-  });
-  const status = await request(`/ops/v1/onboarding/operators/${rider2.body.operator_id}?record_date=2026-06-05`);
-  const missed = workingDayN("2026-06-01", "2026-06-05", 0) - 1; // Day 1 target is 0 (not scoreable)
+  const cohorts2 = await request("/ops/v1/onboarding/cohorts");
+  const anchor = String(cohorts2.body.data.find((c) => c.cohort_id === rider2.body.onboarding_cohort_id).start_date).slice(0, 10);
+  const RECORD = new Date(Date.parse(`${anchor}T00:00:00Z`) + 3 * 86400000).toISOString().slice(0, 10);
+  const status = await request(`/ops/v1/onboarding/operators/${rider2.body.operator_id}?record_date=${RECORD}`);
+  const missed = workingDayN(anchor, RECORD, 0) - 1; // Day 1 target is 0 (not scoreable)
   assert.equal(status.body.targets_hit, 0, "no revenue recorded, nothing hit");
   assert.equal(Number(status.body.projected_bonus_ngn), Math.round(20000 * (1 - 0.10 * missed)));
 });
