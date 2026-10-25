@@ -777,4 +777,20 @@ test.describe("Ops admin console", () => {
     // No live feed yet (only the fixture tracker is active in tests) -> awaiting fix.
     await expect(row).toContainText("awaiting fix");
   });
+
+  test("tracker device mapping lives on its own Trackers screen, grouped by provider", async ({ page }) => {
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    // It has its own sidebar entry, no longer buried in Targets & policy.
+    await page.locator('.rail nav a[href="#trackers"]').click();
+    await expect(page.getByRole("heading", { name: "Trackers" })).toBeVisible();
+    await expect(page.locator("#trackerSummary")).toContainText("mapped to vehicles");
+    // Devices are grouped under a provider heading, and the folder is relabelled.
+    await expect(page.locator("#trackerDeviceList .tracker-provider").first()).toBeVisible();
+    await expect(page.locator("#trackerDeviceList")).toContainText("QLINK FLEXI-001");
+    await expect(page.locator("#trackerDeviceList")).toContainText("folder: Qutes");
+    // The tracker panel is gone from Targets & policy.
+    await page.locator('.rail nav a[href="#controls"]').click();
+    await expect(page.getByRole("heading", { name: "Vehicle trackers" })).toHaveCount(0);
+  });
 });

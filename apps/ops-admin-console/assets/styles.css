@@ -186,6 +186,8 @@ textarea { resize: vertical; }
 /* Fleet rows carry an extra Operator column (who holds the vehicle). */
 #vehicleList .data-row { grid-template-columns: minmax(170px, 1.4fr) repeat(4, minmax(115px, 1fr)) auto; }
 .data-row strong.muted { color: var(--muted); font-weight: 600; }
+.tracker-provider { margin: 16px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.tracker-provider:first-child { margin-top: 0; }
 .alert-row { grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(120px, 1fr)) auto; border-left: 4px solid var(--amber); }
 .alert-row.tier-2, .alert-row.tier-3 { border-left-color: var(--red); }
 .data-row strong, .alert-row strong { display: block; }

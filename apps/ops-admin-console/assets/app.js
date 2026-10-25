@@ -606,15 +606,29 @@ function render() {
       trackerSummary.textContent = "Tracker connector not configured — set CARTRACKER_EMAIL and CARTRACKER_PASSWORD in the server environment.";
       trackerList.innerHTML = `<div class="empty">Distances fall back to platform-reported KM until the tracker connects.</div>`;
     } else {
-      trackerSummary.innerHTML = `${inventory.device_count} device${inventory.device_count === 1 ? "" : "s"} at ${escapeHtml(inventory.provider)} · ${inventory.mapped_count} mapped to vehicles · distances stored daily (hourly capture + 23:30 final). <button type="button" class="linklike" data-tracker-pull>Pull today now</button>`;
-      trackerList.innerHTML = inventory.devices.map((device) => `
+      trackerSummary.innerHTML = `${inventory.device_count} device${inventory.device_count === 1 ? "" : "s"} across ${escapeHtml((inventory.providers || []).map((p) => TRACKER_LABEL[p] || p).join(", ") || inventory.provider)} · ${inventory.mapped_count} mapped to vehicles · distances stored daily (hourly capture + 23:30 final). <button type="button" class="linklike" data-tracker-pull>Pull today now</button>`;
+      // Group the inventory by provider so Car Tracker vs Tankvolt is obvious.
+      // Every configured provider gets a heading even with zero devices, so an
+      // empty Tankvolt list explains itself instead of just being absent.
+      const deviceRow = (device) => `
         <article class="policy-row">
-          <div><strong>${escapeHtml(device.name)}</strong><small>Device ${escapeHtml(device.device_id)}${device.group ? ` · ${escapeHtml(device.group)}` : ""}</small></div>
+          <div><strong>${escapeHtml(device.name)}</strong><small>Device ${escapeHtml(device.device_id)}${device.group ? ` · folder: ${escapeHtml(device.group)}` : ""}</small></div>
           <div>${device.vehicle_id
             ? `<strong>${escapeHtml(device.vehicle_plate)}</strong><small>mapped by ${escapeHtml(String(device.matched_by).replaceAll("_", " "))}</small>`
             : `<strong>Unmapped</strong><small>Set the device ID on a vehicle, or rename the device to include the plate</small>`}
           <span class="pill ${device.vehicle_id ? "" : "open"}">${device.vehicle_id ? "mapped" : "unmapped"}</span></div>
-        </article>`).join("") || `<div class="empty">The tracker account returned no devices.</div>`;
+        </article>`;
+      const emptyFor = (provider) => provider === "tankvolt"
+        ? `<div class="empty">No Tankvolt bikes registered yet. Add each bike under Vehicles with its VIN — Tankvolt has no device directory, so the roster is the only source.</div>`
+        : `<div class="empty">The ${escapeHtml(TRACKER_LABEL[provider] || provider)} account returned no devices.</div>`;
+      const providers = (inventory.providers && inventory.providers.length)
+        ? inventory.providers
+        : [...new Set(inventory.devices.map((device) => device.provider))];
+      trackerList.innerHTML = providers.map((provider) => {
+        const rows = inventory.devices.filter((device) => device.provider === provider);
+        return `<p class="tracker-provider">${escapeHtml(TRACKER_LABEL[provider] || provider)}</p>`
+          + (rows.length ? rows.map(deviceRow).join("") : emptyFor(provider));
+      }).join("") || `<div class="empty">No tracker providers are configured.</div>`;
     }
   }
 
