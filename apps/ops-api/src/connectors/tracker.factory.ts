@@ -3,6 +3,7 @@ import { FixtureTrackerConnector } from "./fixture-tracker.connector.js";
 import { OrbitConnector } from "./orbit.connector.js";
 import { TankvoltConnector } from "./tankvolt.connector.js";
 import type { TrackerConnector } from "./tracker.types.js";
+import { integrationsMode, integrationVar } from "../integration-env.js";
 
 // Orbit's Supabase project URL, as shipped in the portal frontend
 // (orbitconnect.ng, read 18 Sep 2026). Overridable if Orbit issues a new
@@ -21,33 +22,40 @@ const ORBIT_DEFAULT_URL = "https://kwpjggqnjycyylwzbcot.supabase.co";
 // configured" honestly instead of inventing data.
 // Adding a vendor = one connector class + one branch here.
 
+// Tankvolt's confirmed TEST host (working 30 Sep 2026): the partner test API
+// answers at devweb.tankvolt.net/iot-service/api/* with the static api-key
+// header. It is used ONLY in test mode — production must set an explicit host.
+const TANKVOLT_TEST_HOST = "https://devweb.tankvolt.net";
+
 export function createTrackerConnectors(env: NodeJS.ProcessEnv = process.env): TrackerConnector[] {
   if (env.TRACKER_FIXTURE_FILE) return [new FixtureTrackerConnector(env.TRACKER_FIXTURE_FILE)];
+  const mode = integrationsMode(env);
+  const v = (name: string) => integrationVar(env, name);
   const connectors: TrackerConnector[] = [];
-  if (env.CARTRACKER_EMAIL && env.CARTRACKER_PASSWORD) {
+  if (v("CARTRACKER_EMAIL") && v("CARTRACKER_PASSWORD")) {
     connectors.push(new CartrackerConnector({
-      baseUrl: env.CARTRACKER_API_BASE || "https://app.cartracker.com.ng/api",
-      email: env.CARTRACKER_EMAIL,
-      password: env.CARTRACKER_PASSWORD
+      baseUrl: v("CARTRACKER_API_BASE") || "https://app.cartracker.com.ng/api",
+      email: v("CARTRACKER_EMAIL")!,
+      password: v("CARTRACKER_PASSWORD")!
     }));
   }
-  if (env.TANKVOLT_API_KEY) {
-    // Confirmed working 30 Sep 2026: the partner test API answers at
-    // devweb.tankvolt.net/iot-service/api/* with the static api-key header
-    // (query-vehicle-gps returned code:0 with GPS data once Tankvolt enabled
-    // the partner attribute on our key). Production will hand over a different
-    // host — set TANKVOLT_API_BASE then; only the key is otherwise mandatory.
-    connectors.push(new TankvoltConnector({
-      baseUrl: (env.TANKVOLT_API_BASE || "https://devweb.tankvolt.net").replace(/\/$/, ""),
-      apiKey: env.TANKVOLT_API_KEY
-    }));
+  if (v("TANKVOLT_API_KEY")) {
+    // The test host is assumed only in test mode; in production the host must be
+    // set explicitly (TANKVOLT_PROD_API_BASE / TANKVOLT_API_BASE), so a prod key
+    // can never silently talk to the Tankvolt test environment.
+    const baseUrl = v("TANKVOLT_API_BASE") || (mode === "test" ? TANKVOLT_TEST_HOST : undefined);
+    if (!baseUrl) {
+      console.warn("[integrations] TANKVOLT_API_KEY is set for production but no TANKVOLT_PROD_API_BASE/TANKVOLT_API_BASE — Tankvolt disabled until a production host is provided.");
+    } else {
+      connectors.push(new TankvoltConnector({ baseUrl: baseUrl.replace(/\/$/, ""), apiKey: v("TANKVOLT_API_KEY")! }));
+    }
   }
-  if (env.ORBIT_EMAIL && env.ORBIT_PASSWORD && env.ORBIT_SUPABASE_ANON_KEY) {
+  if (v("ORBIT_EMAIL") && v("ORBIT_PASSWORD") && v("ORBIT_SUPABASE_ANON_KEY")) {
     connectors.push(new OrbitConnector({
-      supabaseUrl: (env.ORBIT_SUPABASE_URL || ORBIT_DEFAULT_URL).replace(/\/$/, ""),
-      anonKey: env.ORBIT_SUPABASE_ANON_KEY,
-      email: env.ORBIT_EMAIL,
-      password: env.ORBIT_PASSWORD
+      supabaseUrl: (v("ORBIT_SUPABASE_URL") || ORBIT_DEFAULT_URL).replace(/\/$/, ""),
+      anonKey: v("ORBIT_SUPABASE_ANON_KEY")!,
+      email: v("ORBIT_EMAIL")!,
+      password: v("ORBIT_PASSWORD")!
     }));
   }
   return connectors;

@@ -5,6 +5,7 @@ import { DatabaseService } from "./database.service.js";
 import { OpsService } from "./ops.service.js";
 import { parseDeliveryExport } from "./xlsx-lite.js";
 import { SpeedafConnector, speedafConfigFromEnv } from "./connectors/speedaf.connector.js";
+import { integrationVar } from "./integration-env.js";
 
 type RecordBody = Record<string, unknown>;
 
@@ -439,7 +440,8 @@ export class DeliveriesImportService {
   }
 
   private async speedafCustomerId(): Promise<string | null> {
-    if (process.env.SPEEDAF_CUSTOMER_ID) return process.env.SPEEDAF_CUSTOMER_ID;
+    const envCustomerId = integrationVar(process.env, "SPEEDAF_CUSTOMER_ID");
+    if (envCustomerId) return envCustomerId;
     const row = await this.db.one<any>(
       "SELECT delivery_customer_id FROM ops_delivery_customers WHERE LOWER(name) LIKE '%speedaf%' AND status='active' ORDER BY created_at ASC LIMIT 1"
     );

@@ -1,4 +1,5 @@
 import { parseDeliveryExport, type ParsedDeliveryRow } from "../xlsx-lite.js";
+import { integrationVar } from "../integration-env.js";
 
 // Speedaf has no API, so the "connector" drives their portal headlessly:
 // log in, run the Delivery Waybill export for today, download it from the
@@ -26,12 +27,13 @@ const EXPORT_COLUMNS = [
 ];
 
 export function speedafConfigFromEnv(env = process.env): SpeedafConfig | null {
-  if (!env.SPEEDAF_ACCOUNT || !env.SPEEDAF_PASSWORD) return null;
+  const v = (name: string) => integrationVar(env, name);
+  if (!v("SPEEDAF_ACCOUNT") || !v("SPEEDAF_PASSWORD")) return null;
   return {
-    baseUrl: (env.SPEEDAF_BASE_URL || "https://ope.speedaf.com").replace(/\/$/, ""),
-    account: env.SPEEDAF_ACCOUNT,
-    password: env.SPEEDAF_PASSWORD,
-    channel: env.SPEEDAF_CHANNEL || "Default"
+    baseUrl: (v("SPEEDAF_BASE_URL") || "https://ope.speedaf.com").replace(/\/$/, ""),
+    account: v("SPEEDAF_ACCOUNT")!,
+    password: v("SPEEDAF_PASSWORD")!,
+    channel: v("SPEEDAF_CHANNEL") || "Default"
   };
 }
 

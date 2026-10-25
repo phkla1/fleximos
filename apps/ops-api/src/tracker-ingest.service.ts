@@ -4,6 +4,7 @@ import { DatabaseService } from "./database.service.js";
 import { OpsService } from "./ops.service.js";
 import { createTrackerConnectors } from "./connectors/tracker.factory.js";
 import type { TrackerConnector, TrackerDevice } from "./connectors/tracker.types.js";
+import { integrationsMode } from "./integration-env.js";
 
 // Captures tracker distances into ops_tracker_daily_records EVERY DAY.
 // The vendors cannot be trusted to serve past days at all (users cannot
@@ -147,6 +148,7 @@ export class TrackerIngestService {
       // vehicles can be listed without one, so the console renders whenever there
       // are devices, and uses this only for the "pull" affordance / wording.
       configured: connectors.length > 0,
+      environment: integrationsMode(),
       provider: providers.join(" + ") || null,
       providers,
       connected_providers: connectors.map((connector) => connector.provider),

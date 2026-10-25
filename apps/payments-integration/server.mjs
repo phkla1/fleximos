@@ -8,9 +8,25 @@ const port = Number(process.env.PORT || 4040);
 const serviceToken = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
 const opsBase = process.env.OPS_API_BASE || "http://127.0.0.1:4030";
 const foundationBase = process.env.FOUNDATION_API_BASE || "http://127.0.0.1:4010";
-const providerMode = process.env.MONNIFY_PROVIDER_MODE || "simulated";
-const monnifyBase = process.env.MONNIFY_BASE_URL || "https://sandbox.monnify.com";
-const webhookSecret = process.env.MONNIFY_WEBHOOK_SECRET || process.env.MONNIFY_SECRET_KEY || "flexi-monnify-sandbox-secret";
+// One switch picks test vs real credentials for every integration (see
+// apps/ops-api/src/integration-env.ts). Resolve MONNIFY_* via the active mode:
+// prefer MONNIFY_PROD_*/MONNIFY_TEST_*, else the bare MONNIFY_* value.
+const integrationsMode = ["production", "prod", "live"].includes(String(process.env.FLEXI_INTEGRATIONS_ENV || "test").toLowerCase())
+  ? "production" : "test";
+const integrationVar = (name) => {
+  const prefix = integrationsMode === "production" ? "PROD" : "TEST";
+  const u = name.indexOf("_");
+  const scoped = u === -1 ? `${name}_${prefix}` : `${name.slice(0, u)}_${prefix}${name.slice(u)}`;
+  const s = process.env[scoped];
+  if (s !== undefined && s !== "") return s;
+  const bare = process.env[name];
+  return bare !== undefined && bare !== "" ? bare : undefined;
+};
+const providerMode = integrationVar("MONNIFY_PROVIDER_MODE") || "simulated";
+// The sandbox host is assumed only in test mode; production must set the host
+// explicitly so a live key can never silently hit the Monnify sandbox.
+const monnifyBase = integrationVar("MONNIFY_BASE_URL") || (integrationsMode === "test" ? "https://sandbox.monnify.com" : "");
+const webhookSecret = integrationVar("MONNIFY_WEBHOOK_SECRET") || integrationVar("MONNIFY_SECRET_KEY") || "flexi-monnify-sandbox-secret";
 // Backend selection mirrors the other services: PostgreSQL URL wins,
 // PGlite serves local dev/tests. Parsers/param encoding keep them identical.
 pg.types.setTypeParser(1082, (value) => value);
@@ -278,8 +294,8 @@ async function opsRequest(path, method, body, idempotencyKey) {
 }
 
 async function monnifyAccessToken() {
-  const apiKey = process.env.MONNIFY_API_KEY;
-  const secretKey = process.env.MONNIFY_SECRET_KEY;
+  const apiKey = integrationVar("MONNIFY_API_KEY");
+  const secretKey = integrationVar("MONNIFY_SECRET_KEY");
   if (!apiKey || !secretKey) throw new Error("Monnify credentials are not configured.");
   const response = await fetch(`${monnifyBase}/api/v1/auth/login`, {
     method: "POST",
@@ -315,7 +331,7 @@ async function providerReservedAccount(operatorId, body) {
       accountReference,
       accountName: body.customer_name,
       currencyCode: "NGN",
-      contractCode: process.env.MONNIFY_CONTRACT_CODE,
+      contractCode: integrationVar("MONNIFY_CONTRACT_CODE"),
       customerEmail: body.customer_email,
       customerName: body.customer_name
     }),
@@ -698,7 +714,7 @@ async function routes(req, res) {
       service: "payments-integration",
       provider: "monnify",
       provider_mode: providerMode,
-      monnify_configured: providerMode === "simulated" || Boolean(process.env.MONNIFY_API_KEY && process.env.MONNIFY_SECRET_KEY && process.env.MONNIFY_CONTRACT_CODE),
+      monnify_configured: providerMode === "simulated" || Boolean(integrationVar("MONNIFY_API_KEY") && integrationVar("MONNIFY_SECRET_KEY") && integrationVar("MONNIFY_CONTRACT_CODE")),
       last_webhook_at: lastWebhook,
       counts
     });

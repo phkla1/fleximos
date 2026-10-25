@@ -617,7 +617,10 @@ function render() {
       const pullAffordance = connected.length
         ? `distances stored daily (hourly capture + 23:30 final). <button type="button" class="linklike" data-tracker-pull>Pull today now</button>`
         : `no live connector configured — mappings are shown from the roster, but no GPS can be pulled until a tracker key is set on the server.`;
-      trackerSummary.innerHTML = `${inventory.device_count} device${inventory.device_count === 1 ? "" : "s"} across ${escapeHtml((inventory.providers || []).map((p) => TRACKER_LABEL[p] || p).join(", ") || "—")} · ${inventory.mapped_count} mapped to vehicles · ${pullAffordance}`;
+      // Make the active credential environment unmistakable.
+      const env = inventory.environment === "production" ? "PRODUCTION" : "TEST";
+      const envBadge = `<span class="pill ${inventory.environment === "production" ? "" : "open"}" title="Integration credentials in use (FLEXI_INTEGRATIONS_ENV)">${env} credentials</span> `;
+      trackerSummary.innerHTML = `${envBadge}${inventory.device_count} device${inventory.device_count === 1 ? "" : "s"} across ${escapeHtml((inventory.providers || []).map((p) => TRACKER_LABEL[p] || p).join(", ") || "—")} · ${inventory.mapped_count} mapped to vehicles · ${pullAffordance}`;
       // Group the inventory by provider so Car Tracker vs Tankvolt is obvious.
       // Every provider that is either configured OR has registered vehicles gets a
       // heading (even with zero devices) so an empty list explains itself.

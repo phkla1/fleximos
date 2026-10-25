@@ -50,7 +50,33 @@ Layout on the server:
 FlexiMOS stores tracker distances in its own database every day — the
 vendor portal cannot be relied on to show past days, so the suite is the
 system of record. To activate the connector, append to
-`~/fleximos-data/fleximos.env` (chmod 600 keeps it private):
+`~/fleximos-data/fleximos.env` (chmod 600 keeps it private).
+
+#### Test vs real credentials (one switch)
+
+One flag selects which credentials every integration (trackers, Speedaf,
+Monnify) uses:
+
+```bash
+FLEXI_INTEGRATIONS_ENV=test          # test (default) | production
+```
+
+For each integration variable `FOO_BAR`, the resolver prefers the mode-specific
+`FOO_TEST_BAR` / `FOO_PROD_BAR` and otherwise falls back to the bare `FOO_BAR`.
+So you can:
+
+- keep a **single bare value** (it is used in whatever mode is active — fine for
+  one environment), or
+- hold **both at once** by setting `*_TEST_*` and `*_PROD_*`, then switch the
+  whole suite by flipping `FLEXI_INTEGRATIONS_ENV`. You never re-enter a value you
+  already have; going live means adding only the `*_PROD_*` values that differ.
+
+Safety: the Tankvolt test host and the Monnify sandbox host are assumed **only**
+in test mode. In production mode the host must be set explicitly
+(`TANKVOLT_PROD_API_BASE`/`TANKVOLT_API_BASE`, `MONNIFY_PROD_BASE_URL`/`MONNIFY_BASE_URL`)
+or the connector stays off — a production key can never silently hit a test host.
+The ops-admin **Trackers** screen shows a `TEST credentials` / `PRODUCTION
+credentials` badge so the active environment is never ambiguous.
 
 ```bash
 CARTRACKER_EMAIL=<account email>
@@ -62,8 +88,13 @@ For the Tankvolt EV bikes (key is assigned by Tankvolt per partner; GPS query
 needs the partner attribute enabled on the key — confirmed working 30 Sep 2026):
 
 ```bash
-TANKVOLT_API_KEY=<key assigned by Tankvolt>
-# TANKVOLT_API_BASE=https://devweb.tankvolt.net   # confirmed TEST host; set the prod host here when Tankvolt provides it
+# Test (UAT) — the test host is the default in test mode, so the key alone is enough:
+TANKVOLT_API_KEY=<test key assigned by Tankvolt>
+# TANKVOLT_TEST_API_BASE=https://devweb.tankvolt.net   # the default in test mode
+
+# Production (at go-live) — add these and set FLEXI_INTEGRATIONS_ENV=production:
+# TANKVOLT_PROD_API_KEY=<production key>
+# TANKVOLT_PROD_API_BASE=<production host Tankvolt provides>
 ```
 
 Tankvolt has no device list, so each bike must be **registered as a vehicle

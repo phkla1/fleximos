@@ -785,6 +785,8 @@ test.describe("Ops admin console", () => {
     await page.locator('.rail nav a[href="#trackers"]').click();
     await expect(page.getByRole("heading", { name: "Trackers" })).toBeVisible();
     await expect(page.locator("#trackerSummary")).toContainText("mapped to vehicles");
+    // The active credential environment is badged (tests run with the default).
+    await expect(page.locator("#trackerSummary")).toContainText("TEST credentials");
     // Devices are grouped under a provider heading, and the folder is relabelled.
     await expect(page.locator("#trackerDeviceList .tracker-provider").first()).toBeVisible();
     await expect(page.locator("#trackerDeviceList")).toContainText("QLINK FLEXI-001");
