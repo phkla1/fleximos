@@ -156,6 +156,11 @@ function nameForSite(id) {
   return state.sites.find((site) => site.site_id === id)?.name || id;
 }
 
+// The active operator currently holding a vehicle (the one-holder guard keeps this to one).
+function operatorForVehicle(vehicleId) {
+  return state.operators.find((operator) => operator.vehicle_id === vehicleId && operator.operator_status === "active") || null;
+}
+
 function optionHtml(items, valueKey, labelKey, selected = "", empty = "") {
   const blank = empty ? `<option value="">${empty}</option>` : "";
   return blank + items.map((item) =>
@@ -522,6 +527,12 @@ function render() {
       <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
       <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
       <div><span class="row-label">Amoeba</span><strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong><small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>
+      <div><span class="row-label">Operator</span>${(() => {
+        const holder = operatorForVehicle(vehicle.vehicle_id);
+        return holder
+          ? `<strong>${escapeHtml(nameForPerson(holder.person_id))}</strong><small>${escapeHtml(nameForSite(holder.site_id) || nameForAmoeba(holder.amoeba_id))}</small>`
+          : `<strong class="muted">Unassigned</strong>`;
+      })()}</div>
       <div><span class="row-label">Tracker</span>${(() => {
         const t = vehicleTracking(vehicle);
         const head = vehicle.tracker_provider || vehicle.tracker_device_id

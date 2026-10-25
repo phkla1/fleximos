@@ -183,6 +183,9 @@ textarea { resize: vertical; }
 .alert-detail-row small { margin-top: 4px; color: var(--muted); }
 .data-row, .alert-row { display: grid; align-items: center; gap: 12px; padding: 14px 15px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-soft); }
 .data-row { grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto; }
+/* Fleet rows carry an extra Operator column (who holds the vehicle). */
+#vehicleList .data-row { grid-template-columns: minmax(170px, 1.4fr) repeat(4, minmax(115px, 1fr)) auto; }
+.data-row strong.muted { color: var(--muted); font-weight: 600; }
 .alert-row { grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(120px, 1fr)) auto; border-left: 4px solid var(--amber); }
 .alert-row.tier-2, .alert-row.tier-3 { border-left-color: var(--red); }
 .data-row strong, .alert-row strong { display: block; }
@@ -242,6 +245,7 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
   .team-board { grid-template-columns: 1fr; }
   .entry-form { grid-template-columns: 1fr 1fr; }
   .data-row, .alert-row { grid-template-columns: 1fr 1fr; }
+  #vehicleList .data-row { grid-template-columns: 1fr 1fr; }
   .job-row { grid-template-columns: 1fr 1fr; }
   .report-row { grid-template-columns: 1fr 1fr; }
   .row-actions { grid-column: 1 / -1; }
@@ -261,6 +265,7 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
   .overview-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .overview-band button { width: 100%; }
   .metrics, .entry-form, .data-row, .alert-row { grid-template-columns: 1fr; }
+  #vehicleList .data-row { grid-template-columns: 1fr; }
   .job-row { grid-template-columns: 1fr; }
   .report-row { grid-template-columns: 1fr; }
   .report-actions { display: grid; width: 100%; }

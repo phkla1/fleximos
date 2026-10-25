@@ -402,6 +402,8 @@ test.describe("Ops admin console", () => {
     await page.locator("#vehicleAmoebaFilter").selectOption({ index: 1 });
     expect(await page.locator("#vehicleList .data-row").count()).toBeGreaterThan(0);
     await expect(page.locator("#vehicleFilterSummary")).toContainText("matching active");
+    // Each fleet row shows who holds the vehicle, or "Unassigned".
+    await expect(page.locator("#vehicleList .data-row").first()).toContainText("Operator");
 
     await page.locator("#vehicleSearch").fill("NO-MATCHING-PLATE");
     await expect(page.locator("#vehicleList")).toContainText("No vehicles match this scope");
