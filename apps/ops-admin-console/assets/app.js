@@ -15,6 +15,7 @@ const state = {
   economicsPolicies: [],
   efficiencyPolicies: [],
   trackerInventory: null,
+  integrationStatus: [],
   vehiclePositions: { positions: [], no_feed: [] },
   scheduledJobs: [],
   scheduledJobRuns: [],
@@ -635,10 +636,21 @@ function render() {
       const emptyFor = (provider) => provider === "tankvolt"
         ? `<div class="empty">No Tankvolt bikes registered yet. Add each bike under Vehicles with its VIN — Tankvolt has no device directory, so the roster is the only source.</div>`
         : `<div class="empty">The ${escapeHtml(TRACKER_LABEL[provider] || provider)} account returned no devices.</div>`;
+      // Connector health per provider, so "did the pull work?" is answerable here.
+      const HEALTH = { ok: "🟢", degraded: "🟡", down: "🔴", not_configured: "⚪" };
+      const healthFor = (provider) => {
+        const row = (state.integrationStatus || []).find((item) => item.key === `tracker:${provider}`);
+        if (!row) return "";
+        const when = row.last_checked_at ? ` · checked ${new Date(row.last_checked_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}` : "";
+        const lastOk = row.status !== "ok" && row.last_ok_at
+          ? ` · last ok ${new Date(row.last_ok_at).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "";
+        return `<p class="tracker-health status-${escapeHtml(row.status)}">${HEALTH[row.status] || "⚪"} ${escapeHtml(String(row.status).replace("_", " "))} — ${escapeHtml(row.detail || "")}${when}${lastOk}</p>`;
+      };
       const headingProviders = [...new Set([...connected, ...devices.map((device) => device.provider)])];
       trackerList.innerHTML = headingProviders.map((provider) => {
         const rows = devices.filter((device) => device.provider === provider);
         return `<p class="tracker-provider">${escapeHtml(TRACKER_LABEL[provider] || provider)}</p>`
+          + healthFor(provider)
           + (rows.length ? rows.map(deviceRow).join("") : emptyFor(provider));
       }).join("") || `<div class="empty">No tracker providers are configured.</div>`;
     }
@@ -1044,7 +1056,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
@@ -1053,7 +1065,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/onboarding/ramp-profiles").catch(() => ({ data: [] })),
     ops("/ops/v1/onboarding/cohorts").catch(() => ({ data: [] })),
     ops("/ops/v1/supervisor-onboardings").catch(() => ({ data: [] })),
-    ops("/ops/v1/accommodation").catch(() => ({ data: [] }))
+    ops("/ops/v1/accommodation").catch(() => ({ data: [] })),
+    ops("/ops/v1/integration-status").catch(() => ({ integrations: [] }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
@@ -1097,6 +1110,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     economicsPolicies: economicsPolicies.data,
     efficiencyPolicies: efficiencyPolicies.data,
     trackerInventory,
+    integrationStatus: (integrationStatus?.integrations || []).filter((row) => row.category === "tracker"),
     vehiclePositions: vehiclePositions || { positions: [], no_feed: [] },
     scheduledJobs: scheduledJobs.data,
     scheduledJobRuns: scheduledJobRuns.data,

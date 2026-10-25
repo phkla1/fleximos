@@ -789,6 +789,8 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#trackerSummary")).toContainText("TEST credentials");
     // Devices are grouped under a provider heading, and the folder is relabelled.
     await expect(page.locator("#trackerDeviceList .tracker-provider").first()).toBeVisible();
+    // Connector health is shown per provider (answerable here, no hop to the Supervisor app).
+    await expect(page.locator("#trackerDeviceList .tracker-health").first()).toBeVisible();
     await expect(page.locator("#trackerDeviceList")).toContainText("QLINK FLEXI-001");
     await expect(page.locator("#trackerDeviceList")).toContainText("folder: Qutes");
     // The tracker panel is gone from Targets & policy.
