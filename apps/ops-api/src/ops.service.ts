@@ -369,6 +369,12 @@ export class OpsService {
   // saved). Operators leaving active status don't contend for the vehicle.
   private async assertVehicleAssignable(vehicleId: string | null, operatorId: string | null) {
     if (!vehicleId) return;
+    // A warehouse (unassigned) vehicle has no amoeba and cannot be given to an
+    // operator until it has been allocated to one.
+    const vehicle: any = await this.db.one("SELECT amoeba_id FROM ops_vehicles WHERE vehicle_id = $1", [vehicleId]);
+    if (vehicle && !vehicle.amoeba_id) {
+      throw new ConflictException("That vehicle is unassigned (in the warehouse). Allocate it to an amoeba before assigning it to an operator.");
+    }
     const holder: any = operatorId
       ? await this.db.one("SELECT operator_id FROM ops_operators WHERE vehicle_id = $1 AND operator_status = 'active' AND operator_id <> $2", [vehicleId, operatorId])
       : await this.db.one("SELECT operator_id FROM ops_operators WHERE vehicle_id = $1 AND operator_status = 'active'", [vehicleId]);
@@ -992,9 +998,11 @@ export class OpsService {
   }
 
   async createVehicle(body: RecordBody) {
-    for (const field of ["plate", "vehicle_type", "amoeba_id"]) {
+    for (const field of ["plate", "vehicle_type"]) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);
     }
+    // amoeba_id is optional: a vehicle can be registered into the warehouse
+    // (unassigned) and allocated to an amoeba later.
     if (await this.db.one("SELECT vehicle_id FROM ops_vehicles WHERE lower(plate) = lower($1)", [body.plate])) {
       throw new ConflictException("Vehicle plate already exists.");
     }
@@ -1003,7 +1011,7 @@ export class OpsService {
       vehicle_id: this.id("vehicle"),
       plate: String(body.plate).toUpperCase(),
       vehicle_type: body.vehicle_type,
-      amoeba_id: body.amoeba_id,
+      amoeba_id: body.amoeba_id || null,
       make_model: body.make_model || null,
       color: body.color || null,
       status: body.status || "active",
@@ -1030,6 +1038,14 @@ export class OpsService {
     const allowed = ["plate", "vehicle_type", "amoeba_id", "make_model", "color", "status", "assigned_operator_id", "tracker_device_id", "tracker_provider"];
     const updated = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
+    updated.amoeba_id = updated.amoeba_id || null;
+    // Returning a vehicle to the warehouse (clearing its amoeba) is blocked while
+    // an active operator still holds it — unassign the operator first.
+    if (current.amoeba_id && !updated.amoeba_id) {
+      const holder: any = await this.db.one(
+        "SELECT operator_id FROM ops_operators WHERE vehicle_id = $1 AND operator_status = 'active'", [vehicleId]);
+      if (holder) throw new ConflictException("Unassign this vehicle from its operator before returning it to the warehouse.");
+    }
     updated.updated_at = this.now();
     await this.db.exec(
       `UPDATE ops_vehicles SET plate = $2, vehicle_type = $3, amoeba_id = $4,

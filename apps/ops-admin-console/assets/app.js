@@ -196,7 +196,8 @@ function renderOptions() {
     : `<option value="" disabled selected>No eligible people — grant the Operator role in the Identity console</option>`;
 
   el.operatorForm.elements.amoeba_id.innerHTML = amoebas;
-  el.vehicleForm.elements.amoeba_id.innerHTML = amoebas;
+  // A vehicle may be registered into the warehouse first and allocated later.
+  el.vehicleForm.elements.amoeba_id.innerHTML = `<option value="">Unassigned (warehouse)</option>${amoebas}`;
   el.reportForm.elements.amoeba_id.innerHTML = `<option value="">Whole company</option>${amoebas}`;
   el.ingestionForm.elements.operator_id.innerHTML = operatorOptions(state.operators);
   updateSiteOptions();
@@ -276,8 +277,8 @@ function updateVehicleFilters() {
   const previousAmoeba = el.vehicleAmoebaFilter.value;
   el.vehicleAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
-  ).join("") + `<option value="__all">All operating units</option>`;
-  if (previousAmoeba === "__all" || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.vehicleAmoebaFilter.value = previousAmoeba;
+  ).join("") + `<option value="__unassigned">Unassigned (warehouse)</option><option value="__all">All operating units</option>`;
+  if (["__all", "__unassigned"].includes(previousAmoeba) || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.vehicleAmoebaFilter.value = previousAmoeba;
 }
 
 function updateOperatorFilters() {
@@ -515,7 +516,8 @@ function render() {
   const hasVehicleScope = Boolean(selectedVehicleAmoeba || vehicleQuery);
   const currentVehicles = hasVehicleScope ? state.vehicles.filter((vehicle) => {
     if (vehicle.status !== "active") return false;
-    if (selectedVehicleAmoeba && selectedVehicleAmoeba !== "__all" && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
+    if (selectedVehicleAmoeba === "__unassigned") { if (vehicle.amoeba_id) return false; }
+    else if (selectedVehicleAmoeba && selectedVehicleAmoeba !== "__all" && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
     if (vehicleQuery && !`${vehicle.plate} ${vehicle.make_model || ""}`.toLowerCase().includes(vehicleQuery)) return false;
     return true;
   }) : [];
@@ -526,7 +528,9 @@ function render() {
     <article class="data-row">
       <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
       <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
-      <div><span class="row-label">Amoeba</span><strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong><small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>
+      <div><span class="row-label">Amoeba</span>${vehicle.amoeba_id
+        ? `<strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong>`
+        : `<strong class="muted">Unassigned (warehouse)</strong>`}<small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>
       <div><span class="row-label">Operator</span>${(() => {
         const holder = operatorForVehicle(vehicle.vehicle_id);
         return holder

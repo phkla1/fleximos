@@ -7,17 +7,25 @@
 //   set -a; source ~/fleximos-data/fleximos.env; set +a
 //   node scripts/import-tankvolt-fleet.mjs [--amoeba amoeba_mainland]
 //
+// --amoeba is OPTIONAL. Omit it and the bikes import UNASSIGNED (held in the
+// warehouse); allocate them to an amoeba later from the roster/fleet screen.
+// Pass --amoeba <id> only if these bikes are already allocated to one unit.
+//
 // Notes from the sheet:
 // - Bike 1 (VIN ...000836) is NOT on site and has no plate yet — imported
 //   with a placeholder plate and status "inactive" until it arrives.
 // - The 11th bike (VIN ...000832) is NOT in Tankvolt's system and is
 //   deliberately excluded, as are the Orbit and Qlink PMS bikes (owner
 //   decision, 18 Sep 2026: import those later).
+// - Batteries are independent of bikes (owner decision, 25 Oct 2026): the
+//   battery/charger serials below are reference only and are never imported
+//   or linked to a vehicle.
 
 const opsBase = process.env.OPS_API_BASE || "http://127.0.0.1:4030";
 const token = process.env.FLEXI_SERVICE_TOKEN || "flexi-dev-service-token";
 const amoebaArgIndex = process.argv.indexOf("--amoeba");
-const amoebaId = amoebaArgIndex > -1 ? process.argv[amoebaArgIndex + 1] : "amoeba_mainland";
+// No --amoeba => import into the warehouse (unassigned).
+const amoebaId = amoebaArgIndex > -1 ? process.argv[amoebaArgIndex + 1] : null;
 
 const FLEET = [
   { vin: "LB7KP2101TF000836", motor: "260130H0126", battery: "BT207205015HYCY260225146", charger: "22016050001", plate: "TVT-000836", status: "inactive", note: "not on site yet" },
@@ -54,12 +62,14 @@ for (const bike of FLEET) {
   const payload = {
     plate: bike.plate,
     vehicle_type: "motorbike",
-    amoeba_id: amoebaId,
     make_model: "Tankvolt T22 (EV)",
     status: bike.status,
     tracker_device_id: bike.vin,
     tracker_provider: "tankvolt"
   };
+  // Only set an amoeba when one was given; otherwise the bike stays in the
+  // warehouse (unassigned) until allocated.
+  if (amoebaId) payload.amoeba_id = amoebaId;
   const current = byPlate.get(bike.plate.toUpperCase());
   if (current) {
     await request(`/ops/v1/vehicles/${current.vehicle_id}`, {
@@ -78,5 +88,5 @@ for (const bike of FLEET) {
   }
   console.log(`✓ ${bike.plate} — VIN ${bike.vin}${bike.note ? ` (${bike.note})` : ""}`);
 }
-console.log(`Tankvolt fleet import complete: ${created} created, ${updated} updated (amoeba ${amoebaId}).`);
+console.log(`Tankvolt fleet import complete: ${created} created, ${updated} updated (${amoebaId ? `amoeba ${amoebaId}` : "unassigned / warehouse"}).`);
 console.log("Battery/charger serials stay on the sheet; live battery IDs arrive with each GPS capture.");

@@ -793,4 +793,26 @@ test.describe("Ops admin console", () => {
     await page.locator('.rail nav a[href="#controls"]').click();
     await expect(page.getByRole("heading", { name: "Vehicle trackers" })).toHaveCount(0);
   });
+
+  test("registers a vehicle into the warehouse (no amoeba) and filters for it", async ({ page }) => {
+    await page.goto(`${url}#vehicles`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Manage fleet assets", { exact: true }).click();
+
+    const plate = `WARE${String(Date.now()).slice(-5)}`;
+    // The amoeba picker offers "Unassigned (warehouse)" and it is the default.
+    await expect(page.locator('#vehicleForm select[name="amoeba_id"] option[value=""]')).toHaveText("Unassigned (warehouse)");
+    await page.locator('#vehicleForm input[name="plate"]').fill(plate);
+    await page.locator('#vehicleForm select[name="vehicle_type"]').selectOption("motorbike");
+    await page.locator('#vehicleForm select[name="amoeba_id"]').selectOption("");
+    await page.locator("#vehicleForm").getByRole("button", { name: "Add vehicle" }).click();
+    await expect(page.locator("#notice")).toContainText("Vehicle added");
+
+    // The "Unassigned (warehouse)" fleet filter surfaces it, and the row says so.
+    await page.locator("#vehicleAmoebaFilter").selectOption("__unassigned");
+    const row = page.locator("#vehicleList .data-row").filter({ hasText: plate });
+    await expect(row).toContainText("Unassigned (warehouse)");
+    // A warehouse bike holds no operator.
+    await expect(row).toContainText("Unassigned");
+  });
 });

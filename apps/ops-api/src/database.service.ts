@@ -117,6 +117,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_device_id TEXT;
       ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_provider TEXT;
+      -- A vehicle may be bought and held in the warehouse before it is allocated
+      -- to an amoeba, so amoeba_id is optional (NULL = unassigned/warehouse).
+      ALTER TABLE ops_vehicles ALTER COLUMN amoeba_id DROP NOT NULL;
 
       CREATE TABLE IF NOT EXISTS ops_integration_health (
         integration_key TEXT PRIMARY KEY,

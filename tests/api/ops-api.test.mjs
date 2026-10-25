@@ -2003,3 +2003,65 @@ test("company accommodation: site beds, hard block, and freeing on deactivation"
   });
   assert.equal(nowFits.response.status, 200, "the reopened bed accepts a new rider");
 });
+
+test("vehicles import unassigned (warehouse) and can't be given to an operator until allocated", async () => {
+  // A person + operator to receive the bike.
+  const person = await fetch(`${foundationBaseUrl}/identity/v1/people`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": "warehouse-person-1" },
+    body: JSON.stringify({ display_name: "Warehouse Rider", phone: "+2347000000091" })
+  }).then((r) => r.json());
+  await fetch(`${foundationBaseUrl}/identity/v1/users`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": "warehouse-user-1" },
+    body: JSON.stringify({ person_id: person.person_id, roles: ["operator"], status: "active" })
+  });
+  const operator = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "warehouse-operator-1" },
+    body: JSON.stringify({ person_id: person.person_id, operator_type: "rider", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1" })
+  });
+  assert.equal(operator.response.status, 201);
+
+  // Import into the warehouse: no amoeba supplied.
+  const bike = await request("/ops/v1/vehicles", {
+    method: "POST",
+    headers: { "Idempotency-Key": "warehouse-bike-1" },
+    body: JSON.stringify({ plate: "WARE001", vehicle_type: "motorbike", tracker_provider: "tankvolt", tracker_device_id: "LB7KP2104TF088888" })
+  });
+  assert.equal(bike.response.status, 201);
+  assert.equal(bike.body.amoeba_id, null, "the bike is unassigned / in the warehouse");
+
+  // It cannot be handed to an operator while unassigned.
+  const blocked = await request(`/ops/v1/operators/${operator.body.operator_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "warehouse-assign-blocked" },
+    body: JSON.stringify({ vehicle_id: bike.body.vehicle_id })
+  });
+  assert.equal(blocked.response.status, 409, "assigning an amoeba-less bike is blocked");
+
+  // Allocate it to an amoeba, then the same assignment succeeds.
+  const allocate = await request(`/ops/v1/vehicles/${bike.body.vehicle_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "warehouse-allocate" },
+    body: JSON.stringify({ amoeba_id: "amoeba_mainland" })
+  });
+  assert.equal(allocate.response.status, 200);
+  assert.equal(allocate.body.amoeba_id, "amoeba_mainland");
+
+  const assigned = await request(`/ops/v1/operators/${operator.body.operator_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "warehouse-assign-ok" },
+    body: JSON.stringify({ vehicle_id: bike.body.vehicle_id, operator_status: "active" })
+  });
+  assert.equal(assigned.response.status, 200, "once allocated, the bike can be assigned");
+  assert.equal(assigned.body.vehicle_id, bike.body.vehicle_id);
+
+  // Returning it to the warehouse while held is blocked.
+  const returnBlocked = await request(`/ops/v1/vehicles/${bike.body.vehicle_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "warehouse-return-blocked" },
+    body: JSON.stringify({ amoeba_id: "" })
+  });
+  assert.equal(returnBlocked.response.status, 409, "can't warehouse a bike an operator still holds");
+});
