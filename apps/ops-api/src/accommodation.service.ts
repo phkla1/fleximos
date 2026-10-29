@@ -44,11 +44,14 @@ export class AccommodationService {
     }
   }
 
-  // Beds taken at a site = active, accommodated operators based there.
+  // A bed is HELD by an accommodated operator who is active (bed in use) or
+  // pending_activation (bed reserved ahead of go-live). Inactive/suspended free
+  // it. Both used and reserved count against capacity so a site is never
+  // over-committed.
   private async siteOccupancy(siteId: string, excludeOperatorId: string | null = null) {
     const row = await this.db.one<{ occupied: number }>(
       `SELECT COUNT(*)::int AS occupied FROM ops_operators
-       WHERE site_id = $1 AND accommodated = TRUE AND operator_status = 'active'
+       WHERE site_id = $1 AND accommodated = TRUE AND operator_status IN ('active', 'pending_activation')
          AND ($2::text IS NULL OR operator_id <> $2)`,
       [siteId, excludeOperatorId]
     );
@@ -56,25 +59,32 @@ export class AccommodationService {
   }
 
   // Per-site housing picture for the ops monitor: capacity (from foundation) vs
-  // active accommodated operators (from ops). Sites with no beds are omitted.
+  // beds used (active accommodated) and reserved (pending accommodated). Sites
+  // with no beds and nobody held are omitted.
   async listAccommodation() {
     const sites = await this.siteCapacities();
-    const occ = await this.db.many<{ site_id: string; occupied: number }>(
-      `SELECT site_id, COUNT(*)::int AS occupied FROM ops_operators
-       WHERE accommodated = TRUE AND operator_status = 'active' AND site_id IS NOT NULL
+    const held = await this.db.many<{ site_id: string; used: number; reserved: number }>(
+      `SELECT site_id,
+         SUM(CASE WHEN operator_status = 'active' THEN 1 ELSE 0 END)::int AS used,
+         SUM(CASE WHEN operator_status = 'pending_activation' THEN 1 ELSE 0 END)::int AS reserved
+       FROM ops_operators
+       WHERE accommodated = TRUE AND operator_status IN ('active', 'pending_activation') AND site_id IS NOT NULL
        GROUP BY site_id`
     );
-    const occupancy = new Map(occ.map((row) => [row.site_id, Number(row.occupied)]));
+    const byId = new Map(held.map((row) => [row.site_id, { used: Number(row.used), reserved: Number(row.reserved) }]));
     const rows: any[] = [];
     for (const site of sites.values()) {
       const capacity = Number(site.accommodation_capacity || 0);
-      const occupied = occupancy.get(site.site_id) || 0;
+      const h = byId.get(site.site_id) || { used: 0, reserved: 0 };
+      const occupied = h.used + h.reserved;
       if (capacity <= 0 && occupied === 0) continue;
       rows.push({
         site_id: site.site_id,
         name: site.name,
         amoeba_id: site.amoeba_id,
         capacity,
+        used: h.used,
+        reserved: h.reserved,
         occupied,
         available: Math.max(capacity - occupied, 0),
         over_capacity: occupied > capacity

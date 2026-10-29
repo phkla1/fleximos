@@ -2059,6 +2059,66 @@ test("company accommodation: site beds, hard block, and freeing on deactivation"
   assert.equal(nowFits.response.status, 200, "the reopened bed accepts a new rider");
 });
 
+test("accommodation: a pending rider reserves a bed (counts as held, shown separately)", async () => {
+  const foundationRequest = (url, options = {}) => fetch(`${foundationBaseUrl}${url}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Actor-Person-Id": "person_founder_wole", ...(options.headers || {}) }
+  }).then(async (r) => ({ response: r, body: await r.json() }));
+
+  const site = await foundationRequest("/amoeba/v1/sites", {
+    method: "POST",
+    headers: { "Idempotency-Key": "accom-resv-site" },
+    body: JSON.stringify({ amoeba_id: "amoeba_mainland", name: "Reserve Lodge", accommodation_capacity: 1 })
+  });
+  const siteId = site.body.site_id;
+
+  // A PENDING rider (not active) marked accommodated reserves the single bed.
+  const pending = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "accom-resv-pending" },
+    body: JSON.stringify({ person_id: "person_accom_resv1", operator_type: "rider", operator_class: "rider", operator_status: "pending_activation", amoeba_id: "amoeba_mainland", site_id: siteId })
+  });
+  const reserve = await request(`/ops/v1/operators/${pending.body.operator_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "accom-resv-mark" },
+    body: JSON.stringify({ accommodated: true })
+  });
+  assert.equal(reserve.response.status, 200);
+
+  // The monitor shows it reserved (not in use), and the bed is held.
+  const afterReserve = await request("/ops/v1/accommodation");
+  const row = afterReserve.body.data.find((s) => s.site_id === siteId);
+  assert.equal(Number(row.used), 0, "not in use yet (pending)");
+  assert.equal(Number(row.reserved), 1, "reserved by the pending rider");
+  assert.equal(Number(row.occupied), 1, "reserved beds count as held");
+  assert.equal(Number(row.available), 0, "the single bed is taken");
+
+  // A second rider cannot reserve/use the now-full site.
+  const second = await request("/ops/v1/operators", {
+    method: "POST",
+    headers: { "Idempotency-Key": "accom-resv-second" },
+    body: JSON.stringify({ person_id: "person_accom_resv2", operator_type: "rider", operator_class: "rider", operator_status: "active", amoeba_id: "amoeba_mainland", site_id: siteId })
+  });
+  const blocked = await request(`/ops/v1/operators/${second.body.operator_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "accom-resv-block" },
+    body: JSON.stringify({ accommodated: true })
+  });
+  assert.equal(blocked.response.status, 409, "a reserved bed still blocks over-booking");
+
+  // Activating the reserved rider converts reserved -> in use without changing availability.
+  await request(`/ops/v1/operators/${pending.body.operator_id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "accom-resv-activate" },
+    body: JSON.stringify({ operator_status: "active" })
+  });
+  const afterActivate = await request("/ops/v1/accommodation");
+  const row2 = afterActivate.body.data.find((s) => s.site_id === siteId);
+  assert.equal(Number(row2.used), 1, "now in use");
+  assert.equal(Number(row2.reserved), 0, "no longer just reserved");
+  assert.equal(Number(row2.available), 0, "still full, no double count");
+});
+
 test("vehicles import unassigned (warehouse) and can't be given to an operator until allocated", async () => {
   // A person + operator to receive the bike.
   const person = await fetch(`${foundationBaseUrl}/identity/v1/people`, {

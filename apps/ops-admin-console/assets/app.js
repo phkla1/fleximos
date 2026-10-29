@@ -538,7 +538,7 @@ function render() {
     : "Select an amoeba, or search by name or vehicle.";
   el.operatorList.innerHTML = currentOperators.length ? currentOperators.map((operator) => `
     <article class="data-row" data-operator-id="${escapeHtml(operator.operator_id)}">
-      <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodated ? `<span class="pill" title="Housed at their site">🏠 Accommodated</span>` : ""}</div>
+      <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodated ? `<span class="pill ${operator.operator_status === "active" ? "" : "open"}" title="${operator.operator_status === "active" ? "Housed — holding a bed" : "Bed reserved until activation"}">🏠 ${operator.operator_status === "active" ? "Housed" : "Reserved"}</span>` : ""}</div>
       <div><span class="row-label">Assignment</span>
         <select class="row-field" aria-label="Amoeba" data-operator-amoeba>${optionHtml(state.amoebas, "amoeba_id", "name", operator.amoeba_id)}</select>
         <select class="row-field" aria-label="Site" data-operator-site>${rowSiteOptions(operator.amoeba_id, operator.site_id || "")}</select>
@@ -1065,7 +1065,10 @@ function siteBeds(siteId) {
 function accommodationHint(operator) {
   const beds = siteBeds(operator.site_id);
   if (!beds) return operator.site_id ? "This site has no beds configured (set them in the HR console)." : "Assign a site first.";
-  return `${beds.name}: ${beds.occupied}/${beds.capacity} beds used`;
+  const held = `${beds.occupied}/${beds.capacity} beds held`;
+  const split = `${Number(beds.used || 0)} in use, ${Number(beds.reserved || 0)} reserved`;
+  const note = operator.operator_status === "active" ? "" : " · reserves a bed until this rider is activated";
+  return `${beds.name}: ${held} (${split})${note}`;
 }
 // Only block the toggle when the site is full and this operator isn't already housed.
 function accommodationDisabled(operator) {
@@ -1081,11 +1084,12 @@ function renderAccommodation() {
   el.accommodationBedsSummary.textContent = sites.reduce((sum, s) => sum + Number(s.capacity || 0), 0);
   el.accommodationList.innerHTML = sites.length ? sites.map((s) => {
     const full = Number(s.available) <= 0;
+    const reserved = Number(s.reserved || 0);
     return `
     <article class="policy-row ${s.over_capacity ? "superseded" : ""}">
       <div><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(nameForAmoeba(s.amoeba_id))}</small>
         <span class="pill ${full ? "open" : ""}">${Number(s.occupied)}/${Number(s.capacity)} beds</span>${s.over_capacity ? `<span class="pill superseded">over capacity</span>` : ""}</div>
-      <div><small>${Number(s.available)} bed${Number(s.available) === 1 ? "" : "s"} free</small></div>
+      <div><small>${Number(s.used || 0)} in use${reserved ? ` · ${reserved} reserved (pending)` : ""} · ${Number(s.available)} free</small></div>
     </article>`;
   }).join("") : `<div class="empty">No site has beds yet. Set accommodation beds on a site in the HR console.</div>`;
 }
