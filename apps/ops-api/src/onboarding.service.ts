@@ -415,9 +415,27 @@ export class OnboardingService {
       const rows = [];
       for (const m of members) {
         const status = await this.operatorOnboardingStatus(m.operator_id, day);
-        rows.push({ ...m, ...status });
+        const earned = Number((await this.dailyCombined(m.operator_id, day, day)).get(day) || 0);
+        rows.push({ ...m, ...status, earned_today_ngn: earned });
       }
-      result.push({ ...cohort, members: rows });
+      // Cohort-wide rollups for the monitor: today's revenue and per-operator
+      // averages, plus the ramped target total so revenue reads against target.
+      const operatorCount = rows.length;
+      const revenueTotal = rows.reduce((sum, r) => sum + Number(r.earned_today_ngn || 0), 0);
+      const targetTotal = rows.reduce((sum, r) => sum + Number(r.daily_target_ngn || 0), 0);
+      const hitTotal = rows.reduce((sum, r) => sum + Number(r.targets_hit || 0), 0);
+      const scoreableTotal = rows.reduce((sum, r) => sum + Number(r.scoreable_days || 0), 0);
+      result.push({
+        ...cohort,
+        members: rows,
+        operator_count: operatorCount,
+        revenue_total_ngn: revenueTotal,
+        avg_revenue_ngn: operatorCount ? Math.round(revenueTotal / operatorCount) : 0,
+        target_total_ngn: targetTotal,
+        avg_target_ngn: operatorCount ? Math.round(targetTotal / operatorCount) : 0,
+        targets_hit_total: hitTotal,
+        scoreable_days_total: scoreableTotal
+      });
     }
     return result;
   }

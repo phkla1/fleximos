@@ -1907,6 +1907,40 @@ test("cohorts auto-create per week+class+amoeba; manual create is gone; Day-1 we
   assert.equal(Number(set.body.cohort_anchor_dow), 1);
 });
 
+test("cohort board exposes cohort-wide revenue + average per operator", async () => {
+  const unique = String(Date.now()).slice(-7);
+  const person = await fetch(`${foundationBaseUrl}/identity/v1/people`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": `cb-person-${unique}` },
+    body: JSON.stringify({ display_name: `Cohort Agg ${unique}`, phone: `+23480${unique}1` })
+  }).then((r) => r.json());
+  await fetch(`${foundationBaseUrl}/identity/v1/users`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": `cb-user-${unique}` },
+    body: JSON.stringify({ person_id: person.person_id, roles: ["operator"], status: "active" })
+  });
+  const veh = await request("/ops/v1/vehicles", {
+    method: "POST", headers: { "Idempotency-Key": `cb-veh-${unique}` },
+    body: JSON.stringify({ plate: `CB${unique}`, vehicle_type: "motorbike", amoeba_id: "amoeba_mainland" })
+  });
+  const rider = await request("/ops/v1/operators", {
+    method: "POST", headers: { "Idempotency-Key": `cb-op-${unique}` },
+    body: JSON.stringify({ person_id: person.person_id, operator_type: "rider", operator_class: "rider", operator_status: "active", amoeba_id: "amoeba_mainland", site_id: "site_mainland_1", vehicle_id: veh.body.vehicle_id })
+  });
+  const cohortId = rider.body.onboarding_cohort_id;
+  const anchor = String((await request("/ops/v1/onboarding/cohorts")).body.data.find((c) => c.cohort_id === cohortId).start_date).slice(0, 10);
+  const RECORD = new Date(Date.parse(`${anchor}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
+
+  const board = await request(`/ops/v1/onboarding/cohort-board?record_date=${RECORD}`);
+  const cohort = board.body.data.find((c) => c.cohort_id === cohortId);
+  assert.ok(cohort, "the rider's cohort is on the board");
+  assert.ok(cohort.operator_count >= 1);
+  // The rollup fields exist and the averages are consistent with the totals.
+  assert.equal(typeof cohort.revenue_total_ngn, "number");
+  assert.equal(cohort.avg_revenue_ngn, Math.round(cohort.revenue_total_ngn / cohort.operator_count));
+  assert.equal(cohort.avg_target_ngn, Math.round(cohort.target_total_ngn / cohort.operator_count));
+  // Each member carries its own earned-today figure.
+  assert.ok(cohort.members.every((m) => typeof m.earned_today_ngn === "number"));
+});
+
 test("onboarding ramp profile bonus params are editable and drive the projected bonus", async () => {
   const profiles = await request("/ops/v1/onboarding/ramp-profiles");
   const rider = profiles.body.data.find((p) => p.operator_class === "rider" && !p.effective_to);

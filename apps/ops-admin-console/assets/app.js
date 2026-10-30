@@ -1038,8 +1038,9 @@ function renderCohortBoard() {
   }
   el.cohortBoard.innerHTML = cohorts.map((cohort) => {
     const rows = (cohort.members || []).map((m) => {
+      const earned = `Earned today ₦${Number(m.earned_today_ngn || 0).toLocaleString()}`;
       if (!m.in_ramp) {
-        return `<div class="policy-row"><div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong><small>Not in a ramp window</small></div><div></div></div>`;
+        return `<div class="policy-row"><div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong><small>Not in a ramp window</small></div><div><small>${earned}</small></div></div>`;
       }
       const hitPct = m.scoreable_days ? Math.round((m.targets_hit / m.scoreable_days) * 100) : 0;
       return `
@@ -1047,12 +1048,24 @@ function renderCohortBoard() {
         <div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong>
           <small>Day ${m.day_n}/${m.total_days} · ${escapeHtml(RAMP_PHASE_LABEL[m.phase] || m.phase)}</small>
           <span class="pill">₦${Number(m.daily_target_ngn || 0).toLocaleString()} target</span></div>
-        <div><small>Targets hit ${m.targets_hit}/${m.scoreable_days} (${hitPct}%) · projected bonus ₦${Number(m.projected_bonus_ngn || 0).toLocaleString()}</small></div>
+        <div><small>${earned} · targets hit ${m.targets_hit}/${m.scoreable_days} (${hitPct}%) · projected bonus ₦${Number(m.projected_bonus_ngn || 0).toLocaleString()}</small></div>
       </div>`;
     }).join("");
+    // Cohort-wide rollup strip (what the cohort is doing as a whole).
+    const revenue = Number(cohort.revenue_total_ngn || 0);
+    const target = Number(cohort.target_total_ngn || 0);
+    const attainmentPct = target > 0 ? Math.round((revenue / target) * 100) : 0;
+    const summary = `
+      <div class="cohort-summary">
+        <div><span>Operators</span><strong>${Number(cohort.operator_count || 0)}</strong></div>
+        <div><span>Revenue today</span><strong>₦${revenue.toLocaleString()}</strong><small>${target > 0 ? `${attainmentPct}% of ramped target` : ""}</small></div>
+        <div><span>Avg / operator</span><strong>₦${Number(cohort.avg_revenue_ngn || 0).toLocaleString()}</strong></div>
+        <div><span>Ramped target today</span><strong>₦${target.toLocaleString()}</strong><small>avg ₦${Number(cohort.avg_target_ngn || 0).toLocaleString()}/op</small></div>
+      </div>`;
     return `
       <div class="control-panel">
         <h3>${escapeHtml(cohort.name)} <span class="subtle" style="font-weight:600;font-size:13px">· Day 1 ${escapeHtml(String(cohort.start_date).slice(0, 10))}</span></h3>
+        ${summary}
         <div class="data-list compact-list">${rows}</div>
       </div>`;
   }).join("");
