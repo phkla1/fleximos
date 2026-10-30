@@ -5388,6 +5388,78 @@
           }
         }
       }
+    },
+    "/daily-records/overrides": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "List manual-override history (before-images of corrected daily records)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "operator_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "record_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start of the operating-date range (inclusive)."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End of the operating-date range (inclusive)."
+          },
+          {
+            "name": "amoeba_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Override history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyRecordOverridePage"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6056,6 +6128,15 @@
             "items": {
               "$ref": "#/components/schemas/NormalizedDailyRecordInput"
             }
+          },
+          "override": {
+            "type": "boolean",
+            "default": false,
+            "description": "Manual corrections only: overwrite an existing authoritative record. Ignored by automated (live) syncs."
+          },
+          "override_reason": {
+            "type": "string",
+            "description": "Reason for the correction. Required when override=true targets an authoritative record."
           }
         }
       },
@@ -6193,7 +6274,10 @@
             "type": "number"
           },
           "daily_target_accommodated_ngn": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Steady-state daily target for accommodated riders; null = same as daily_target_ngn."
           },
           "checkpoints": {
@@ -8292,6 +8376,87 @@
           },
           "last_checked_at": {
             "type": "string"
+          }
+        }
+      },
+      "DailyRecordOverride": {
+        "type": "object",
+        "properties": {
+          "override_id": {
+            "type": "string"
+          },
+          "daily_record_id": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "platform_account_id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "record_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "prior_row": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Full before-image of the overwritten daily record."
+          },
+          "prior_data_quality": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "new_source": {
+            "type": "string"
+          },
+          "new_data_quality": {
+            "type": "string"
+          },
+          "forced": {
+            "type": "boolean",
+            "description": "True when this bypassed the authoritative-overwrite guard."
+          },
+          "override_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overridden_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DailyRecordOverridePage": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyRecordOverride"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

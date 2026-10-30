@@ -1495,6 +1495,12 @@ export class OpsService {
     if (!["live", "migration", "manual_correction", "connector_test"].includes(source)) {
       throw new BadRequestException("source must be live, migration, manual_correction, or connector_test.");
     }
+    // Only the human console path ("manual_correction") is gated and
+    // history-logged. Automated/system writes — live syncs, migrations and
+    // connector tests — always flow straight through.
+    const isManual = source === "manual_correction";
+    const override = body.override === true;
+    const overrideReason = body.override_reason ? String(body.override_reason).trim() : "";
 
     const timestamp = this.now();
     const runId = this.id("ingestion");
@@ -1521,40 +1527,91 @@ export class OpsService {
         );
         if (!registration) throw new Error("No active or registered operator mapping exists for this platform_operator_id.");
 
-        const total = this.number(record.trips_total, "trips_total");
-        const completed = this.number(record.trips_completed, "trips_completed");
-        const cancelled = this.number(record.trips_cancelled, "trips_cancelled");
-        const noResponse = this.number(record.trips_no_response, "trips_no_response");
-        const rejected = this.number(record.trips_rejected, "trips_rejected");
-        const acceptance = this.number(record.acceptance_pct, "acceptance_pct", true);
-        const cancellation = this.number(record.cancellation_pct, "cancellation_pct", true);
-        const completion = this.number(record.completion_pct, "completion_pct", true);
+        const existing = await this.db.one<any>(
+          `SELECT * FROM ops_platform_daily_records
+           WHERE operator_id = $1 AND platform_account_id = $2 AND record_date = $3`,
+          [registration.operator_id, platformAccountId, recordDate]
+        );
+        const existingAuthoritative = !!existing && existing.data_quality === "authoritative";
+
+        // Option 1 — never let a manual correction silently clobber an
+        // authoritative record; require an explicit override (with a reason).
+        if (isManual && existingAuthoritative && !override) {
+          throw new Error(
+            `Refusing to overwrite an authoritative ${account.platform || "platform"} record for ${recordDate}. Resubmit with override to proceed.`
+          );
+        }
+        if (isManual && existingAuthoritative && override && !overrideReason) {
+          throw new Error("override_reason is required when overriding an authoritative record.");
+        }
+
+        // Option 2 — field-level merge: on a manual correction of an existing
+        // row, a field the caller did not supply keeps its prior value instead
+        // of being reset to a default. Automated 'live' syncs always supply
+        // every field, so their behaviour is unchanged.
+        const provided = (field: string) => {
+          const value = (record as any)[field];
+          return value !== undefined && value !== null && value !== "";
+        };
+        const num = (field: string, nullable = false) =>
+          !provided(field) && existing ? existing[field] : this.number((record as any)[field], field, nullable);
+        const keep = (field: string, fallback: unknown) =>
+          provided(field) ? (record as any)[field] : existing ? existing[field] : fallback;
+
+        const total = num("trips_total");
+        const completed = num("trips_completed");
+        const cancelled = num("trips_cancelled");
+        const noResponse = num("trips_no_response");
+        const rejected = num("trips_rejected");
+        const acceptance = num("acceptance_pct", true);
+        const cancellation = num("cancellation_pct", true);
+        const completion = num("completion_pct", true);
         for (const [field, value] of [["acceptance_pct", acceptance], ["cancellation_pct", cancellation], ["completion_pct", completion]] as const) {
           if (value !== null && value > 100) throw new Error(`${field} cannot exceed 100.`);
         }
-        const status = String(record.current_status || "unknown");
+        const status = String(keep("current_status", "unknown"));
         if (!["online", "offline", "not_seen_today", "checked_out", "unknown"].includes(status)) {
           throw new Error("current_status is invalid.");
         }
-        const quality = String(record.data_quality || "authoritative");
-        // Manual entry offers authoritative/derived/estimated/missing; "stale" is
-        // accepted but reserved for automated freshness (never a hand-typed value).
+        // A manual correction that doesn't state a quality is derived (a human
+        // touched it); an automated write defaults to authoritative.
+        const quality = provided("data_quality")
+          ? String(record.data_quality)
+          : isManual ? "derived" : existing ? String(existing.data_quality) : "authoritative";
+        // authoritative/derived/estimated come from feeds and manual entry;
+        // "stale"/"missing" are reserved for automated/system writes.
         if (!["authoritative", "derived", "estimated", "stale", "missing"].includes(quality)) {
           throw new Error("data_quality is invalid.");
         }
+
+        // Option 3 — snapshot the prior row before a manual correction
+        // overwrites it, so the before-image is always recoverable.
+        if (isManual && existing) {
+          await this.db.exec(
+            `INSERT INTO ops_daily_record_overrides
+             (override_id, daily_record_id, operator_id, platform_account_id, record_date,
+              prior_row, prior_data_quality, new_source, new_data_quality, forced,
+              override_reason, overridden_by, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            [
+              this.id("override"), existing.daily_record_id, registration.operator_id,
+              platformAccountId, recordDate, existing, existing.data_quality ?? null,
+              source, quality, existingAuthoritative && override,
+              overrideReason || null, actorPersonId, timestamp
+            ]
+          );
+        }
+
         const values = [
-          this.id("daily"), registration.operator_id, platformAccountId, runId, recordDate,
+          existing ? existing.daily_record_id : this.id("daily"),
+          registration.operator_id, platformAccountId, runId, recordDate,
           total, completed, cancelled, noResponse, rejected,
-          this.number(record.ride_revenue_ngn, "ride_revenue_ngn"),
-          this.number(record.net_earnings_ngn, "net_earnings_ngn"),
-          this.number(record.booking_fees_ngn, "booking_fees_ngn"),
-          this.number(record.cash_trips, "cash_trips"),
-          this.number(record.card_trips, "card_trips"),
+          num("ride_revenue_ngn"), num("net_earnings_ngn"), num("booking_fees_ngn"),
+          num("cash_trips"), num("card_trips"),
           acceptance, cancellation, completion,
-          this.number(record.hours_online, "hours_online"),
-          this.number(record.official_distance_km, "official_distance_km", true),
-          record.last_seen_at || null, status, source, quality,
-          record.provenance || {}, record.raw_payload || record, timestamp, timestamp
+          num("hours_online"), num("official_distance_km", true),
+          keep("last_seen_at", null), status, source, quality,
+          keep("provenance", {}), record.raw_payload || record, timestamp, timestamp
         ];
         await this.db.exec(
           `INSERT INTO ops_platform_daily_records
@@ -1639,6 +1696,44 @@ export class OpsService {
        JOIN ops_platform_accounts pa ON pa.platform_account_id = d.platform_account_id
        ${where}
        ORDER BY d.record_date DESC, d.ride_revenue_ngn DESC`,
+      params
+    );
+  }
+
+  // Override history: the before-image of each daily record a manual correction
+  // overwrote. Scoped like the other ops reads.
+  async listRecordOverrides(
+    filters: { operator_id?: string; record_date?: string; date_from?: string; date_to?: string; amoeba_id?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters.date_from || filters.date_to) {
+      const { from, to } = this.dateRange(filters);
+      params.push(from, to);
+      clauses.push(`ovr.record_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    } else if (filters.record_date) {
+      params.push(this.date(filters.record_date));
+      clauses.push(`ovr.record_date = $${params.length}`);
+    }
+    if (filters.operator_id) {
+      params.push(filters.operator_id);
+      clauses.push(`ovr.operator_id = $${params.length}`);
+    }
+    if (filters.amoeba_id) {
+      params.push(filters.amoeba_id);
+      clauses.push(`o.amoeba_id = $${params.length}`);
+    }
+    this.addScope(clauses, params, scope);
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return this.db.many(
+      `SELECT ovr.*, o.person_id, o.amoeba_id,
+        pa.platform, pa.display_name AS platform_display_name
+       FROM ops_daily_record_overrides ovr
+       JOIN ops_operators o ON o.operator_id = ovr.operator_id
+       JOIN ops_platform_accounts pa ON pa.platform_account_id = ovr.platform_account_id
+       ${where}
+       ORDER BY ovr.created_at DESC`,
       params
     );
   }

@@ -605,7 +605,19 @@ function render() {
     amoebaOperatorIds.has(record.operator_id) &&
     (!selectedOperator || record.operator_id === selectedOperator)
   ) : [];
-  const recordRows = performance.map((record) => `
+  // Latest override (before-image) per operator+date, so a corrected row can be
+  // flagged with its reason.
+  const overrideByKey = new Map();
+  (state.recordOverrides || []).forEach((item) => {
+    const key = `${item.operator_id}|${String(item.record_date).slice(0, 10)}`;
+    if (!overrideByKey.has(key)) overrideByKey.set(key, item);
+  });
+  const recordRows = performance.map((record) => {
+    const override = overrideByKey.get(`${record.operator_id}|${String(record.record_date).slice(0, 10)}`);
+    const correctedTag = override
+      ? ` <span class="corrected-tag" title="${escapeHtml(`Corrected${override.override_reason ? `: ${override.override_reason}` : ""} · was ₦${Number(override.prior_row?.ride_revenue_ngn ?? 0).toLocaleString()} (${override.prior_data_quality || "—"})`)}">corrected</span>`
+      : "";
+    return `
     <tr>
       <td>${escapeHtml(nameForPerson(record.person_id))}</td>
       <td>${escapeHtml(record.platform_display_name)}</td>
@@ -613,9 +625,10 @@ function render() {
       <td>₦${Number(record.ride_revenue_ngn).toLocaleString()}</td>
       <td>${Number(record.hours_online).toFixed(1)}</td>
       <td><span class="pill">${escapeHtml(record.current_status)}</span></td>
-      <td><span class="quality ${escapeHtml(record.data_quality)}">${escapeHtml(record.data_quality)}</span></td>
+      <td><span class="quality ${escapeHtml(record.data_quality)}">${escapeHtml(record.data_quality)}</span>${correctedTag}</td>
     </tr>
-  `);
+  `;
+  });
   // Operators in the selected scope with no record for the operating date are
   // listed explicitly so a short table is never mistaken for full coverage.
   const coveredIds = new Set(performance.map((record) => record.operator_id));
@@ -1205,13 +1218,14 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
   el.ingestionForm.elements.record_date.value = operatingDate;
-  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports, rangedAlerts, cohortBoard] = await Promise.all([
+  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports, rangedAlerts, cohortBoard, recordOverrides] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/daily-performance?${range}`),
     ops(`/ops/v1/ingestion-runs?${range}`),
     ops(`/ops/v1/daily-reports?${range}`),
     ops(`/ops/v1/alerts?${range}`),
-    ops(`/ops/v1/onboarding/cohort-board?record_date=${operatingDate}`).catch(() => ({ data: [] }))
+    ops(`/ops/v1/onboarding/cohort-board?record_date=${operatingDate}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/daily-records/overrides?${range}`).catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     people: people.data,
@@ -1226,6 +1240,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     teamBoard: teamBoard.data,
     cohortBoard: cohortBoard.data,
     dailyPerformance: dailyPerformance.data,
+    recordOverrides: recordOverrides.data || [],
     ingestionRuns: ingestionRuns.data,
     paceProfiles: paceProfiles.data,
     economicsPolicies: economicsPolicies.data,
@@ -1744,40 +1759,50 @@ el.ingestionForm.addEventListener("submit", async (event) => {
   const operator = state.operators.find((item) => item.operator_id === body.operator_id);
   const registration = operator?.platform_registrations.find((item) => item.registration_id === body.registration_id);
   if (!registration) return showError(new Error("Select an operator with a platform registration."));
-  const tripsTotal = Number(body.trips_total);
-  const completed = Number(body.trips_completed);
+  // Only the fields the supervisor actually enters are sent. Everything else
+  // (fees, cash/card split, distance, derived rates…) is preserved server-side
+  // on a correction instead of being reset — see the field-level merge in the
+  // ops API. For a brand-new record those simply default.
   const record = {
     platform_operator_id: registration.platform_operator_id,
-    trips_total: tripsTotal,
-    trips_completed: completed,
-    trips_cancelled: Math.max(0, tripsTotal - completed),
-    trips_no_response: 0,
-    trips_rejected: 0,
+    trips_total: Number(body.trips_total),
+    trips_completed: Number(body.trips_completed),
     ride_revenue_ngn: Number(body.ride_revenue_ngn),
     net_earnings_ngn: Number(body.net_earnings_ngn),
-    booking_fees_ngn: 0,
-    cash_trips: 0,
-    card_trips: completed,
-    acceptance_pct: tripsTotal ? Math.round(completed / tripsTotal * 10000) / 100 : 0,
-    cancellation_pct: tripsTotal ? Math.round((tripsTotal - completed) / tripsTotal * 10000) / 100 : 0,
-    completion_pct: tripsTotal ? Math.round(completed / tripsTotal * 10000) / 100 : 0,
     hours_online: Number(body.hours_online),
     current_status: body.current_status,
-    last_seen_at: new Date().toISOString(),
     data_quality: body.data_quality,
     provenance: { submitted_via: "ops_admin_manual_entry" }
   };
+  const typedReason = (body.override_reason || "").trim();
+  const submitRun = (extra) => ops("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": key("ingestion") },
+    body: JSON.stringify({
+      platform_account_id: registration.platform_account_id,
+      record_date: body.record_date,
+      source: "manual_correction",
+      records: [record],
+      ...extra
+    })
+  });
   try {
-    const run = await ops("/ops/v1/ingestion-runs", {
-      method: "POST",
-      headers: { "Idempotency-Key": key("ingestion") },
-      body: JSON.stringify({
-        platform_account_id: registration.platform_account_id,
-        record_date: body.record_date,
-        source: "manual_correction",
-        records: [record]
-      })
-    });
+    let run = await submitRun({});
+    const blockedAuthoritative = run.status !== "completed"
+      && (run.errors || []).some((item) => /authoritative/i.test(item.message || ""));
+    if (blockedAuthoritative) {
+      const proceed = confirm(
+        `${nameForPerson(operator.person_id)} already has an AUTHORITATIVE record from the automated feed for ${body.record_date}.\n\n`
+        + `Overwriting it replaces the feed's figures with your manual values and downgrades the record to "derived". The original is kept in override history.\n\nContinue?`
+      );
+      if (!proceed) return showError(new Error("Override cancelled — the authoritative record was left unchanged."));
+      let reason = typedReason || (prompt("Reason for overriding the authoritative record:") || "").trim();
+      if (!reason) return showError(new Error("A reason is required to override an authoritative record."));
+      run = await submitRun({ override: true, override_reason: reason });
+    }
+    if (run.status === "failed" || !run.records_upserted) {
+      throw new Error((run.errors && run.errors[0] && run.errors[0].message) || "Record rejected.");
+    }
     await refresh(`Performance record saved: ${run.records_upserted} record accepted.`);
   } catch (error) { showError(error); }
 });

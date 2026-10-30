@@ -232,6 +232,27 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_platform_daily_records
         ADD COLUMN IF NOT EXISTS official_distance_km NUMERIC(10, 2);
 
+      -- Before-image of a daily record that a manual correction overwrote, so
+      -- every override is recoverable and explainable. Automated 'live' syncs
+      -- never write here.
+      CREATE TABLE IF NOT EXISTS ops_daily_record_overrides (
+        override_id TEXT PRIMARY KEY,
+        daily_record_id TEXT NOT NULL,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        platform_account_id TEXT NOT NULL REFERENCES ops_platform_accounts(platform_account_id),
+        record_date DATE NOT NULL,
+        prior_row JSONB NOT NULL,
+        prior_data_quality TEXT,
+        new_source TEXT NOT NULL,
+        new_data_quality TEXT NOT NULL,
+        forced BOOLEAN NOT NULL DEFAULT FALSE,
+        override_reason TEXT,
+        overridden_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ops_record_overrides_lookup
+        ON ops_daily_record_overrides(operator_id, record_date DESC);
+
       CREATE TABLE IF NOT EXISTS ops_revenue_pace_profiles (
         pace_profile_id TEXT PRIMARY KEY,
         vehicle_type TEXT NOT NULL,

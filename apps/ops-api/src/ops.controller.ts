@@ -691,6 +691,27 @@ export class OpsController {
 
   @ApiTags("Reporting")
   @ApiBearerAuth()
+  @Get("ops/v1/daily-records/overrides")
+  async listRecordOverrides(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
+    @Query("operator_id") operatorId?: string,
+    @Query("amoeba_id") amoebaId?: string
+  ) {
+    const actor = await this.auth(req);
+    return {
+      data: await this.ops.listRecordOverrides(
+        { record_date: recordDate, date_from: dateFrom, date_to: dateTo, operator_id: operatorId, amoeba_id: amoebaId },
+        this.identity.dataScope(actor)
+      ),
+      next_cursor: null
+    };
+  }
+
+  @ApiTags("Reporting")
+  @ApiBearerAuth()
   @Get("ops/v1/pacing")
   async pacingBoard(
     @Req() req: Request,

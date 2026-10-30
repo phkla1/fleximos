@@ -633,6 +633,110 @@ test("ingests normalized platform data with per-record rejection and safe replay
   assert.equal(Number(demoBoard.expected_revenue_ngn), 25000);
 });
 
+test("manual corrections guard authoritative records, merge fields, and keep history", async () => {
+  await request("/ops/v1/operators/operator_demo_wole", {
+    method: "PATCH",
+    headers: { "Idempotency-Key": "ops-reactivate-operator-override" },
+    body: JSON.stringify({ operator_status: "active" })
+  });
+  const recordDate = "2026-07-15";
+  const base = {
+    platform_operator_id: "bolt-demo-driver",
+    trips_total: 12, trips_completed: 10, trips_cancelled: 2, trips_no_response: 0,
+    ride_revenue_ngn: 20000, net_earnings_ngn: 17000, booking_fees_ngn: 1500,
+    cash_trips: 4, card_trips: 6, acceptance_pct: 90, cancellation_pct: 10, completion_pct: 83,
+    hours_online: 7, official_distance_km: 80, current_status: "online",
+    data_quality: "authoritative", provenance: { connector: "bolt" }
+  };
+  // Seed an authoritative row via the automated (connector_test) path.
+  const seed = await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ovr-seed-001" },
+    body: JSON.stringify({ platform_account_id: "platform_bolt_lagos", record_date: recordDate, source: "connector_test", records: [base] })
+  });
+  assert.equal(seed.body.status, "completed");
+
+  // 1 — a manual correction over an authoritative row is refused without override.
+  const blocked = await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ovr-blocked-001" },
+    body: JSON.stringify({
+      platform_account_id: "platform_bolt_lagos", record_date: recordDate, source: "manual_correction",
+      records: [{ platform_operator_id: "bolt-demo-driver", trips_total: 12, trips_completed: 10, ride_revenue_ngn: 25000, net_earnings_ngn: 21000, hours_online: 7, current_status: "online", data_quality: "derived" }]
+    })
+  });
+  assert.equal(blocked.body.status, "failed");
+  assert.equal(blocked.body.records_rejected, 1);
+  assert.match(blocked.body.errors[0].message, /authoritative/i);
+  // Row is untouched.
+  let daily = await request(`/ops/v1/daily-performance?record_date=${recordDate}`);
+  assert.equal(Number(daily.body.data[0].ride_revenue_ngn), 20000);
+  assert.equal(daily.body.data[0].data_quality, "authoritative");
+
+  // override without a reason is refused.
+  const noReason = await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ovr-noreason-001" },
+    body: JSON.stringify({
+      platform_account_id: "platform_bolt_lagos", record_date: recordDate, source: "manual_correction", override: true,
+      records: [{ platform_operator_id: "bolt-demo-driver", trips_total: 12, trips_completed: 10, ride_revenue_ngn: 25000, net_earnings_ngn: 21000, hours_online: 7, current_status: "online", data_quality: "derived" }]
+    })
+  });
+  assert.equal(noReason.body.status, "failed");
+  assert.match(noReason.body.errors[0].message, /reason is required/i);
+
+  // 1+2+3 — override with reason: succeeds, merges unsent fields, snapshots the prior row.
+  const applied = await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ovr-applied-001" },
+    body: JSON.stringify({
+      platform_account_id: "platform_bolt_lagos", record_date: recordDate, source: "manual_correction",
+      override: true, override_reason: "Reconciled against Bolt payout statement",
+      records: [{ platform_operator_id: "bolt-demo-driver", trips_total: 12, trips_completed: 10, ride_revenue_ngn: 25000, net_earnings_ngn: 21000, hours_online: 7, current_status: "online", data_quality: "derived" }]
+    })
+  });
+  assert.equal(applied.body.status, "completed");
+  daily = await request(`/ops/v1/daily-performance?record_date=${recordDate}`);
+  const row = daily.body.data[0];
+  assert.equal(Number(row.ride_revenue_ngn), 25000);       // edited field applied
+  assert.equal(row.data_quality, "derived");               // downgraded from authoritative
+  assert.equal(Number(row.booking_fees_ngn), 1500);        // Option 2: unsent field preserved
+  assert.equal(Number(row.official_distance_km), 80);      // Option 2: unsent field preserved
+
+  // Option 3 — override history holds the before-image.
+  const history = await request(`/ops/v1/daily-records/overrides?operator_id=operator_demo_wole&record_date=${recordDate}`);
+  assert.ok(history.body.data.length >= 1);
+  const forced = history.body.data.find((item) => item.forced === true);
+  assert.ok(forced, "a forced override is recorded");
+  assert.equal(Number(forced.prior_row.ride_revenue_ngn), 20000);
+  assert.equal(forced.prior_data_quality, "authoritative");
+  assert.equal(forced.override_reason, "Reconciled against Bolt payout statement");
+
+  // A manual correction over a now non-authoritative row needs no override and is still logged.
+  const again = await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ovr-again-001" },
+    body: JSON.stringify({
+      platform_account_id: "platform_bolt_lagos", record_date: recordDate, source: "manual_correction",
+      records: [{ platform_operator_id: "bolt-demo-driver", trips_total: 12, trips_completed: 10, ride_revenue_ngn: 26000, net_earnings_ngn: 22000, hours_online: 7, current_status: "online", data_quality: "derived" }]
+    })
+  });
+  assert.equal(again.body.status, "completed");
+  const history2 = await request(`/ops/v1/daily-records/overrides?operator_id=operator_demo_wole&record_date=${recordDate}`);
+  assert.ok(history2.body.data.some((item) => item.forced === false), "non-forced correction is also logged");
+
+  // An automated (live) re-sync over the row still flows and writes NO history.
+  const beforeCount = history2.body.data.length;
+  const resync = await request("/ops/v1/ingestion-runs", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ovr-resync-001" },
+    body: JSON.stringify({ platform_account_id: "platform_bolt_lagos", record_date: recordDate, source: "live", records: [{ ...base, ride_revenue_ngn: 30000 }] })
+  });
+  assert.equal(resync.body.status, "completed");
+  const history3 = await request(`/ops/v1/daily-records/overrides?operator_id=operator_demo_wole&record_date=${recordDate}`);
+  assert.equal(history3.body.data.length, beforeCount, "live re-sync writes no override history");
+});
+
 test("configures revenue pace and fuel efficiency controls", async () => {
   const profiles = await request("/ops/v1/revenue-pace-profiles");
   assert.equal(profiles.response.status, 200);
