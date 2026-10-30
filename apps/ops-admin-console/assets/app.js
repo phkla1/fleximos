@@ -1036,7 +1036,22 @@ function renderCohortBoard() {
     el.cohortBoard.innerHTML = `<div class="empty">No riders are in an onboarding ramp on this date. Start a cohort under Onboarding.</div>`;
     return;
   }
-  el.cohortBoard.innerHTML = cohorts.map((cohort) => {
+  // Top-of-page rollup across every cohort in view, so the page opens on a
+  // scannable summary no matter how many weekly cohorts have accrued.
+  const sum = (key) => cohorts.reduce((total, c) => total + Number(c[key] || 0), 0);
+  const totalOps = sum("operator_count");
+  const totalRev = sum("revenue_total_ngn");
+  const totalTarget = sum("target_total_ngn");
+  const overview = `
+    <div class="cohort-summary">
+      <div><span>Cohorts</span><strong>${cohorts.length}</strong></div>
+      <div><span>Riders onboarding</span><strong>${totalOps}</strong></div>
+      <div><span>Revenue today</span><strong>₦${totalRev.toLocaleString()}</strong><small>${totalTarget > 0 ? `${Math.round((totalRev / totalTarget) * 100)}% of target` : ""}</small></div>
+      <div><span>Avg / operator</span><strong>₦${totalOps ? Math.round(totalRev / totalOps).toLocaleString() : 0}</strong></div>
+    </div>`;
+
+  // Each cohort is a collapsible summary row; expand to drill into its riders.
+  const cards = cohorts.map((cohort) => {
     const rows = (cohort.members || []).map((m) => {
       const earned = `Earned today ₦${Number(m.earned_today_ngn || 0).toLocaleString()}`;
       if (!m.in_ramp) {
@@ -1051,24 +1066,26 @@ function renderCohortBoard() {
         <div><small>${earned} · targets hit ${m.targets_hit}/${m.scoreable_days} (${hitPct}%) · projected bonus ₦${Number(m.projected_bonus_ngn || 0).toLocaleString()}</small></div>
       </div>`;
     }).join("");
-    // Cohort-wide rollup strip (what the cohort is doing as a whole).
     const revenue = Number(cohort.revenue_total_ngn || 0);
     const target = Number(cohort.target_total_ngn || 0);
     const attainmentPct = target > 0 ? Math.round((revenue / target) * 100) : 0;
-    const summary = `
-      <div class="cohort-summary">
-        <div><span>Operators</span><strong>${Number(cohort.operator_count || 0)}</strong></div>
-        <div><span>Revenue today</span><strong>₦${revenue.toLocaleString()}</strong><small>${target > 0 ? `${attainmentPct}% of ramped target` : ""}</small></div>
-        <div><span>Avg / operator</span><strong>₦${Number(cohort.avg_revenue_ngn || 0).toLocaleString()}</strong></div>
-        <div><span>Ramped target today</span><strong>₦${target.toLocaleString()}</strong><small>avg ₦${Number(cohort.avg_target_ngn || 0).toLocaleString()}/op</small></div>
-      </div>`;
     return `
-      <div class="control-panel">
-        <h3>${escapeHtml(cohort.name)} <span class="subtle" style="font-weight:600;font-size:13px">· Day 1 ${escapeHtml(String(cohort.start_date).slice(0, 10))}</span></h3>
-        ${summary}
+      <details class="cohort-card">
+        <summary>
+          <div class="cohort-head">
+            <div><strong>${escapeHtml(cohort.name)}</strong><small>Day 1 ${escapeHtml(String(cohort.start_date).slice(0, 10))} · ${Number(cohort.operator_count || 0)} operator${Number(cohort.operator_count) === 1 ? "" : "s"}</small></div>
+            <div class="cohort-metrics">
+              <span><strong>₦${revenue.toLocaleString()}</strong> today</span>
+              <span><strong>₦${Number(cohort.avg_revenue_ngn || 0).toLocaleString()}</strong> avg/op</span>
+              <span><strong>${attainmentPct}%</strong> of target</span>
+            </div>
+          </div>
+        </summary>
         <div class="data-list compact-list">${rows}</div>
-      </div>`;
+      </details>`;
   }).join("");
+
+  el.cohortBoard.innerHTML = overview + cards;
 }
 
 // Beds at a site (capacity + live occupancy), from the site-based monitor feed.
