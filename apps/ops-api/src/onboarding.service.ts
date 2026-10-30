@@ -390,11 +390,18 @@ export class OnboardingService {
     const missed = Math.max(0, Math.min(elapsed, targets.length) - targetsHit
       - targets.slice(0, Math.min(elapsed, targets.length)).filter((t) => t === 0).length);
     const projectedBonus = Math.max(0, Math.round(bonus * (1 - (reduction / 100) * missed)));
+    // Raw working-day count distinguishes "not started yet" (0) from "graduated"
+    // (past the last ramp day) — a graduated rider is still tracked, just on a
+    // stabilised target.
+    const rawDayN = this.workingDayN(anchor, day, Number(profile.rest_day_of_week || 0));
     return {
       operator_id: operatorId,
       in_ramp: !!info,
       ...(info || {}),
       anchor,
+      raw_day_n: rawDayN,
+      total_days: targets.length,
+      graduated: rawDayN > targets.length,
       elapsed_ramp_days: elapsed,
       targets_hit: targetsHit,
       scoreable_days: scoreableDays,
@@ -403,38 +410,86 @@ export class OnboardingService {
     };
   }
 
+  // A rider's stabilised (post-ramp) daily target — the same resolution the live
+  // board uses: a per-operator override wins, else the pace-profile default for
+  // their vehicle type and housing. Kept here so a graduated cohort still shows a
+  // meaningful target.
+  private steadyTargetResolver(paceProfiles: any[], day: string) {
+    return (member: any): number => {
+      const override = Number(member.daily_revenue_target_ngn || 0);
+      if (override > 0) return override;
+      const vt = member.vehicle_type || (member.operator_class === "driver" ? "car" : "motorbike");
+      const prof = paceProfiles
+        .filter((p) => p.vehicle_type === vt && String(p.effective_from).slice(0, 10) <= day
+          && (!p.effective_to || String(p.effective_to).slice(0, 10) >= day))
+        .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+      if (!prof) return 0;
+      return member.accommodated && prof.daily_target_accommodated_ngn != null
+        ? Number(prof.daily_target_accommodated_ngn) : Number(prof.daily_target_ngn || 0);
+    };
+  }
+
   async cohortBoard(date: string) {
     const day = this.dateStr(date, "record_date");
+    // Graduated cohorts stay on the board (status is still 'active'); they are
+    // just tracked on their stabilised target rather than a ramp curve.
     const cohorts = await this.db.many<any>("SELECT * FROM ops_onboarding_cohorts WHERE status='active' ORDER BY start_date DESC");
+    const paceProfiles = await this.db.many<any>(
+      `SELECT vehicle_type, daily_target_ngn, daily_target_accommodated_ngn,
+        effective_from::text AS effective_from, effective_to::text AS effective_to
+       FROM ops_revenue_pace_profiles WHERE day_type='all'`
+    );
+    const steadyTarget = this.steadyTargetResolver(paceProfiles, day);
     const result = [];
     for (const cohort of cohorts) {
       const members = await this.db.many<any>(
-        "SELECT operator_id, person_id, operator_class, amoeba_id FROM ops_operators WHERE onboarding_cohort_id=$1",
+        `SELECT o.operator_id, o.person_id, o.operator_class, o.amoeba_id,
+          o.daily_revenue_target_ngn, o.accommodated, v.vehicle_type
+         FROM ops_operators o LEFT JOIN ops_vehicles v ON v.vehicle_id = o.vehicle_id
+         WHERE o.onboarding_cohort_id=$1`,
         [cohort.cohort_id]
       );
       const rows = [];
       for (const m of members) {
         const status = await this.operatorOnboardingStatus(m.operator_id, day);
-        const earned = Number((await this.dailyCombined(m.operator_id, day, day)).get(day) || 0);
-        rows.push({ ...m, ...status, earned_today_ngn: earned });
+        const earnedToday = Number((await this.dailyCombined(m.operator_id, day, day)).get(day) || 0);
+        // Cumulative = everything earned since the cohort's Day 1 through today.
+        let earnedTotal = 0;
+        if (status.anchor) {
+          const combined = await this.dailyCombined(m.operator_id, status.anchor, day);
+          for (const value of combined.values()) earnedTotal += Number(value || 0);
+        }
+        const steady = steadyTarget(m);
+        const effectiveTarget = status.in_ramp
+          ? Number(status.daily_target_ngn || 0)
+          : (status.graduated ? steady : 0);
+        rows.push({
+          ...m, ...status,
+          earned_today_ngn: earnedToday,
+          earned_total_ngn: earnedTotal,
+          steady_state_target_ngn: steady,
+          effective_target_ngn: effectiveTarget
+        });
       }
-      // Cohort-wide rollups for the monitor: today's revenue and per-operator
-      // averages, plus the ramped target total so revenue reads against target.
       const operatorCount = rows.length;
       const revenueTotal = rows.reduce((sum, r) => sum + Number(r.earned_today_ngn || 0), 0);
-      const targetTotal = rows.reduce((sum, r) => sum + Number(r.daily_target_ngn || 0), 0);
-      const hitTotal = rows.reduce((sum, r) => sum + Number(r.targets_hit || 0), 0);
-      const scoreableTotal = rows.reduce((sum, r) => sum + Number(r.scoreable_days || 0), 0);
+      const revenueCumulative = rows.reduce((sum, r) => sum + Number(r.earned_total_ngn || 0), 0);
+      const targetTotal = rows.reduce((sum, r) => sum + Number(r.effective_target_ngn || 0), 0);
+      const rampingCount = rows.filter((r) => r.in_ramp).length;
+      const graduatedCount = rows.filter((r) => r.graduated).length;
       result.push({
         ...cohort,
         members: rows,
         operator_count: operatorCount,
         revenue_total_ngn: revenueTotal,
+        revenue_cumulative_ngn: revenueCumulative,
         avg_revenue_ngn: operatorCount ? Math.round(revenueTotal / operatorCount) : 0,
+        avg_cumulative_ngn: operatorCount ? Math.round(revenueCumulative / operatorCount) : 0,
         target_total_ngn: targetTotal,
         avg_target_ngn: operatorCount ? Math.round(targetTotal / operatorCount) : 0,
-        targets_hit_total: hitTotal,
-        scoreable_days_total: scoreableTotal
+        ramping_count: rampingCount,
+        graduated_count: graduatedCount,
+        cohort_status: rampingCount > 0 ? "ramping" : "graduated"
       });
     }
     return result;

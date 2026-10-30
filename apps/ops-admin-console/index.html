@@ -493,7 +493,20 @@
           <div><p class="eyebrow">New-hire monitoring</p><h2>Onboarding cohorts</h2></div>
           <span id="cohortBoardUpdated" class="subtle"></span>
         </div>
-        <p class="section-intro">Live view of riders in their ramp window — day of the curve, today's ramped target, targets hit, and the projected completion bonus. Cohorts and the ramp curve are configured under Onboarding.</p>
+        <p class="section-intro">Each weekly cohort is tracked from Day 1 onward — ramped target and targets hit while ramping, then a stabilised target once graduated. Graduated cohorts stay here so you can keep following them. Expand a cohort to see its riders. Cohorts and the ramp curve are configured under Onboarding.</p>
+        <div class="cohort-controls">
+          <label>Show<select id="cohortFilter">
+            <option value="all">All cohorts</option>
+            <option value="ramping">Ramping only</option>
+            <option value="graduated">Graduated only</option>
+          </select></label>
+          <label>Sort by<select id="cohortSort">
+            <option value="date_desc">Newest first</option>
+            <option value="date_asc">Oldest first</option>
+            <option value="revenue_today_desc">Revenue today (high→low)</option>
+            <option value="revenue_total_desc">Cumulative revenue (high→low)</option>
+          </select></label>
+        </div>
         <div id="cohortBoard" class="data-list"></div>
       </section>
 

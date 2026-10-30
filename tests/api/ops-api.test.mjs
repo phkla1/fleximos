@@ -1937,8 +1937,12 @@ test("cohort board exposes cohort-wide revenue + average per operator", async ()
   assert.equal(typeof cohort.revenue_total_ngn, "number");
   assert.equal(cohort.avg_revenue_ngn, Math.round(cohort.revenue_total_ngn / cohort.operator_count));
   assert.equal(cohort.avg_target_ngn, Math.round(cohort.target_total_ngn / cohort.operator_count));
-  // Each member carries its own earned-today figure.
-  assert.ok(cohort.members.every((m) => typeof m.earned_today_ngn === "number"));
+  // Cumulative revenue + cohort status are exposed, and members carry today +
+  // cumulative figures.
+  assert.equal(typeof cohort.revenue_cumulative_ngn, "number");
+  assert.ok(["ramping", "graduated"].includes(cohort.cohort_status));
+  assert.equal(cohort.cohort_status, "ramping", "a fresh rider is still ramping");
+  assert.ok(cohort.members.every((m) => typeof m.earned_today_ngn === "number" && typeof m.earned_total_ngn === "number"));
 });
 
 test("onboarding ramp profile bonus params are editable and drive the projected bonus", async () => {

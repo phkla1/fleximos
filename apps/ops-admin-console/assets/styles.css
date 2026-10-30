@@ -212,6 +212,9 @@ textarea { resize: vertical; }
 .cohort-metrics strong { color: var(--ink, inherit); font-size: 15px; }
 .cohort-card > .data-list { padding: 0 16px 14px; }
 @media (max-width: 640px) { .cohort-head { display: block; } .cohort-metrics { margin-top: 8px; } }
+.cohort-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 4px 0 14px; }
+.cohort-controls label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.cohort-controls select { font-weight: 600; }
 .alert-row { grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(120px, 1fr)) auto; border-left: 4px solid var(--amber); }
 .alert-row.tier-2, .alert-row.tier-3 { border-left-color: var(--red); }
 .data-row strong, .alert-row strong { display: block; }

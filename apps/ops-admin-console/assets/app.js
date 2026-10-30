@@ -1030,54 +1030,82 @@ const RAMP_PHASE_LABEL = { on_demand_only: "on-demand", scheduled_and_on_demand:
 
 function renderCohortBoard() {
   if (!el.cohortBoard) return;
-  const cohorts = (state.cohortBoard || []).filter((c) => (c.members || []).length);
+  const all = (state.cohortBoard || []).filter((c) => (c.members || []).length);
   el.cohortBoardUpdated.textContent = state.operatingDate ? `As at ${state.operatingDate}` : "";
-  if (!cohorts.length) {
-    el.cohortBoard.innerHTML = `<div class="empty">No riders are in an onboarding ramp on this date. Start a cohort under Onboarding.</div>`;
+  if (!all.length) {
+    el.cohortBoard.innerHTML = `<div class="empty">No cohorts on this date. Cohorts appear automatically as riders go active with a vehicle.</div>`;
     return;
   }
-  // Top-of-page rollup across every cohort in view, so the page opens on a
-  // scannable summary no matter how many weekly cohorts have accrued.
+  // Filter + sort (weekly cohorts accumulate, so the page stays navigable).
+  const filterBy = document.getElementById("cohortFilter")?.value || "all";
+  const sortBy = document.getElementById("cohortSort")?.value || "date_desc";
+  let cohorts = all.filter((c) => filterBy === "all" || c.cohort_status === filterBy);
+  const sorters = {
+    date_desc: (a, b) => String(b.start_date).localeCompare(String(a.start_date)),
+    date_asc: (a, b) => String(a.start_date).localeCompare(String(b.start_date)),
+    revenue_today_desc: (a, b) => Number(b.revenue_total_ngn || 0) - Number(a.revenue_total_ngn || 0),
+    revenue_total_desc: (a, b) => Number(b.revenue_cumulative_ngn || 0) - Number(a.revenue_cumulative_ngn || 0)
+  };
+  cohorts = cohorts.slice().sort(sorters[sortBy] || sorters.date_desc);
+  if (!cohorts.length) {
+    el.cohortBoard.innerHTML = `<div class="empty">No cohorts match this filter.</div>`;
+    return;
+  }
+
+  // Top-of-page rollup across the cohorts in view.
   const sum = (key) => cohorts.reduce((total, c) => total + Number(c[key] || 0), 0);
   const totalOps = sum("operator_count");
   const totalRev = sum("revenue_total_ngn");
+  const totalCum = sum("revenue_cumulative_ngn");
   const totalTarget = sum("target_total_ngn");
   const overview = `
     <div class="cohort-summary">
-      <div><span>Cohorts</span><strong>${cohorts.length}</strong></div>
-      <div><span>Riders onboarding</span><strong>${totalOps}</strong></div>
+      <div><span>Cohorts</span><strong>${cohorts.length}</strong><small>${sum("ramping_count")} ramping · ${sum("graduated_count")} graduated</small></div>
+      <div><span>Riders</span><strong>${totalOps}</strong></div>
       <div><span>Revenue today</span><strong>₦${totalRev.toLocaleString()}</strong><small>${totalTarget > 0 ? `${Math.round((totalRev / totalTarget) * 100)}% of target` : ""}</small></div>
-      <div><span>Avg / operator</span><strong>₦${totalOps ? Math.round(totalRev / totalOps).toLocaleString() : 0}</strong></div>
+      <div><span>Cumulative revenue</span><strong>₦${totalCum.toLocaleString()}</strong><small>avg ₦${totalOps ? Math.round(totalCum / totalOps).toLocaleString() : 0}/op</small></div>
     </div>`;
 
   // Each cohort is a collapsible summary row; expand to drill into its riders.
-  const cards = cohorts.map((cohort) => {
-    const rows = (cohort.members || []).map((m) => {
-      const earned = `Earned today ₦${Number(m.earned_today_ngn || 0).toLocaleString()}`;
-      if (!m.in_ramp) {
-        return `<div class="policy-row"><div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong><small>Not in a ramp window</small></div><div><small>${earned}</small></div></div>`;
-      }
+  const memberRow = (m) => {
+    const earned = `Earned today ₦${Number(m.earned_today_ngn || 0).toLocaleString()} · cumulative ₦${Number(m.earned_total_ngn || 0).toLocaleString()}`;
+    const target = Number(m.effective_target_ngn || 0);
+    if (m.in_ramp) {
       const hitPct = m.scoreable_days ? Math.round((m.targets_hit / m.scoreable_days) * 100) : 0;
       return `
       <div class="policy-row">
         <div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong>
           <small>Day ${m.day_n}/${m.total_days} · ${escapeHtml(RAMP_PHASE_LABEL[m.phase] || m.phase)}</small>
-          <span class="pill">₦${Number(m.daily_target_ngn || 0).toLocaleString()} target</span></div>
+          <span class="pill">₦${target.toLocaleString()} target</span></div>
         <div><small>${earned} · targets hit ${m.targets_hit}/${m.scoreable_days} (${hitPct}%) · projected bonus ₦${Number(m.projected_bonus_ngn || 0).toLocaleString()}</small></div>
       </div>`;
-    }).join("");
+    }
+    const label = m.graduated ? `Graduated · steady target` : `Starts ${escapeHtml(String(m.anchor || "").slice(0, 10))} (Day 1)`;
+    return `
+      <div class="policy-row">
+        <div><strong>${escapeHtml(nameForPerson(m.person_id))}</strong><small>${label}</small>
+          ${target > 0 ? `<span class="pill">₦${target.toLocaleString()} target</span>` : ""}</div>
+        <div><small>${earned}</small></div>
+      </div>`;
+  };
+  const cards = cohorts.map((cohort) => {
+    const rows = (cohort.members || []).map(memberRow).join("");
     const revenue = Number(cohort.revenue_total_ngn || 0);
+    const cumulative = Number(cohort.revenue_cumulative_ngn || 0);
     const target = Number(cohort.target_total_ngn || 0);
     const attainmentPct = target > 0 ? Math.round((revenue / target) * 100) : 0;
+    const graduated = cohort.cohort_status === "graduated";
     return `
       <details class="cohort-card">
         <summary>
           <div class="cohort-head">
             <div><strong>${escapeHtml(cohort.name)}</strong><small>Day 1 ${escapeHtml(String(cohort.start_date).slice(0, 10))} · ${Number(cohort.operator_count || 0)} operator${Number(cohort.operator_count) === 1 ? "" : "s"}</small></div>
             <div class="cohort-metrics">
+              <span class="pill ${graduated ? "" : "open"}">${graduated ? "graduated" : "ramping"}</span>
               <span><strong>₦${revenue.toLocaleString()}</strong> today</span>
+              <span><strong>₦${cumulative.toLocaleString()}</strong> cumulative</span>
               <span><strong>₦${Number(cohort.avg_revenue_ngn || 0).toLocaleString()}</strong> avg/op</span>
-              <span><strong>${attainmentPct}%</strong> of target</span>
+              ${target > 0 ? `<span><strong>${attainmentPct}%</strong> of target</span>` : ""}
             </div>
           </div>
         </summary>
@@ -1285,6 +1313,8 @@ el.efficiencyPolicyForm.elements.vehicle_type.addEventListener("change", syncEff
 el.paceProfileForm.elements.effective_from.addEventListener("input", refreshPaceFormUi);
 el.efficiencyPolicyForm.elements.effective_from.addEventListener("input", refreshEfficiencyFormUi);
 el.economicsPolicyForm.elements.effective_from.addEventListener("input", refreshEconomicsFormUi);
+document.getElementById("cohortFilter")?.addEventListener("change", renderCohortBoard);
+document.getElementById("cohortSort")?.addEventListener("change", renderCohortBoard);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 
 document.addEventListener("click", (event) => {
