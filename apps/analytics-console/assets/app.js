@@ -575,7 +575,7 @@ function render() {
   }, { expected: 0, received: 0, net: 0, shortfalls: 0 });
   const openAlerts = state.alerts.filter((item) => item.resolution_status !== "resolved");
   const groupedAlertTypes = new Set(openAlerts.map((item) => item.alert_type));
-  const staleRows = state.performance.filter((row) => ["stale", "missing", "derived"].includes(row.data_quality));
+  const staleRows = state.performance.filter((row) => ["stale", "missing", "derived", "estimated"].includes(row.data_quality));
   const qualitySummary = dataQualitySummary();
   const missingOperators = state.board.filter((row) => row.current_status === "not_seen_today");
   const offlineOperators = state.board.filter((row) => row.current_status === "offline");

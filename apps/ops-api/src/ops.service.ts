@@ -1537,7 +1537,9 @@ export class OpsService {
           throw new Error("current_status is invalid.");
         }
         const quality = String(record.data_quality || "authoritative");
-        if (!["authoritative", "derived", "heuristic", "degraded"].includes(quality)) {
+        // Manual entry offers authoritative/derived/estimated/missing; "stale" is
+        // accepted but reserved for automated freshness (never a hand-typed value).
+        if (!["authoritative", "derived", "estimated", "stale", "missing"].includes(quality)) {
           throw new Error("data_quality is invalid.");
         }
         const values = [

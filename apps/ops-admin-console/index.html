@@ -121,10 +121,10 @@
           <label>Hours online<input name="hours_online" type="number" min="0" step="0.1" value="7.5" required /></label>
           <label>Data quality
             <select name="data_quality">
-              <option value="authoritative">Authoritative</option>
-              <option value="derived">Derived</option>
-              <option value="heuristic">Heuristic</option>
-              <option value="degraded">Degraded</option>
+              <option value="authoritative">Authoritative — verified, read direct from source</option>
+              <option value="derived">Derived — calculated from real inputs</option>
+              <option value="estimated">Estimated — approximate / judgement</option>
+              <option value="missing">Missing — no figure captured for this day</option>
             </select>
           </label>
             <button type="submit">Save performance record</button>
