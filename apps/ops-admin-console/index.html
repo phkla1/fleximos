@@ -131,15 +131,35 @@
         </details>
         <details class="management-panel">
           <summary>View performance records</summary>
+          <p class="section-intro" id="performanceRangeLabel">Cumulative performance over the selected date range.</p>
+          <p class="section-intro field-hint">The date range is set by the <strong>From</strong> / <strong>To</strong> pickers at the top of the page. Set From = To for a single day. Totals and graphs below are cumulative across that range.</p>
           <div class="history-filters">
             <label>Amoeba<select id="performanceAmoebaFilter"></select></label>
             <label>Operator<select id="performanceOperatorFilter"></select></label>
+            <label>Graph metric<select id="performanceMetric">
+              <option value="net_earnings_ngn">Net earnings</option>
+              <option value="ride_revenue_ngn">Revenue</option>
+              <option value="trips_completed">Trips completed</option>
+              <option value="hours_online">Hours online</option>
+            </select></label>
           </div>
           <div class="table-shell">
           <table class="performance-table">
-            <thead><tr><th>Operator</th><th>Platform</th><th>Trips</th><th>Revenue</th><th>Hours</th><th>Status</th><th>Quality</th></tr></thead>
+            <thead><tr><th>Operator</th><th>Platform</th><th>Days</th><th>Completed / offered</th><th>Revenue</th><th>Net</th><th>Hours</th><th>₦/hr</th><th>Quality</th></tr></thead>
             <tbody id="performanceRows"></tbody>
           </table>
+          </div>
+          <div class="perf-graphs">
+            <div class="perf-graph-block">
+              <h4>Per rider <span id="perfRiderScope" class="perf-graph-scope"></span></h4>
+              <div id="perfRiderChart" class="perf-bars"></div>
+              <div id="perfRiderTrend" class="perf-trend"></div>
+            </div>
+            <div class="perf-graph-block">
+              <h4>Per amoeba <span class="perf-graph-scope">all amoebas in scope</span></h4>
+              <div id="perfAmoebaChart" class="perf-bars"></div>
+              <div id="perfAmoebaTrend" class="perf-trend"></div>
+            </div>
           </div>
         </details>
       </section>

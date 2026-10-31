@@ -60,7 +60,9 @@ const el = Object.fromEntries(
     "dateFrom", "dateTo",
     "teamDialog", "teamDialogTitle", "teamDialogSummary", "teamOperatorList",
     "operatorSummaryCount", "vehicleSummaryCount", "performanceAmoebaFilter",
-    "performanceOperatorFilter", "alertGroupDialog", "alertGroupDialogTitle",
+    "performanceOperatorFilter", "performanceRangeLabel", "performanceMetric",
+    "perfRiderChart", "perfRiderTrend", "perfAmoebaChart", "perfAmoebaTrend",
+    "alertGroupDialog", "alertGroupDialogTitle",
     "alertGroupDialogSummary", "alertGroupList",
     "vehicleAmoebaFilter", "vehicleSearch", "vehicleFilterSummary",
     "operatorAmoebaFilter", "operatorSearch",
@@ -155,6 +157,75 @@ function nameForAmoeba(id) {
 
 function nameForSite(id) {
   return state.sites.find((site) => site.site_id === id)?.name || id;
+}
+
+// --- Performance graphs (hand-rolled, matching the analytics console idiom) ---
+const PERF_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"];
+
+function perfMetricValue(record, metric) {
+  if (metric === "trips_completed") return Number(record.trips_completed || 0);
+  if (metric === "hours_online") return Number(record.hours_online || 0);
+  if (metric === "ride_revenue_ngn") return Number(record.ride_revenue_ngn || 0);
+  return Number(record.net_earnings_ngn || 0);
+}
+
+function perfFmt(value, metric) {
+  if (metric === "trips_completed") return Math.round(value).toLocaleString();
+  if (metric === "hours_online") return `${Number(value).toFixed(1)}h`;
+  return `₦${Math.round(value).toLocaleString()}`;
+}
+
+function enumerateDates(from, to) {
+  const out = [];
+  if (!from || !to) return out;
+  const cursor = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  let guard = 0;
+  while (cursor <= end && guard++ < 400) {
+    out.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return out;
+}
+
+// Sorted horizontal bars; items = [{ label, value }].
+function perfBars(items, metric) {
+  if (!items.length) return `<div class="empty">No data in the selected range.</div>`;
+  const max = items.reduce((m, it) => Math.max(m, it.value), 0) || 1;
+  return items.map((it) => {
+    const width = Math.max(2, Math.round((it.value / max) * 100));
+    return `<div class="perf-bar-row">
+      <span class="perf-bar-name" title="${escapeHtml(it.label)}">${escapeHtml(it.label)}</span>
+      <span class="perf-bar-track"><span class="perf-bar-fill" style="width:${width}%"></span></span>
+      <span class="perf-bar-val">${escapeHtml(perfFmt(it.value, metric))}</span>
+    </div>`;
+  }).join("");
+}
+
+// One or more day-by-day trend lines; series = [{ label, color, points:[] }].
+function perfTrend(series, dates, metric, multi) {
+  if (!dates.length || !series.length) return "";
+  const W = 320, H = 118, padL = 4, padR = 4, padT = 10, padB = 16;
+  let max = 0;
+  series.forEach((s) => s.points.forEach((v) => { if (v > max) max = v; }));
+  if (max <= 0) max = 1;
+  const n = dates.length;
+  const xAt = (i) => padL + (n === 1 ? (W - padL - padR) / 2 : (i * (W - padL - padR)) / (n - 1));
+  const yAt = (v) => padT + (H - padT - padB) * (1 - v / max);
+  const lines = series.map((s) => {
+    const pts = s.points.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(" ");
+    const last = s.points[n - 1] || 0;
+    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+      + `<circle cx="${xAt(n - 1).toFixed(1)}" cy="${yAt(last).toFixed(1)}" r="3" fill="${s.color}" stroke="var(--surface-2)" stroke-width="1.5"/>`;
+  }).join("");
+  const axis = `<line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="var(--border-strong)" stroke-width="1"/>`;
+  const peak = `<text x="${padL}" y="9" class="perf-axis">${escapeHtml(perfFmt(max, metric))}</text>`;
+  const startLbl = `<text x="${padL}" y="${H - 4}" class="perf-axis">${escapeHtml(dates[0].slice(5))}</text>`;
+  const endLbl = n > 1 ? `<text x="${W - padR}" y="${H - 4}" text-anchor="end" class="perf-axis">${escapeHtml(dates[n - 1].slice(5))}</text>` : "";
+  const legend = multi
+    ? `<div class="perf-legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`).join("")}</div>`
+    : "";
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Daily ${multi ? "per-amoeba" : "total"} trend">${axis}${lines}${peak}${startLbl}${endLbl}</svg>${legend}`;
 }
 
 // The active operator currently holding a vehicle (the one-holder guard keeps this to one).
@@ -612,26 +683,55 @@ function render() {
     const key = `${item.operator_id}|${String(item.record_date).slice(0, 10)}`;
     if (!overrideByKey.has(key)) overrideByKey.set(key, item);
   });
-  const recordRows = performance.map((record) => {
-    const override = overrideByKey.get(`${record.operator_id}|${String(record.record_date).slice(0, 10)}`);
-    const correctedTag = override
-      ? ` <span class="corrected-tag" title="${escapeHtml(`Corrected${override.override_reason ? `: ${override.override_reason}` : ""} · was ₦${Number(override.prior_row?.ride_revenue_ngn ?? 0).toLocaleString()} (${override.prior_data_quality || "—"})`)}">corrected</span>`
-      : "";
+  // Cumulative performance per rider across the selected date range (not one
+  // row per day). The range comes from the global From/To pickers.
+  const metric = (el.performanceMetric && el.performanceMetric.value) || "net_earnings_ngn";
+  const dates = enumerateDates(state.dateFrom, state.dateTo);
+  const correctedRiderIds = new Set((state.recordOverrides || []).map((item) => item.operator_id));
+
+  const riderAgg = new Map();
+  performance.forEach((record) => {
+    let agg = riderAgg.get(record.operator_id);
+    if (!agg) {
+      agg = { operator_id: record.operator_id, person_id: record.person_id, platforms: new Set(),
+        days: new Set(), offered: 0, completed: 0, revenue: 0, net: 0, hours: 0, qualities: new Set() };
+      riderAgg.set(record.operator_id, agg);
+    }
+    if (record.platform_display_name) agg.platforms.add(record.platform_display_name);
+    agg.days.add(String(record.record_date).slice(0, 10));
+    agg.offered += Number(record.trips_total || 0);
+    agg.completed += Number(record.trips_completed || 0);
+    agg.revenue += Number(record.ride_revenue_ngn || 0);
+    agg.net += Number(record.net_earnings_ngn || 0);
+    agg.hours += Number(record.hours_online || 0);
+    agg.qualities.add(record.data_quality);
+  });
+  const riders = [...riderAgg.values()].sort((a, b) => b.net - a.net);
+
+  const recordRows = riders.map((agg) => {
+    const completionPct = agg.offered ? Math.round((agg.completed / agg.offered) * 100) : 0;
+    const perHour = agg.hours ? agg.net / agg.hours : 0;
+    const qualityLabel = agg.qualities.size > 1 ? "mixed" : [...agg.qualities][0] || "—";
+    const qualityClass = agg.qualities.size > 1 ? "" : [...agg.qualities][0] || "";
+    const corrected = correctedRiderIds.has(agg.operator_id)
+      ? ` <span class="corrected-tag" title="One or more days in this range were manually corrected.">corrected</span>` : "";
     return `
     <tr>
-      <td>${escapeHtml(nameForPerson(record.person_id))}</td>
-      <td>${escapeHtml(record.platform_display_name)}</td>
-      <td>${escapeHtml(record.trips_completed)} / ${escapeHtml(record.trips_total)}</td>
-      <td>₦${Number(record.ride_revenue_ngn).toLocaleString()}</td>
-      <td>${Number(record.hours_online).toFixed(1)}</td>
-      <td><span class="pill">${escapeHtml(record.current_status)}</span></td>
-      <td><span class="quality ${escapeHtml(record.data_quality)}">${escapeHtml(record.data_quality)}</span>${correctedTag}</td>
+      <td>${escapeHtml(nameForPerson(agg.person_id))}</td>
+      <td>${escapeHtml([...agg.platforms].join(", "))}</td>
+      <td>${agg.days.size}</td>
+      <td>${agg.completed.toLocaleString()} / ${agg.offered.toLocaleString()} <small>(${completionPct}%)</small></td>
+      <td>₦${Math.round(agg.revenue).toLocaleString()}</td>
+      <td>₦${Math.round(agg.net).toLocaleString()}</td>
+      <td>${agg.hours.toFixed(1)}</td>
+      <td>₦${Math.round(perHour).toLocaleString()}</td>
+      <td><span class="quality ${escapeHtml(qualityClass)}">${escapeHtml(qualityLabel)}</span>${corrected}</td>
     </tr>
   `;
   });
-  // Operators in the selected scope with no record for the operating date are
-  // listed explicitly so a short table is never mistaken for full coverage.
-  const coveredIds = new Set(performance.map((record) => record.operator_id));
+  // Active operators in scope with no record across the range are listed so a
+  // short table is never mistaken for full coverage.
+  const coveredIds = new Set(riders.map((agg) => agg.operator_id));
   const missingRows = selectedAmoeba
     ? state.operators
         .filter((operator) => amoebaOperatorIds.has(operator.operator_id) && operator.operator_status === "active")
@@ -639,13 +739,69 @@ function render() {
         .map((operator) => `
           <tr class="missing-record">
             <td>${escapeHtml(nameForPerson(operator.person_id))}</td>
-            <td colspan="6">No performance record ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`} — not reported by any platform feed or manual entry.</td>
+            <td colspan="8">No performance record ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`} — not reported by any platform feed or manual entry.</td>
           </tr>
         `)
     : [];
   el.performanceRows.innerHTML = recordRows.length || missingRows.length
     ? recordRows.join("") + missingRows.join("")
-    : `<tr><td colspan="7" class="empty">${selectedAmoeba ? "No active operators in this amoeba." : "Choose an amoeba to view its record coverage, then an operator for detail."}</td></tr>`;
+    : `<tr><td colspan="9" class="empty">${selectedAmoeba ? "No active operators in this amoeba." : "Choose an amoeba to view its riders, then an operator for detail."}</td></tr>`;
+
+  if (el.performanceRangeLabel) {
+    el.performanceRangeLabel.textContent = state.dateFrom === state.dateTo
+      ? `Cumulative performance · ${state.dateTo}`
+      : `Cumulative performance · ${state.dateFrom} to ${state.dateTo} (${dates.length} days)`;
+  }
+
+  // Per-rider graphs always cover ALL riders in the selected amoeba (the
+  // operator sub-filter only narrows the table above): ranked bars + a single
+  // aggregate trend line for the amoeba.
+  const riderScopeEl = document.getElementById("perfRiderScope");
+  if (!selectedAmoeba) {
+    el.perfRiderChart.innerHTML = `<div class="empty">Choose an amoeba to compare its riders.</div>`;
+    el.perfRiderTrend.innerHTML = "";
+    if (riderScopeEl) riderScopeEl.textContent = "";
+  } else {
+    const amoebaPerformance = state.dailyPerformance.filter((record) => amoebaOperatorIds.has(record.operator_id));
+    const graphRiders = new Map();
+    amoebaPerformance.forEach((record) => {
+      graphRiders.set(record.operator_id,
+        (graphRiders.get(record.operator_id) || 0) + perfMetricValue(record, metric));
+    });
+    const riderItems = [...graphRiders.entries()]
+      .map(([operatorId, value]) => ({ label: nameForPerson(
+        (state.operators.find((operator) => operator.operator_id === operatorId) || {}).person_id), value }))
+      .sort((a, b) => b.value - a.value);
+    el.perfRiderChart.innerHTML = perfBars(riderItems, metric);
+    const amoebaDaily = dates.map((date) =>
+      amoebaPerformance.filter((record) => String(record.record_date).slice(0, 10) === date)
+        .reduce((sum, record) => sum + perfMetricValue(record, metric), 0));
+    el.perfRiderTrend.innerHTML = riderItems.length
+      ? perfTrend([{ label: "Amoeba total", color: PERF_COLORS[0], points: amoebaDaily }], dates, metric, false)
+      : "";
+    if (riderScopeEl) riderScopeEl.textContent = `${nameForAmoeba(selectedAmoeba)} · ${el.performanceMetric.selectedOptions[0].text.toLowerCase()}`;
+  }
+
+  // Per-amoeba graphs (always all amoebas in scope): ranked bars + a multi-line
+  // daily trend (few amoebas, so legible).
+  const amoebaAgg = new Map();
+  state.dailyPerformance.forEach((record) => {
+    const amoebaId = record.amoeba_id || "unassigned";
+    let agg = amoebaAgg.get(amoebaId);
+    if (!agg) { agg = { amoebaId, total: 0, perDate: new Map() }; amoebaAgg.set(amoebaId, agg); }
+    const value = perfMetricValue(record, metric);
+    agg.total += value;
+    const date = String(record.record_date).slice(0, 10);
+    agg.perDate.set(date, (agg.perDate.get(date) || 0) + value);
+  });
+  const amoebaList = [...amoebaAgg.values()].sort((a, b) => b.total - a.total);
+  el.perfAmoebaChart.innerHTML = perfBars(
+    amoebaList.map((agg) => ({ label: nameForAmoeba(agg.amoebaId), value: agg.total })), metric);
+  const amoebaSeries = amoebaList.slice(0, 6).map((agg, index) => ({
+    label: nameForAmoeba(agg.amoebaId), color: PERF_COLORS[index % PERF_COLORS.length],
+    points: dates.map((date) => agg.perDate.get(date) || 0)
+  }));
+  el.perfAmoebaTrend.innerHTML = amoebaSeries.length ? perfTrend(amoebaSeries, dates, metric, true) : "";
 
   el.ingestionRuns.innerHTML = state.ingestionRuns.length ? state.ingestionRuns.slice(0, 6).map((run) => `
     <article class="data-row run-row">
@@ -1317,6 +1473,7 @@ el.performanceAmoebaFilter.addEventListener("change", () => {
   render();
 });
 el.performanceOperatorFilter.addEventListener("change", render);
+el.performanceMetric.addEventListener("change", render);
 el.vehicleAmoebaFilter.addEventListener("change", render);
 el.vehicleSearch.addEventListener("input", render);
 el.operatorAmoebaFilter.addEventListener("change", render);

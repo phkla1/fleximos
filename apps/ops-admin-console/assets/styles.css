@@ -148,6 +148,22 @@ textarea { resize: vertical; }
 .risk-alert .risk-badge, .quality.degraded, .quality.stale, .quality.missing { background: #f6e2df; color: var(--red); }
 .quality.estimated { background: #f8ead6; color: #7c4808; }
 .corrected-tag { margin-left: 6px; padding: 3px 6px; border-radius: 4px; background: #e9e3f6; color: #5a3fa0; font-size: 10px; font-weight: 850; text-transform: uppercase; cursor: help; }
+
+.perf-graphs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 18px; }
+.perf-graph-block h4 { margin: 0 0 10px; font-size: 13px; font-weight: 800; color: var(--green-dark); }
+.perf-graph-scope { font-weight: 600; color: #6b6f6d; text-transform: none; }
+.perf-bars { display: flex; flex-direction: column; gap: 4px; }
+.perf-bar-row { display: flex; align-items: center; gap: 8px; }
+.perf-bar-name { width: 84px; flex: none; font-size: 11px; color: #4a4f4d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.perf-bar-track { flex: 1; height: 12px; background: #eef2f0; border-radius: 3px; overflow: hidden; }
+.perf-bar-fill { display: block; height: 100%; background: #2a78d6; border-radius: 3px; }
+.perf-bar-val { width: 66px; flex: none; font-size: 11px; color: #6b6f6d; }
+.perf-trend { margin-top: 10px; }
+.perf-trend svg { display: block; }
+.perf-axis { font-size: 9px; fill: #8a8f8d; }
+.perf-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.perf-legend span { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #6b6f6d; }
+.perf-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .tile-status { margin-top: 17px; font-weight: 800; text-transform: capitalize; }
 .status-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--muted); }
 .status-dot.online { background: var(--green); }

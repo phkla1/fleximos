@@ -387,6 +387,13 @@ test.describe("Ops admin console", () => {
     expect(await page.locator("#performanceOperatorFilter option").count()).toBeGreaterThan(1);
     await page.locator("#performanceOperatorFilter").selectOption({ index: 1 });
     expect(await page.locator("#performanceRows tr").count()).toBeGreaterThan(0);
+    // Cumulative header + comparison graphs render.
+    await expect(page.locator("#performanceRangeLabel")).toContainText("Cumulative performance");
+    expect(await page.locator("#perfAmoebaChart .perf-bar-row").count()).toBeGreaterThan(0);
+    expect(await page.locator("#perfRiderChart .perf-bar-row").count()).toBeGreaterThan(0);
+    // The graph metric toggle re-renders without error.
+    await page.locator("#performanceMetric").selectOption("ride_revenue_ngn");
+    expect(await page.locator("#perfAmoebaChart .perf-bar-row").count()).toBeGreaterThan(0);
     // The technical import-run audit lives under Data health.
     await page.locator('.rail nav a[href="#data-health"]').click();
     await expect(page.getByText("View platform import runs", { exact: true })).toBeVisible();
