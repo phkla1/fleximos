@@ -24,6 +24,7 @@
           <a href="#alerts"><span class="nav-ic">⚠</span>Alerts</a>
           <a href="#reports"><span class="nav-ic">📄</span>Reports</a>
           <a href="#data-health"><span class="nav-ic">🩺</span>Data health</a>
+          <a href="#attendance"><span class="nav-ic">📋</span>Attendance</a>
           <p class="nav-group">Manage</p>
           <a href="#operators"><span class="nav-ic">🧑‍✈️</span>Roster</a>
           <a href="#vehicles"><span class="nav-ic">🛵</span>Vehicles</a>
@@ -217,6 +218,25 @@
           <p id="inspectionComplianceSummary" class="filter-summary"></p>
           <div id="inspectionComplianceList" class="data-list compact-list"></div>
         </details>
+      </section>
+
+      <section id="attendance" class="workspace-section view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Register</p><h2>Attendance</h2></div>
+          <span id="attendanceSummary" class="subtle"></span>
+        </div>
+        <p class="section-intro">Based on operator check-ins over the selected range. Present = checked in that day (✓ approved · • pending · ✕ rejected · ! off-site); absent = no check-in. Future days aren't counted absent.</p>
+        <div class="history-filters">
+          <label>From<input id="attFrom" type="date" /></label>
+          <label>To<input id="attTo" type="date" /></label>
+          <label>Amoeba<select id="attAmoeba"></select></label>
+        </div>
+        <div class="table-shell">
+          <table class="performance-table attendance-table">
+            <thead><tr><th>Operator</th><th>Amoeba</th><th>Present</th><th>Absent</th><th>Daily register</th></tr></thead>
+            <tbody id="attendanceRows"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="operators" class="workspace-section view">

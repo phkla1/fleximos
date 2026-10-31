@@ -2,6 +2,7 @@ const state = {
   people: [], amoebas: [], operators: [], board: [], alerts: [], reports: [],
   escalations: null, pnl: null, expenses: [], leaderboard: null, leaderboardSort: "score",
   vehiclePositions: { positions: [], no_feed: [] }, controlActions: [], integrationStatus: [],
+  checkins: [], dateFrom: null, dateTo: null,
   operatingDate: null
 };
 const ids = [
@@ -11,7 +12,8 @@ const ids = [
   "pnlRangeLabel", "pnlTotals", "pnlList", "expenseForm", "expenseList",
   "leaderboardList", "leaderboardIntro", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
   "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList",
-  "integrationList", "integrationSummary"
+  "integrationList", "integrationSummary",
+  "attendanceRows", "attendanceSummary"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
@@ -416,6 +418,53 @@ function render() {
   renderPnl();
   renderLeaderboard();
   renderReports();
+  renderAttendance();
+}
+
+// Attendance register from check-ins over the selected range. Present = checked
+// in that day; absent = no check-in on a past/today date (future days skipped).
+function attendanceDates(from, to) {
+  const out = [];
+  if (!from || !to) return out;
+  const cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
+  let guard = 0;
+  while (cursor <= end && guard++ < 400) { out.push(cursor.toISOString().slice(0, 10)); cursor.setUTCDate(cursor.getUTCDate() + 1); }
+  return out;
+}
+const ATT_MARK = { present: "✓", pending: "•", rejected: "✕", offsite: "!", absent: "–", future: "·" };
+function renderAttendance() {
+  if (!el.attendanceRows) return;
+  const dates = attendanceDates(state.dateFrom, state.dateTo);
+  const todayStr = today;
+  const byKey = new Map();
+  (state.checkins || []).forEach((item) => byKey.set(`${item.operator_id}|${String(item.check_in_date).slice(0, 10)}`, item));
+  const operators = (state.operators || [])
+    .filter((operator) => operator.operator_status === "active")
+    .sort((a, b) => personName(a.person_id).localeCompare(personName(b.person_id)));
+  let totalPresent = 0, totalAbsent = 0;
+  const rows = operators.map((operator) => {
+    const cells = dates.map((date) => {
+      const checkin = byKey.get(`${operator.operator_id}|${date}`);
+      let status;
+      if (!checkin) status = date <= todayStr ? "absent" : "future";
+      else if (checkin.status === "rejected") status = "rejected";
+      else if (checkin.status === "pending") status = "pending";
+      else status = checkin.geofence_ok === false ? "offsite" : "present";
+      return { date, status };
+    });
+    const present = cells.filter((cell) => ["present", "pending", "offsite"].includes(cell.status)).length;
+    const absent = cells.filter((cell) => cell.status === "absent").length;
+    totalPresent += present; totalAbsent += absent;
+    return `<tr>
+      <td>${escapeHtml(personName(operator.person_id))}</td>
+      <td>${escapeHtml(amoebaName(operator.amoeba_id))}</td>
+      <td><strong>${present}</strong></td>
+      <td>${absent ? `<strong class="att-absent">${absent}</strong>` : "0"}</td>
+      <td><span class="att-strip">${cells.map((cell) => `<span class="att-dot ${cell.status}" title="${escapeHtml(`${cell.date}: ${cell.status}`)}">${ATT_MARK[cell.status]}</span>`).join("")}</span></td>
+    </tr>`;
+  });
+  el.attendanceRows.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="5" class="empty">No active operators in scope.</td></tr>`;
+  if (el.attendanceSummary) el.attendanceSummary.textContent = `${operators.length} operators · ${dates.length} day${dates.length === 1 ? "" : "s"} · ${totalPresent} present · ${totalAbsent} absent`;
 }
 
 async function loadPnlAndLeaderboard() {
@@ -467,19 +516,21 @@ async function refresh() {
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
-  const [board, alerts, reports, escalations, vehiclePositions, controlActions, integrationStatus, deliveryBatches, deliveryExceptions] = await Promise.all([
+  const [board, alerts, reports, escalations, vehiclePositions, controlActions, integrationStatus, deliveryBatches, deliveryExceptions, checkins] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`), ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations"),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
     ops("/ops/v1/vehicle-control-actions").catch(() => ({ data: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
     ops(`/ops/v1/delivery-batches?${range}`).catch(() => ({ data: [] })),
-    ops("/ops/v1/delivery-exceptions?status=open").catch(() => ({ data: [] }))
+    ops("/ops/v1/delivery-exceptions?status=open").catch(() => ({ data: [] })),
+    ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     board: board.data, alerts: alerts.data, reports: reports.data, escalations,
     deliveryBatches: deliveryBatches.data, deliveryExceptions: deliveryExceptions.data,
     vehiclePositions, controlActions: controlActions.data,
+    checkins: checkins.data || [],
     integrationStatus: integrationStatus.integrations || []
   });
   await loadPnlAndLeaderboard();

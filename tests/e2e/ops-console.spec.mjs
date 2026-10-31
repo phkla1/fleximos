@@ -4,6 +4,16 @@ import { expect, test } from "@playwright/test";
 test.describe("Supervisor Ops console", () => {
   const url = "/apps/ops-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510";
 
+  test("attendance register shows the rider daily register over the range", async ({ page }) => {
+    await page.goto(url);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.locator('[data-tab-link="attendance"]').click();
+    await expect(page.locator("#attendance")).toBeVisible();
+    await expect(page.locator("#attendanceRows tr").first()).toBeVisible();
+    await expect(page.locator("#attendanceRows .att-strip").first()).toBeVisible();
+    await expect(page.locator("#attendanceSummary")).toContainText("present");
+  });
+
   test("cockpit answers what needs action now", async ({ page }) => {
     await page.goto(url);
     await expect(page).toHaveTitle("Fleximotion Supervisor App");
@@ -23,7 +33,7 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#bikeRevenueChip")).toContainText("Bikes");
     await expect(page.getByRole("heading", { name: "Do these first" })).toBeVisible();
     await expect(page.locator(".condition-card").first()).toBeVisible();
-    await expect(page.locator(".dock a")).toHaveCount(7);
+    await expect(page.locator(".dock a")).toHaveCount(8);
     await expect(page.getByText("Daily performance ingestion")).toHaveCount(0);
     await expect(page.getByText("API connection")).toHaveCount(0);
   });
@@ -336,6 +346,14 @@ test.describe("Supervisor Ops console", () => {
 
 test.describe("Ops admin console", () => {
   const url = "/apps/ops-admin-console/?opsApiBase=http://127.0.0.1:4530&foundationApiBase=http://127.0.0.1:4510";
+
+  test("attendance register lists operators with a daily check-in strip", async ({ page }) => {
+    await page.goto(`${url}#attendance`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await expect(page.locator("#attendance")).toBeVisible();
+    await expect(page.locator("#attendanceRows tr").first()).toBeVisible();
+    await expect(page.locator("#attendanceRows .att-strip").first()).toBeVisible();
+  });
 
   test("keeps ingestion and roster controls out of the supervisor workspace", async ({ page }) => {
     await page.goto(url);

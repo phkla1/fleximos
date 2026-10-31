@@ -46,6 +46,7 @@ const el = Object.fromEntries([
   "kpiStrip", "driverTable", "vehicleTable", "exportDriversCsv",
   "exportVehiclesCsv", "incidentForm", "weeklySummary", "exportWeeklyCsv",
   "dialogCostField", "dialogCost", "checkinApprovals", "importCustomer",
+  "attendanceRows", "attendanceSummary",
   "importDate", "importFile", "importRun", "importResult"
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -213,7 +214,7 @@ function evidenceChips(mediaIds) {
 
 /* ---------- tab navigation ---------- */
 
-const TABS = ["cockpit", "board", "alerts", "deliveries", "fuel", "field", "closeout"];
+const TABS = ["cockpit", "board", "alerts", "deliveries", "fuel", "field", "attendance", "closeout"];
 function activateTab(name) {
   const tab = TABS.includes(name) ? name : "cockpit";
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.tab === tab));
@@ -1207,6 +1208,7 @@ function render() {
   renderCloseout(latestAnalysis);
   renderDeliveries();
   renderCheckinApprovals();
+  renderAttendance();
   renderImportControls();
   renderVehicleMap();
   if (openOperatorId) renderOperatorDialog(openOperatorId);
@@ -1218,6 +1220,48 @@ function checkinFence(checkin) {
   if (checkin.geofence_ok === true) return `<span class="pill resolved">Inside ${escapeHtml(checkin.matched_site_name || "site")}${checkin.distance_m != null ? ` · ${Math.round(checkin.distance_m)}m` : ""}</span>`;
   if (checkin.geofence_ok === false) return `<span class="pill open">Outside${checkin.distance_m != null ? ` · ${(Number(checkin.distance_m) / 1000).toFixed(1)}km` : ""}</span>`;
   return `<span class="pill pending">No GPS</span>`;
+}
+
+// Attendance register across the selected range. Present = checked in that day;
+// absent = no check-in on a past/today date (future days skipped).
+const ATT_MARK = { present: "✓", pending: "•", rejected: "✕", offsite: "!", absent: "–", future: "·" };
+function renderAttendance() {
+  if (!el.attendanceRows) return;
+  const from = state.dateFrom, to = state.dateTo || todayLagos;
+  const dates = [];
+  if (from && to) {
+    const cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
+    let guard = 0;
+    while (cursor <= end && guard++ < 400) { dates.push(cursor.toISOString().slice(0, 10)); cursor.setUTCDate(cursor.getUTCDate() + 1); }
+  }
+  const byKey = new Map();
+  (state.attendanceCheckins || []).forEach((item) => byKey.set(`${item.operator_id}|${String(item.check_in_date).slice(0, 10)}`, item));
+  const operators = (state.operators || [])
+    .filter((operator) => operator.operator_status === "active")
+    .sort((a, b) => personName(a.person_id).localeCompare(personName(b.person_id)));
+  let totalPresent = 0, totalAbsent = 0;
+  const rows = operators.map((operator) => {
+    const cells = dates.map((date) => {
+      const checkin = byKey.get(`${operator.operator_id}|${date}`);
+      let status;
+      if (!checkin) status = date <= todayLagos ? "absent" : "future";
+      else if (checkin.status === "rejected") status = "rejected";
+      else if (checkin.status === "pending") status = "pending";
+      else status = checkin.geofence_ok === false ? "offsite" : "present";
+      return { date, status };
+    });
+    const present = cells.filter((cell) => ["present", "pending", "offsite"].includes(cell.status)).length;
+    const absent = cells.filter((cell) => cell.status === "absent").length;
+    totalPresent += present; totalAbsent += absent;
+    return `<tr>
+      <td>${escapeHtml(personName(operator.person_id))}</td>
+      <td><strong>${present}</strong></td>
+      <td>${absent ? `<strong class="att-absent">${absent}</strong>` : "0"}</td>
+      <td><span class="att-strip">${cells.map((cell) => `<span class="att-dot ${cell.status}" title="${escapeHtml(`${cell.date}: ${cell.status}`)}">${ATT_MARK[cell.status]}</span>`).join("")}</span></td>
+    </tr>`;
+  });
+  el.attendanceRows.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="4" class="empty">No active riders in your scope.</td></tr>`;
+  if (el.attendanceSummary) el.attendanceSummary.textContent = `${operators.length} riders · ${dates.length} day${dates.length === 1 ? "" : "s"} · ${totalPresent} present · ${totalAbsent} absent`;
 }
 
 function renderCheckinApprovals() {
@@ -1488,7 +1532,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, checkins] = await Promise.all([
+  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, checkins, attendanceCheckins] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/pacing?record_date=${operatingDate}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/alerts?${range}`),
@@ -1508,7 +1552,8 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
-    ops(`/ops/v1/checkins?check_in_date=${dateTo}`).catch(() => ({ data: [] }))
+    ops(`/ops/v1/checkins?check_in_date=${dateTo}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -1516,6 +1561,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   Object.assign(state, {
     people: people.data,
     operators: assigned,
+    attendanceCheckins: (attendanceCheckins.data || []).filter((row) => assignedIds.has(row.operator_id)),
+    dateFrom,
+    dateTo,
     alerts: alerts.data.filter((alert) => assignedIds.has(alert.operator_id)),
     teamBoard: teamBoard.data.filter((item) => assignedIds.has(item.operator_id)),
     pacing: (pacing.data || []).filter((item) => assignedIds.has(item.operator_id)),

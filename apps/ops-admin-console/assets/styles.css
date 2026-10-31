@@ -149,6 +149,17 @@ textarea { resize: vertical; }
 .quality.estimated { background: #f8ead6; color: #7c4808; }
 .corrected-tag { margin-left: 6px; padding: 3px 6px; border-radius: 4px; background: #e9e3f6; color: #5a3fa0; font-size: 10px; font-weight: 850; text-transform: uppercase; cursor: help; }
 
+.att-strip { display: inline-flex; flex-wrap: wrap; gap: 3px; max-width: 320px; }
+.att-dot { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 11px; font-weight: 800; cursor: help; }
+.att-dot.present { background: #d9f0e4; color: #0f6e56; }
+.att-dot.pending { background: #f8ead6; color: #7c4808; }
+.att-dot.offsite { background: #f8ead6; color: #7c4808; border: 1px solid #c98a3a; }
+.att-dot.rejected { background: #f6e2df; color: var(--red); }
+.att-dot.absent { background: #eef0ef; color: #9aa09d; }
+.att-dot.future { background: transparent; color: #c7ccca; }
+.att-absent { color: var(--red); }
+.attendance-table td { vertical-align: middle; }
+
 .perf-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 10px 0 4px; }
 .perf-range label { display: flex; flex-direction: column; font-size: 11px; font-weight: 800; color: #6b6f6d; text-transform: uppercase; letter-spacing: 0.03em; gap: 4px; }
 .perf-range input { font: inherit; padding: 6px 8px; border: 1px solid #d6dbd8; border-radius: 6px; }

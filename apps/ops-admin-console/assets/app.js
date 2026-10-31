@@ -63,6 +63,7 @@ const el = Object.fromEntries(
     "performanceOperatorFilter", "performanceRangeLabel", "performanceMetric",
     "perfFrom", "perfTo",
     "perfRiderChart", "perfRiderTrend", "perfAmoebaChart", "perfAmoebaTrend",
+    "attFrom", "attTo", "attAmoeba", "attendanceRows", "attendanceSummary",
     "alertGroupDialog", "alertGroupDialogTitle",
     "alertGroupDialogSummary", "alertGroupList",
     "vehicleAmoebaFilter", "vehicleSearch", "vehicleFilterSummary",
@@ -95,6 +96,9 @@ el.dateTo.value = todayLagos;
 // The performance panel defaults to the last 7 days (its own range).
 el.perfTo.value = todayLagos;
 (() => { const d = new Date(`${todayLagos}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.perfFrom.value = d.toISOString().slice(0, 10); })();
+// Attendance register defaults to the last 7 days too.
+el.attTo.value = todayLagos;
+(() => { const d = new Date(`${todayLagos}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.attFrom.value = d.toISOString().slice(0, 10); })();
 el.paceProfileForm.elements.effective_from.value = todayLagos;
 el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
 el.economicsPolicyForm.elements.effective_from.value = todayLagos;
@@ -389,6 +393,70 @@ function renderPerformancePanel() {
   el.perfAmoebaTrend.innerHTML = amoebaSeries.length ? perfTrend(amoebaSeries, dates, metric, true) : "";
 }
 
+// --- Attendance register (check-in based) ---
+// Per operator over the range: a daily status, plus present/absent totals.
+// Absent = no check-in on a past/today date; future days aren't counted.
+function attendanceStatusFor(checkin, dateStr, todayStr) {
+  if (!checkin) return dateStr <= todayStr ? "absent" : "future";
+  if (checkin.status === "rejected") return "rejected";
+  if (checkin.status === "pending") return "pending";
+  return checkin.geofence_ok === false ? "offsite" : "present";
+}
+const ATT_MARK = { present: "✓", pending: "•", rejected: "✕", offsite: "!", absent: "–", future: "·" };
+function buildAttendance(checkins, operators, dates, todayStr) {
+  const byKey = new Map();
+  (checkins || []).forEach((item) => byKey.set(`${item.operator_id}|${String(item.check_in_date).slice(0, 10)}`, item));
+  return operators.map((operator) => {
+    const cells = dates.map((date) => ({
+      date,
+      status: attendanceStatusFor(byKey.get(`${operator.operator_id}|${date}`), date, todayStr)
+    }));
+    return {
+      operator,
+      present: cells.filter((cell) => ["present", "pending", "offsite"].includes(cell.status)).length,
+      absent: cells.filter((cell) => cell.status === "absent").length,
+      cells
+    };
+  });
+}
+function renderAttendance(checkins, { fromEl, toEl, amoebaEl, rowsEl, summaryEl }) {
+  const from = fromEl.value, to = toEl.value;
+  const dates = enumerateDates(from, to);
+  const selectedAmoeba = amoebaEl.value;
+  const operators = state.operators
+    .filter((operator) => operator.operator_status === "active")
+    .filter((operator) => !selectedAmoeba || operator.amoeba_id === selectedAmoeba)
+    .sort((a, b) => nameForPerson(a.person_id).localeCompare(nameForPerson(b.person_id)));
+  const rows = buildAttendance(checkins, operators, dates, todayLagos);
+  rowsEl.innerHTML = rows.length ? rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(nameForPerson(row.operator.person_id))}</td>
+      <td>${escapeHtml(nameForAmoeba(row.operator.amoeba_id))}</td>
+      <td><strong>${row.present}</strong></td>
+      <td>${row.absent ? `<strong class="att-absent">${row.absent}</strong>` : "0"}</td>
+      <td><span class="att-strip">${row.cells.map((cell) => `<span class="att-dot ${cell.status}" title="${escapeHtml(`${cell.date}: ${cell.status}`)}">${ATT_MARK[cell.status]}</span>`).join("")}</span></td>
+    </tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No active operators in this scope.</td></tr>`;
+  if (summaryEl) {
+    const totalPresent = rows.reduce((sum, row) => sum + row.present, 0);
+    const totalAbsent = rows.reduce((sum, row) => sum + row.absent, 0);
+    summaryEl.textContent = `${operators.length} operators · ${dates.length} day${dates.length === 1 ? "" : "s"} · ${totalPresent} present · ${totalAbsent} absent`;
+  }
+}
+async function loadAttendance() {
+  if (!el.attFrom) return;
+  let from = el.attFrom.value || el.attTo.value || todayLagos;
+  let to = el.attTo.value || from;
+  if (from > to) [from, to] = [to, from];
+  el.attFrom.value = from; el.attTo.value = to;
+  try {
+    const result = await ops(`/ops/v1/checkins?date_from=${from}&date_to=${to}`).catch(() => ({ data: [] }));
+    renderAttendance(result.data || [], {
+      fromEl: el.attFrom, toEl: el.attTo, amoebaEl: el.attAmoeba, rowsEl: el.attendanceRows, summaryEl: el.attendanceSummary
+    });
+  } catch (error) { showError(error); }
+}
+
 // The active operator currently holding a vehicle (the one-holder guard keeps this to one).
 function operatorForVehicle(vehicleId) {
   return state.operators.find((operator) => operator.vehicle_id === vehicleId && operator.operator_status === "active") || null;
@@ -504,6 +572,14 @@ function updatePerformanceFilters() {
     : [];
   el.performanceOperatorFilter.innerHTML = operatorOptions(operators, selectedAmoeba ? "All operators in amoeba" : "Select an amoeba first");
   if (operators.some((operator) => operator.operator_id === previousOperator)) el.performanceOperatorFilter.value = previousOperator;
+
+  // Attendance amoeba filter (all amoebas by default).
+  if (el.attAmoeba) {
+    const prevAtt = el.attAmoeba.value;
+    el.attAmoeba.innerHTML = `<option value="">All amoebas</option>` + state.amoebas.map((amoeba) =>
+      `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
+    if (state.amoebas.some((amoeba) => amoeba.amoeba_id === prevAtt)) el.attAmoeba.value = prevAtt;
+  }
 }
 
 function updateVehicleFilters() {
@@ -1471,6 +1547,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   // The performance panel fetches its own range-scoped data after the page load
   // so it reflects any new records without being part of the page-wide fetch.
   loadPerformancePanel().catch(showError);
+  loadAttendance().catch(showError);
   setConnection("connected", "Live APIs connected");
   setNotice(message);
 }
@@ -1505,6 +1582,9 @@ el.performanceOperatorFilter.addEventListener("change", renderPerformancePanel);
 el.performanceMetric.addEventListener("change", renderPerformancePanel);
 el.perfFrom.addEventListener("change", loadPerformancePanel);
 el.perfTo.addEventListener("change", loadPerformancePanel);
+el.attFrom.addEventListener("change", loadAttendance);
+el.attTo.addEventListener("change", loadAttendance);
+el.attAmoeba.addEventListener("change", loadAttendance);
 document.querySelectorAll("[data-perf-preset]").forEach((button) =>
   button.addEventListener("click", () => perfApplyPreset(button.dataset.perfPreset)));
 el.vehicleAmoebaFilter.addEventListener("change", render);

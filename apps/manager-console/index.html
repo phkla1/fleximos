@@ -127,6 +127,19 @@
         <p class="section-intro">Generation snapshots the To date of the current range. The nightly scheduled job also generates one automatically.</p>
         <div id="reportList" class="data-list"></div>
       </section>
+
+      <section id="attendance" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Register</p><h2>Attendance</h2></div>
+          <span id="attendanceSummary" class="subtle"></span>
+        </div>
+        <p class="section-intro">Operator check-ins across the selected range (set From/To above). Present = checked in that day (✓ approved · • pending · ✕ rejected · ! off-site); absent = no check-in.</p>
+        <div class="table-shell">
+          <table class="data-table attendance-table">
+            <thead><tr><th>Operator</th><th>Amoeba</th><th>Present</th><th>Absent</th><th>Daily register</th></tr></thead>
+            <tbody id="attendanceRows"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
     <dialog id="actionDialog">
       <form method="dialog" class="dialog-body">

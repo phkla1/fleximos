@@ -31,6 +31,11 @@ test.describe("role consoles", () => {
     await page.locator("#reportForm").getByRole("button", { name: "Generate report" }).click();
     await expect(page.locator("#notice")).toContainText("Daily report generated");
     await expect(page.locator("#reportList .data-row").first()).toBeVisible();
+
+    // Attendance register across the range.
+    await expect(page.getByRole("heading", { name: "Attendance" })).toBeVisible();
+    await expect(page.locator("#attendanceRows tr").first()).toBeVisible();
+    await expect(page.locator("#attendanceRows .att-strip").first()).toBeVisible();
   });
 
   test("manager console computes P&L, records expenses and ranks the leaderboard", async ({ page }) => {

@@ -39,6 +39,7 @@
       <a href="#deliveries" data-tab-link="deliveries"><span class="dock-icon">📦</span>Deliver</a>
       <a href="#fuel" data-tab-link="fuel"><span class="dock-icon">⛽</span>Fuel</a>
       <a href="#field" data-tab-link="field"><span class="dock-icon">🛠</span>Field</a>
+      <a href="#attendance" data-tab-link="attendance"><span class="dock-icon">📋</span>Attend</a>
       <a href="#closeout" data-tab-link="closeout"><span class="dock-icon">✓</span>Close</a>
     </nav>
 
@@ -279,6 +280,21 @@
           <button type="submit">Report issue</button>
         </form>
         <div id="maintenanceList" class="alert-list"></div>
+      </section>
+
+      <!-- ============ ATTENDANCE ============ -->
+      <section id="attendance" class="tab-panel" data-tab="attendance">
+        <div class="section-heading">
+          <div><p class="eyebrow">Register</p><h2>Attendance</h2></div>
+          <span id="attendanceSummary" class="subtle"></span>
+        </div>
+        <p class="section-intro">Your riders' check-ins over the selected range (set From/To in the header). Present = checked in (✓ approved · • pending · ✕ rejected · ! off-site); absent = no check-in that day.</p>
+        <div class="table-shell">
+          <table class="data-table attendance-table">
+            <thead><tr><th>Rider</th><th>Present</th><th>Absent</th><th>Daily register</th></tr></thead>
+            <tbody id="attendanceRows"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ============ DAILY CLOSEOUT ============ -->
