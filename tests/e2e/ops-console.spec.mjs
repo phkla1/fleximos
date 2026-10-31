@@ -11,6 +11,13 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#paceGauge")).toBeVisible();
     await expect(page.locator("#utilisationGauge")).toBeVisible();
     await expect(page.locator("#closeoutGauge")).toBeVisible();
+    // The closeout tile reveals its checklist lines when tapped.
+    await expect(page.locator("#closeoutDetail")).toBeHidden();
+    await page.locator("#closeoutGauge").click();
+    await expect(page.locator("#closeoutDetail")).toBeVisible();
+    await expect(page.locator("#closeoutDetail li")).toHaveCount(7);
+    await page.locator("#closeoutGauge").click();
+    await expect(page.locator("#closeoutDetail")).toBeHidden();
     await expect(page.locator("#utilisationGauge figcaption strong")).not.toHaveText("0%");
     await expect(page.locator("#carRevenueChip")).toContainText("Cars");
     await expect(page.locator("#bikeRevenueChip")).toContainText("Bikes");

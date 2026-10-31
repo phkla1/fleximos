@@ -55,6 +55,7 @@ const foundationApiBase = query.get("foundationApiBase") || window.flexiServiceB
 const token = window.flexiServiceToken();
 let actorPersonId = query.get("actorPersonId") || "person_founder_wole";
 let openOperatorId = null;
+let closeoutDetailOpen = false;
 const todayLagos = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
@@ -237,9 +238,10 @@ function vehicleIssueIds() {
 function analyseTeam() {
   const issues = vehicleIssueIds();
   const fuelConfirmed = new Set(state.fuelIssues.map((issue) => issue.operator_id));
+  // Real mileage exceptions as the backend actually labels them: the fuel-economy
+  // variance and the tracker-vs-official variance each resolve to "exception".
   const mileageExceptions = state.mileageReconciliations.filter((row) =>
-    ["over_variance", "under_variance", "unexplained_distance", "no_fuel_issue"].includes(row.official_distance_status)
-    || row.tracker_variance_status === "over_variance");
+    row.official_distance_status === "exception" || row.tracker_variance_status === "exception");
   const exceptionOperatorIds = new Set(mileageExceptions.map((row) => row.operator_id));
 
   const rows = state.teamBoard.map((item) => {
@@ -718,6 +720,16 @@ function renderCockpit(analysis) {
   const readinessPct = checklist.length ? clearItems / checklist.length * 100 : 100;
   renderGauge("closeoutGauge", readinessPct, `${clearItems}/${checklist.length}`,
     "checklist lines clear", readinessPct === 100 ? "green" : readinessPct >= 60 ? "yellow" : "red");
+  // The 7 checklist lines behind the "X/7", revealed when the gauge is tapped.
+  const closeoutDetail = document.getElementById("closeoutDetail");
+  if (closeoutDetail) {
+    closeoutDetail.innerHTML = checklist.map((item) => `
+      <li class="${item.count ? (item.criticalCount ? "blocker" : "warning") : "clear"}">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${item.count ? `${item.count}${item.criticalCount ? " · blocks closeout" : ""}` : "clear"}</strong>
+      </li>`).join("");
+    closeoutDetail.hidden = !closeoutDetailOpen;
+  }
 
   el.carRevenueChip.textContent = `Cars ${money(revenueByType.car)}`;
   el.bikeRevenueChip.textContent = `Bikes ${money(revenueByType.bike)}`;
@@ -1655,6 +1667,12 @@ el.controlDialog.addEventListener("close", async () => {
 
 el.alertFilter.addEventListener("change", renderAlerts);
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
+document.getElementById("closeoutGauge")?.addEventListener("click", () => {
+  closeoutDetailOpen = !closeoutDetailOpen;
+  const detail = document.getElementById("closeoutDetail");
+  if (detail) detail.hidden = !closeoutDetailOpen;
+  document.getElementById("closeoutGauge")?.setAttribute("aria-expanded", String(closeoutDetailOpen));
+});
 const describeRange = () => el.dateFrom.value === el.dateTo.value
   ? `Showing amoeba activity for ${el.dateTo.value}.`
   : `Showing amoeba activity from ${el.dateFrom.value} to ${el.dateTo.value}.`;

@@ -238,6 +238,20 @@ async function refreshCheckin() {
   renderCheckin();
 }
 
+// The supervisor's approve/reject needs to surface on the rider's screen without
+// a manual reload. Poll while waiting on a decision, and refetch when the rider
+// returns to the tab. Started once, after sign-in.
+let checkinPoll = null;
+function startCheckinPolling() {
+  if (checkinPoll) return;
+  checkinPoll = setInterval(() => {
+    if (currentOperator && currentCheckin && currentCheckin.status === "pending") refreshCheckin();
+  }, 15000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && currentOperator) refreshCheckin();
+  });
+}
+
 async function doCheckin() {
   const button = el.checkinCard.querySelector("#checkinButton");
   if (button) button.disabled = true;
@@ -277,6 +291,7 @@ async function load() {
 
   currentOperator = operator;
   void refreshCheckin();
+  startCheckinPolling();
   let dateFrom = el.dateFrom.value || el.dateTo.value || today;
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
