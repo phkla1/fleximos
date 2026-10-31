@@ -117,6 +117,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_device_id TEXT;
       ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS tracker_provider TEXT;
+      -- A bike is either internal-combustion (ice) or electric (ev); "fuel" is
+      -- litres for ICE, kWh of charge for EV. Derived from the source, never
+      -- blindly defaulted: Tankvolt/Orbit are EV; Gamma/GigMile/Q-Link are ICE.
+      ALTER TABLE ops_vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT;
+      UPDATE ops_vehicles SET powertrain = 'ev'
+        WHERE powertrain IS NULL
+          AND (LOWER(COALESCE(tracker_provider, '')) IN ('tankvolt', 'orbit')
+            OR LOWER(COALESCE(make_model, '')) LIKE '%tankvolt%'
+            OR LOWER(COALESCE(make_model, '')) LIKE '%orbit%');
+      UPDATE ops_vehicles SET powertrain = 'ice'
+        WHERE powertrain IS NULL
+          AND (LOWER(COALESCE(make_model, '')) LIKE '%gamma%'
+            OR LOWER(COALESCE(make_model, '')) LIKE '%gig%'
+            OR LOWER(COALESCE(make_model, '')) LIKE '%qlink%'
+            OR LOWER(COALESCE(make_model, '')) LIKE '%q-link%');
       -- A vehicle may be bought and held in the warehouse before it is allocated
       -- to an amoeba, so amoeba_id is optional (NULL = unassigned/warehouse).
       ALTER TABLE ops_vehicles ALTER COLUMN amoeba_id DROP NOT NULL;
@@ -287,6 +302,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
       ALTER TABLE ops_vehicle_efficiency_policies
         ADD COLUMN IF NOT EXISTS price_per_unit_ngn NUMERIC(10, 2);
+      -- An efficiency policy may be scoped to a powertrain (ice|ev), so EV and
+      -- ICE bikes of the same vehicle_type don't collide on one fuel economy.
+      ALTER TABLE ops_vehicle_efficiency_policies
+        ADD COLUMN IF NOT EXISTS powertrain TEXT;
 
       -- Repeated saves once stacked duplicate versions (same vehicle
       -- type + make/model + effective date); keep the newest of each.

@@ -268,6 +268,13 @@
           </label>
           <label>Amoeba<select name="amoeba_id"></select></label>
           <label>Make / model<input name="make_model" /></label>
+          <label>Powertrain
+            <select name="powertrain">
+              <option value="">Auto (Tankvolt/Orbit = EV, else ICE)</option>
+              <option value="ice">ICE — petrol (litres)</option>
+              <option value="ev">EV — electric (kWh charge)</option>
+            </select>
+          </label>
           <label>Color<input name="color" /></label>
           <label>Tracker provider<select name="tracker_provider" id="vehicleTrackerProvider"></select></label>
           <label><span id="vehicleTrackerFieldLabel">Tracker device ID</span><input name="tracker_device_id" id="vehicleTrackerDeviceId" /></label>

@@ -1048,24 +1048,37 @@ export class OpsService {
       assigned_operator_id: body.assigned_operator_id || null,
       tracker_device_id: body.tracker_device_id || null,
       tracker_provider: body.tracker_provider || null,
+      powertrain: this.powertrainOf(body),
       created_at: timestamp,
       updated_at: timestamp
     };
     await this.db.exec(
       `INSERT INTO ops_vehicles
         (vehicle_id, plate, vehicle_type, amoeba_id, make_model, color, status,
-         assigned_operator_id, tracker_device_id, tracker_provider, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         assigned_operator_id, tracker_device_id, tracker_provider, powertrain, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       Object.values(vehicle)
     );
     await this.audit("vehicle.created", "vehicle", vehicle.vehicle_id, null, vehicle);
     return vehicle;
   }
 
+  // A bike is ICE or EV, derived from its source, never blindly defaulted:
+  // Tankvolt/Orbit = EV; everything else (Gamma/GigMile/Q-Link…) = ICE. An
+  // explicit powertrain on the request always wins.
+  powertrainOf(body: RecordBody): "ice" | "ev" {
+    const explicit = String(body.powertrain || "").toLowerCase();
+    if (explicit === "ice" || explicit === "ev") return explicit;
+    const provider = String(body.tracker_provider || "").toLowerCase();
+    const make = String(body.make_model || "").toLowerCase();
+    if (["tankvolt", "orbit"].includes(provider) || make.includes("tankvolt") || make.includes("orbit")) return "ev";
+    return "ice";
+  }
+
   async updateVehicle(vehicleId: string, body: RecordBody) {
     const current = await this.db.one<any>("SELECT * FROM ops_vehicles WHERE vehicle_id = $1", [vehicleId]);
     if (!current) throw new NotFoundException("Vehicle not found.");
-    const allowed = ["plate", "vehicle_type", "amoeba_id", "make_model", "color", "status", "assigned_operator_id", "tracker_device_id", "tracker_provider"];
+    const allowed = ["plate", "vehicle_type", "amoeba_id", "make_model", "color", "status", "assigned_operator_id", "tracker_device_id", "tracker_provider", "powertrain"];
     const updated = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
     updated.amoeba_id = updated.amoeba_id || null;
@@ -1276,15 +1289,16 @@ export class OpsService {
       effective_to: body.effective_to ? this.date(body.effective_to) : null,
       created_by_person_id: actorPersonId,
       created_at: timestamp,
-      updated_at: timestamp
+      updated_at: timestamp,
+      powertrain: ["ice", "ev"].includes(String(body.powertrain)) ? String(body.powertrain) : null
     };
     await this.db.exec(
       `INSERT INTO ops_vehicle_efficiency_policies
        (efficiency_policy_id, vehicle_type, make_model, fuel_type,
         standard_daily_fuel_quantity, fuel_unit, expected_distance_km,
         allowed_variance_pct, price_per_unit_ngn, effective_from, effective_to,
-        created_by_person_id, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        created_by_person_id, created_at, updated_at, powertrain)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       Object.values(policy)
     );
     await this.audit("vehicle_efficiency_policy.created", "vehicle_efficiency_policy", policy.efficiency_policy_id, null, policy, actorPersonId);
@@ -1382,8 +1396,9 @@ export class OpsService {
        LEFT JOIN LATERAL (
          SELECT * FROM ops_vehicle_efficiency_policies p
          WHERE p.vehicle_type=v.vehicle_type AND (p.make_model IS NULL OR p.make_model=v.make_model)
+           AND (p.powertrain IS NULL OR p.powertrain=v.powertrain)
            AND p.effective_from <= $1 AND (p.effective_to IS NULL OR p.effective_to >= $1)
-         ORDER BY (p.make_model IS NOT NULL) DESC, p.effective_from DESC LIMIT 1
+         ORDER BY (p.powertrain IS NOT NULL) DESC, (p.make_model IS NOT NULL) DESC, p.effective_from DESC LIMIT 1
        ) p ON TRUE
        WHERE ${clauses.join(" AND ")}`,
       params

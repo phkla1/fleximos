@@ -807,7 +807,7 @@ function render() {
   el.vehicleList.innerHTML = currentVehicles.length ? currentVehicles.map((vehicle) => `
     <article class="data-row">
       <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
-      <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
+      <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}${vehicle.powertrain ? ` · ${vehicle.powertrain === "ev" ? "EV" : "ICE"}` : ""}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
       <div><span class="row-label">Amoeba</span>${vehicle.amoeba_id
         ? `<strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong>`
         : `<strong class="muted">Unassigned (warehouse)</strong>`}<small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>

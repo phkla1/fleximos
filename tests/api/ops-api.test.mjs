@@ -1426,6 +1426,14 @@ test("registered vehicles show in the inventory even when their provider has no 
     })
   });
   assert.equal(create.response.status, 201);
+  // A Tankvolt bike is derived as EV; an explicit powertrain always wins.
+  assert.equal(create.body.powertrain, "ev", "Tankvolt is derived as electric");
+  const ice = await request("/ops/v1/vehicles", {
+    method: "POST",
+    headers: { "Idempotency-Key": "ice-vehicle-test-1" },
+    body: JSON.stringify({ plate: "GAMMA01", vehicle_type: "motorbike", amoeba_id: "amoeba_island", make_model: "GigMile 150" })
+  });
+  assert.equal(ice.body.powertrain, "ice", "a non-Tankvolt/Orbit bike is ICE");
 
   const after = await request("/ops/v1/tracker/devices");
   assert.equal(after.body.device_count, baseCount + 1, "the registered bike is listed despite no Tankvolt connector");
