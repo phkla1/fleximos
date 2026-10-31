@@ -101,7 +101,47 @@ export class JobRunnerService {
       for (const account of accounts) await this.connectors.fetchDaily(account, date);
       return { received: accounts.length, upserted: accounts.length, rejected: 0 };
     }
+    if (run.job_name === "closeout-reminder") return this.chaseMissingCloseouts(date, "reminder");
+    if (run.job_name === "closeout-escalation") return this.chaseMissingCloseouts(date, "escalation");
     throw new Error(`${run.job_name} has no executable worker handler yet.`);
+  }
+
+  // Missing closeout = any amoeba with active operators and no closeout row for
+  // the day. Reminder nudges the supervisor; escalation also notifies managers
+  // and admins. Deterministic dedup ids make repeat runs idempotent.
+  private async chaseMissingCloseouts(date: string, kind: "reminder" | "escalation") {
+    const missing = await this.db.many<any>(
+      `SELECT o.amoeba_id, MAX(o.supervisor_person_id) AS supervisor_person_id
+       FROM ops_operators o
+       WHERE o.operator_status = 'active' AND o.amoeba_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM ops_daily_closeouts c WHERE c.record_date = $1 AND c.amoeba_id = o.amoeba_id)
+       GROUP BY o.amoeba_id`,
+      [date]
+    );
+    const managers = kind === "escalation" ? await this.ops.managementRecipients() : [];
+    let queued = 0;
+    for (const row of missing) {
+      const recipients = new Set<string>();
+      if (row.supervisor_person_id) recipients.add(row.supervisor_person_id);
+      if (kind === "escalation") managers.forEach((person) => recipients.add(person));
+      for (const person of recipients) {
+        await this.notifications.queue(
+          person,
+          "push",
+          {
+            type: kind === "reminder" ? "closeout_reminder" : "closeout_escalation",
+            amoeba_id: row.amoeba_id,
+            record_date: date,
+            message: kind === "reminder"
+              ? `Close out ${date} — it has not been submitted yet.`
+              : `No closeout was submitted for ${date}.`
+          },
+          `closeout-${kind}:${row.amoeba_id}:${date}:${person}`
+        );
+        queued++;
+      }
+    }
+    return { received: missing.length, upserted: queued, rejected: 0 };
   }
 
   private async ingestPlatform(platform: string, date: string) {
@@ -239,6 +279,44 @@ export class JobRunnerService {
             resumption_deadline: pace.resumption_deadline
           }
         }) ? 1 : 0;
+      }
+    }
+    // Overdue / never-inspected vehicles raise an inspection_overdue alert on the
+    // operator holding the vehicle — never-inspected and overdue are the same
+    // tier. ensureAlert notifies the supervisor; we also notify managers/admins.
+    const fleetPolicy: any = await this.db.one(
+      "SELECT inspection_interval_hours FROM ops_fleet_policy ORDER BY updated_at DESC LIMIT 1");
+    const intervalHours = Number(fleetPolicy?.inspection_interval_hours || 48);
+    const cutoffIso = new Date(Date.now() - intervalHours * 3600 * 1000).toISOString();
+    const overdueVehicles = await this.db.many<any>(
+      `SELECT v.vehicle_id, v.plate, o.operator_id, MAX(n.inspected_at)::text AS last_inspected_at
+       FROM ops_vehicles v
+       JOIN ops_operators o ON o.vehicle_id = v.vehicle_id AND o.operator_status = 'active'
+       LEFT JOIN ops_vehicle_inspections n ON n.vehicle_id = v.vehicle_id
+       WHERE v.status = 'active'
+       GROUP BY v.vehicle_id, v.plate, o.operator_id
+       HAVING MAX(n.inspected_at) IS NULL OR MAX(n.inspected_at) < $1`,
+      [cutoffIso]
+    );
+    const managers = overdueVehicles.length ? await this.ops.managementRecipients() : [];
+    for (const vehicle of overdueVehicles) {
+      const reason = vehicle.last_inspected_at ? "overdue" : "never_inspected";
+      const raised = await this.ops.ensureAlert({
+        operator_id: vehicle.operator_id,
+        platform_account_id: null,
+        alert_type: "inspection_overdue",
+        alert_date: date,
+        tier: 1,
+        episode_key: `${date}:inspection:${vehicle.vehicle_id}`,
+        metadata: { generated_by: "alert-watchdog", vehicle_id: vehicle.vehicle_id, plate: vehicle.plate, last_inspected_at: vehicle.last_inspected_at, reason }
+      });
+      if (raised) {
+        created++;
+        for (const person of managers) {
+          await this.notifications.queue(person, "in_app",
+            { type: "inspection_overdue", vehicle_id: vehicle.vehicle_id, plate: vehicle.plate, reason, message: `Inspection ${reason.replace("_", " ")}: ${vehicle.plate}.` },
+            `inspection-overdue:${vehicle.vehicle_id}:${date}:${person}`);
+        }
       }
     }
     return { received: board.length, upserted: created, rejected: 0 };

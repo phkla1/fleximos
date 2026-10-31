@@ -798,7 +798,9 @@ test("configures revenue pace and fuel efficiency controls", async () => {
   assert.equal(pace.body.vehicle_type, "motorbike");
 
   const policies = await request("/ops/v1/vehicle-efficiency-policies");
-  assert.equal(policies.body.data.length, 2);
+  // car + motorbike ICE defaults, plus the seeded EV motorbike policy.
+  assert.equal(policies.body.data.length, 3);
+  assert.ok(policies.body.data.some((p) => p.powertrain === "ev" && p.fuel_unit === "kWh"), "an EV charge policy is seeded");
 
   const fuel = await request("/ops/v1/fuel-issues", {
     method: "POST",
@@ -1669,6 +1671,14 @@ test("operator check-in geofences against Sites and requires supervisor approval
 
   const list = await request("/ops/v1/checkins?check_in_date=2026-06-18");
   assert.ok(list.body.data.some((row) => row.checkin_id === inside.body.checkin_id), "check-in is listable");
+
+  // Attendance register: a date range returns check-ins across multiple days.
+  const range = await request("/ops/v1/checkins?date_from=2026-06-18&date_to=2026-06-19");
+  const rangeIds = range.body.data.map((row) => row.checkin_id);
+  assert.ok(rangeIds.includes(inside.body.checkin_id), "day-one check-in is in the range");
+  assert.ok(rangeIds.includes(far.body.checkin_id), "day-two check-in is in the range");
+  const singleDay = await request("/ops/v1/checkins?date_from=2026-06-19&date_to=2026-06-19");
+  assert.ok(!singleDay.body.data.some((row) => row.checkin_id === inside.body.checkin_id), "the range excludes days outside it");
 });
 
 test("pacing snapshot: scheduled earnings set the online target, deadline, and combined pace", async () => {

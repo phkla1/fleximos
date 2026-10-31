@@ -625,6 +625,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_by_person_id TEXT,
         updated_at TIMESTAMPTZ NOT NULL
       );
+      -- End-of-day closeout is only open in a Lagos-time window (default 18:00
+      -- through 04:00 next-day); a wrap-around window has start > end.
+      ALTER TABLE ops_fleet_policy ADD COLUMN IF NOT EXISTS closeout_window_start_hour INTEGER NOT NULL DEFAULT 18;
+      ALTER TABLE ops_fleet_policy ADD COLUMN IF NOT EXISTS closeout_window_end_hour INTEGER NOT NULL DEFAULT 4;
 
       CREATE TABLE IF NOT EXISTS ops_platform_payment_records (
         payment_record_id TEXT PRIMARY KEY,
@@ -1070,6 +1074,22 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           [...policy, timestamp]
         );
       }
+    }
+
+    // EV motorbike economics: a 3.5 kWh battery, ~70 km per full charge, charged
+    // in-house at ₦60/kWh. Scoped to powertrain=ev so EV bikes use charge, not
+    // petrol. Seeded idempotently so it also lands on an existing database.
+    const evPolicy = await this.one("SELECT efficiency_policy_id FROM ops_vehicle_efficiency_policies WHERE efficiency_policy_id = 'efficiency_motorbike_ev'");
+    if (!evPolicy) {
+      const ts = new Date().toISOString();
+      await this.exec(
+        `INSERT INTO ops_vehicle_efficiency_policies
+         (efficiency_policy_id, vehicle_type, powertrain, fuel_type, standard_daily_fuel_quantity,
+          fuel_unit, expected_distance_km, allowed_variance_pct, price_per_unit_ngn,
+          effective_from, created_by_person_id, created_at, updated_at)
+         VALUES ('efficiency_motorbike_ev','motorbike','ev','electric',3.5,'kWh',70,15,60,'2026-01-01','person_system',$1,$1)`,
+        [ts]
+      );
     }
 
     // Demo operator + vehicle + registration + demo alerts are dev/test only.

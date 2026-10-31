@@ -1189,12 +1189,14 @@ export class OpsController {
   async listCheckins(
     @Req() req: Request,
     @Query("check_in_date") checkInDate?: string,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string,
     @Query("status") status?: string
   ) {
     const actor = await this.auth(req);
     return {
       data: await this.attendance.listCheckins(
-        { check_in_date: checkInDate, status },
+        { check_in_date: checkInDate, date_from: dateFrom, date_to: dateTo, status },
         this.identity.dataScope(actor)
       ),
       next_cursor: null

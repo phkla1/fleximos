@@ -5083,6 +5083,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Attendance register: start/end of the check-in date range (inclusive)."
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Attendance register: start/end of the check-in date range (inclusive)."
           }
         ],
         "responses": {

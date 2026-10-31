@@ -13,6 +13,19 @@ type Delivery = {
 export class NotificationService {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
+  // Enqueue a notification not tied to an alert (e.g. a closeout reminder). The
+  // deterministic id makes repeated job runs idempotent.
+  async queue(recipientPersonId: string, channel: string, payload: Record<string, unknown>, dedupId: string) {
+    const now = new Date().toISOString();
+    await this.db.exec(
+      `INSERT INTO ops_notification_deliveries
+        (notification_delivery_id, recipient_person_id, channel, payload, status, attempt, created_at, updated_at, next_attempt_at)
+       VALUES ($1,$2,$3,$4,'pending',0,$5,$5,$5)
+       ON CONFLICT (notification_delivery_id) DO NOTHING`,
+      [dedupId, recipientPersonId, channel, payload, now]
+    );
+  }
+
   async deliverBatch(limit = 50) {
     const results = [];
     for (let index = 0; index < limit; index++) {

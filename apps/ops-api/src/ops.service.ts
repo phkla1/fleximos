@@ -351,6 +351,23 @@ export class OpsService {
     return { operator_id: operatorId, person_id: operator.person_id, pin: resetBody.pin };
   }
 
+  // Active owner/admin/manager persons, for company-level escalations (e.g. a
+  // missing closeout). Read from the identity service; empty on any failure.
+  async managementRecipients(): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.foundationBase}/identity/v1/users`, {
+        headers: { Authorization: `Bearer ${this.serviceToken}` }
+      });
+      if (!response.ok) return [];
+      const body: any = await response.json();
+      return (body.data || [])
+        .filter((user: any) => user.status === "active" && (user.roles || []).some((role: string) => ["owner", "admin", "manager"].includes(role)))
+        .map((user: any) => user.person_id);
+    } catch {
+      return [];
+    }
+  }
+
   async createOperator(body: RecordBody) {
     for (const field of ["person_id", "operator_type", "amoeba_id", "site_id"]) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);
@@ -610,7 +627,7 @@ export class OpsService {
     this.addScope(clauses, params, scope);
     const rows = await this.db.many<any>(
       `SELECT o.operator_id, o.person_id, o.amoeba_id, o.site_id, o.supervisor_person_id,
-        v.plate AS vehicle_plate, v.vehicle_type,
+        v.plate AS vehicle_plate, v.vehicle_type, v.powertrain,
         COALESCE(d.trips_completed, 0) AS trips_completed,
         COALESCE(d.cash_trips, 0) AS cash_trips,
         COALESCE(d.ride_revenue_ngn, 0) AS ride_revenue_ngn,
@@ -940,6 +957,21 @@ export class OpsService {
   async createDailyCloseout(body: RecordBody, actorPersonId: string, scope: OpsDataScope = {}) {
     for (const field of ["record_date", "amoeba_id"]) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);
+    }
+    // Closeout is only open in the configured Lagos-time window (default
+    // 18:00–04:00). Admins/service (unrestricted scope) may close out any time
+    // for corrections; supervisors are held to the window.
+    if (!scope.unrestricted) {
+      const policy: any = await this.db.one(
+        "SELECT closeout_window_start_hour, closeout_window_end_hour FROM ops_fleet_policy ORDER BY updated_at DESC LIMIT 1");
+      const startHour = policy ? Number(policy.closeout_window_start_hour) : 18;
+      const endHour = policy ? Number(policy.closeout_window_end_hour) : 4;
+      const hour = Math.floor(this.lagosClock().minutes / 60);
+      const open = startHour <= endHour ? (hour >= startHour && hour < endHour) : (hour >= startHour || hour < endHour);
+      if (!open) {
+        throw new BadRequestException(
+          `Closeout is open ${String(startHour).padStart(2, "0")}:00–${String(endHour).padStart(2, "0")}:00 (Lagos). It is not open yet.`);
+      }
     }
     const recordDate = this.date(body.record_date);
     const amoebaId = String(body.amoeba_id);

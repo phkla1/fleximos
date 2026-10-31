@@ -166,10 +166,20 @@ export class AttendanceService {
     return saved;
   }
 
-  async listCheckins(filters: { check_in_date?: string; status?: string }, scope: OpsDataScope = {}) {
+  async listCheckins(filters: { check_in_date?: string; date_from?: string; date_to?: string; status?: string }, scope: OpsDataScope = {}) {
     const params: unknown[] = [];
     const clauses: string[] = [];
-    if (filters.check_in_date) { params.push(this.date(filters.check_in_date)); clauses.push(`ck.check_in_date = $${params.length}`); }
+    // A date range (attendance register over a period) takes precedence; a single
+    // check_in_date still works for the day view.
+    if (filters.date_from || filters.date_to) {
+      const from = this.date(filters.date_from || filters.date_to!);
+      const to = this.date(filters.date_to || filters.date_from!);
+      params.push(from, to);
+      clauses.push(`ck.check_in_date BETWEEN $${params.length - 1} AND $${params.length}`);
+    } else if (filters.check_in_date) {
+      params.push(this.date(filters.check_in_date));
+      clauses.push(`ck.check_in_date = $${params.length}`);
+    }
     if (filters.status) { params.push(String(filters.status)); clauses.push(`ck.status = $${params.length}`); }
     if (!scope.unrestricted) {
       if (scope.person_id) {

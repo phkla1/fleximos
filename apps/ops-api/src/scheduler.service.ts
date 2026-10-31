@@ -63,6 +63,10 @@ export class SchedulerService {
     if (minute % 5 === 0) add("notification-dispatch");
     if (hour === 19 && minute === 15) add("daily-report-generate");
     if (hour === 4 && minute === 0) add("uber-token-refresh");
+    // Closeout discipline: nudge supervisors mid-window, then (after the 04:00
+    // window has closed) escalate any amoeba that never closed out yesterday.
+    if (hour === 22 && minute === 0) add("closeout-reminder");
+    if (hour === 4 && minute === 30) add("closeout-escalation", previousDay);
     return jobs;
   }
 

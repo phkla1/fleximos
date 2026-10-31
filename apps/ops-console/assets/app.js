@@ -513,7 +513,7 @@ function closeoutChecklist(analysis) {
     { id: "deliveries", label: "Delivery exceptions / open batches", count: openDeliveryExceptions + unclosedBatches, criticalCount: 0, tab: "deliveries" },
     { id: "incidents", label: "Open incidents", count: openIncidents.length, criticalCount: criticalIncidents.length, tab: "field" },
     { id: "inspections", label: "Overdue inspections", count: overdueInspections.length, criticalCount: 0, tab: "field" },
-    { id: "fuel", label: "Fuel not confirmed", count: unconfirmedFuel.length, criticalCount: 0, tab: "fuel" },
+    { id: "fuel", label: "Fuel / charge not confirmed", count: unconfirmedFuel.length, criticalCount: 0, tab: "fuel" },
     { id: "mileage", label: "Mileage exceptions", count: analysis.mileageExceptions.length, criticalCount: 0, tab: "fuel" },
     { id: "maintenance", label: "Maintenance blockers", count: openMaintenance.length, criticalCount: 0, tab: "field" }
   ];
@@ -1959,6 +1959,12 @@ document.addEventListener("click", async (event) => {
   const closeoutButton = event.target.closest("[data-submit-closeout]");
   if (closeoutButton) {
     const amoebaId = closeoutButton.dataset.submitCloseout;
+    // End-of-day closeout only opens in the evening window (18:00–04:00 Lagos).
+    const lagosHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+    if (!(lagosHour >= 18 || lagosHour < 4)) {
+      showError(new Error("Closeout opens at 6:00pm and closes at 4:00am (Lagos). Come back this evening."));
+      return;
+    }
     const note = document.querySelector(`[data-closeout-note="${amoebaId}"]`)?.value.trim() || null;
     // Critical issues can be submitted as exceptions but never silently:
     // the supervisor must say why the day is ending with them open.
