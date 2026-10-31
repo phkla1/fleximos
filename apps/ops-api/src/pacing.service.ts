@@ -82,7 +82,9 @@ export class PacingService {
 
       const sched = schedule.get(row.operator_id) || { assigned: 0, delivered: 0, earned: 0 };
       const scheduledEarned = Math.round(sched.earned * 100) / 100;
-      const onlineEarned = Number(row.ride_revenue_ngn || 0);
+      // Net earnings is the pace metric (the target is net); scheduled-delivery
+      // attributed earnings add to it for the combined headline.
+      const onlineEarned = Number(row.net_earnings_ngn || 0);
       const dailyTarget = Number(row.daily_revenue_target_ngn || 0);
       const onlineTarget = Math.max(0, Math.round((dailyTarget - scheduledEarned) * 100) / 100);
 

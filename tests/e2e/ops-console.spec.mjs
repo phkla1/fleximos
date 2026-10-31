@@ -97,7 +97,7 @@ test.describe("Supervisor Ops console", () => {
     // Cockpit KPI strip: raw range numbers at a glance.
     await expect(page.locator("#kpiStrip .kpi-cell")).toHaveCount(6);
     await expect(page.locator("#kpiStrip")).toContainText("Vehicles");
-    await expect(page.locator("#kpiStrip")).toContainText("Earnings");
+    await expect(page.locator("#kpiStrip")).toContainText("Net earnings");
 
     // Quick-range chips are one tap.
     await page.locator("[data-quick-range='week']").click();

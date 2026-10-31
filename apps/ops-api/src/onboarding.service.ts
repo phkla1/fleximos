@@ -320,7 +320,7 @@ export class OnboardingService {
   private async dailyCombined(operatorId: string, from: string, to: string): Promise<Map<string, number>> {
     const combined = new Map<string, number>();
     const rides = await this.db.many<any>(
-      `SELECT record_date::text AS record_date, SUM(ride_revenue_ngn) AS revenue
+      `SELECT record_date::text AS record_date, SUM(net_earnings_ngn) AS revenue
        FROM ops_platform_daily_records WHERE operator_id=$1 AND record_date BETWEEN $2 AND $3
        GROUP BY record_date`,
       [operatorId, from, to]
@@ -460,8 +460,13 @@ export class OnboardingService {
           for (const value of combined.values()) earnedTotal += Number(value || 0);
         }
         const steady = steadyTarget(m);
+        // The ramp curve is a fraction of the steady (net) target, not an absolute:
+        // scale ramp-day ÷ graduation by this rider's steady target, exactly as the
+        // war-room does, so the cohort board tracks 25k/28k rather than the curve's
+        // nominal 30k top.
+        const graduation = Number(status.graduation_target_ngn || 0);
         const effectiveTarget = status.in_ramp
-          ? Number(status.daily_target_ngn || 0)
+          ? (graduation > 0 ? Math.round((Number(status.daily_target_ngn || 0) / graduation) * steady) : Number(status.daily_target_ngn || 0))
           : (status.graduated ? steady : 0);
         rows.push({
           ...m, ...status,

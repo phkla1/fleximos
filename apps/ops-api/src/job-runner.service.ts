@@ -164,7 +164,7 @@ export class JobRunnerService {
       if (officialKm !== null && expectedKm !== null && expectedKm > 0
         && officialKm >= expectedKm
         && expectedRevenue > 0
-        && Number(operator.ride_revenue_ngn || 0) < expectedRevenue * 0.5) {
+        && Number(operator.net_earnings_ngn || 0) < expectedRevenue * 0.5) {
         created += await this.ops.ensureAlert({
           operator_id: operator.operator_id,
           platform_account_id: operator.platforms?.[0]?.platform_account_id || null,
@@ -176,7 +176,7 @@ export class JobRunnerService {
             generated_by: "alert-watchdog",
             official_distance_km: officialKm,
             expected_distance_km: expectedKm,
-            revenue_ngn: operator.ride_revenue_ngn,
+            net_earnings_ngn: operator.net_earnings_ngn,
             expected_revenue_ngn: expectedRevenue
           }
         }) ? 1 : 0;
@@ -215,7 +215,7 @@ export class JobRunnerService {
           episode_key: date,
           metadata: {
             generated_by: "alert-watchdog",
-            revenue_ngn: operator.ride_revenue_ngn,
+            net_earnings_ngn: operator.net_earnings_ngn,
             expected_revenue_ngn: operator.expected_revenue_ngn,
             combined_earned_ngn: pace?.combined_earned_ngn,
             scheduled_attributed_earned_ngn: pace?.scheduled_attributed_earned_ngn

@@ -651,7 +651,10 @@ test("ingests normalized platform data with per-record rejection and safe replay
   const demoBoard = board.body.data.find((item) => item.operator_id === "operator_demo_wole");
   assert.equal(demoBoard.current_status, "online");
   assert.equal(Number(demoBoard.ride_revenue_ngn), 25000);
-  assert.equal(demoBoard.pace_status, "on_track");
+  assert.equal(Number(demoBoard.net_earnings_ngn), 18500);
+  // Pace is judged on NET earnings (18,500) against the net target (25,000), so
+  // this rider reads "at_risk" even though gross ride revenue hit the number.
+  assert.equal(demoBoard.pace_status, "at_risk");
   assert.equal(Number(demoBoard.expected_revenue_ngn), 25000);
 });
 

@@ -1898,7 +1898,9 @@ export class OpsService {
         range_revenue_target_ngn: Math.round(target * 100) / 100,
         expected_revenue_pct: Math.round(expectedPct * 10) / 10,
         expected_revenue_ngn: Math.round(expectedRevenue * 100) / 100,
-        ...this.paceStatus(Number(row.ride_revenue_ngn), expectedRevenue, target,
+        // The daily target (25k/28k etc.) is NET earnings, so pace judges net
+        // earnings — not gross ride revenue — against it.
+        ...this.paceStatus(Number(row.net_earnings_ngn), expectedRevenue, target,
           Number(profile?.warning_tolerance_pct || 10), Number(profile?.critical_tolerance_pct || 20))
       };
     });

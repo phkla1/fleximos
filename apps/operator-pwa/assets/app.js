@@ -319,7 +319,8 @@ async function load() {
   currentIncidents = incidentPage.data.filter((incident) => incident.operator_id === operator.operator_id);
   currentFuel = fuelPage.data.filter((issue) => issue.operator_id === operator.operator_id);
   const mileage = mileagePage.data.find((row) => row.operator_id === operator.operator_id);
-  const revenue = performance.reduce((sum, row) => sum + Number(row.ride_revenue_ngn || 0), 0);
+  // The target is net earnings, so the gauge shows net earnings against it.
+  const revenue = performance.reduce((sum, row) => sum + Number(row.net_earnings_ngn || 0), 0);
   const trips = performance.reduce((sum, row) => sum + Number(row.trips_total || 0), 0);
   const hours = performance.reduce((sum, row) => sum + Number(row.hours_online || 0), 0);
   const acceptanceRows = performance.filter((row) => Number(row.acceptance_pct));

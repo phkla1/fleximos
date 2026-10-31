@@ -306,7 +306,7 @@ function driverMetrics(analysis) {
       sum + (record.fuel_unit === "litres" ? Number(record.fuel_quantity || 0) : 0), 0);
     const fuelCost = recon.reduce((sum, record) => sum + Number(record.fuel_cost_ngn || 0), 0);
     const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
-    const earnings = Number(row.ride_revenue_ngn || 0);
+    const earnings = Number(row.net_earnings_ngn || 0);
     const trips = Number(row.trips_total || 0);
     const incidents = state.incidents.filter((incident) => incident.operator_id === row.operator_id).length;
     return {
@@ -648,7 +648,7 @@ function renderGauge(id, pct, valueText, subText, tone) {
 
 function operatorTile(row, compact = false) {
   const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
-  const revenue = Number(row.ride_revenue_ngn || 0);
+  const revenue = Number(row.net_earnings_ngn || 0);
   const progress = target ? Math.min(100, Math.round(revenue / target * 100)) : 0;
   const paceLabel = String(row.pace_status || "not_available").replaceAll("_", " ");
   const expected = Number(row.expected_revenue_ngn || 0);
@@ -695,14 +695,14 @@ function alertRow(alert) {
 function renderCockpit(analysis) {
   const live = analysis.rows.filter((row) => !["offline", "not_seen_today"].includes(row.current_status)).length;
   const totals = analysis.rows.reduce((sum, row) => {
-    sum.revenue += Number(row.ride_revenue_ngn || 0);
+    sum.revenue += Number(row.net_earnings_ngn || 0);
     sum.expected += Number(row.expected_revenue_ngn || 0);
     return sum;
   }, { revenue: 0, expected: 0 });
   const revenueByType = state.dailyPerformance.reduce((sum, record) => {
     const type = record.platform_vehicle_type || record.vehicle_type;
-    if (type === "car") sum.car += Number(record.ride_revenue_ngn || 0);
-    if (type === "motorbike") sum.bike += Number(record.ride_revenue_ngn || 0);
+    if (type === "car") sum.car += Number(record.net_earnings_ngn || 0);
+    if (type === "motorbike") sum.bike += Number(record.net_earnings_ngn || 0);
     return sum;
   }, { car: 0, bike: 0 });
 
@@ -743,7 +743,7 @@ function renderCockpit(analysis) {
   const kpis = [
     { label: "Vehicles", value: `${vehicles.length}`, sub: `${vehicles.filter((vehicle) => vehicle.status === "assigned" && vehicle.trips > 0).length} active · ${vehicles.filter((vehicle) => vehicle.status !== "in maintenance" && !(vehicle.trips > 0)).length} idle · ${vehicles.filter((vehicle) => vehicle.status === "in maintenance").length} maint.` },
     { label: "Drivers", value: `${analysis.rows.length}`, sub: `${analysis.rows.filter((row) => row.current_status !== "not_seen_today").length} working · ${analysis.rows.filter((row) => row.current_status === "not_seen_today").length} absent` },
-    { label: "Earnings", value: money(totals.revenue), sub: `of ${money(targetTotal)} target · ${targetTotal ? Math.round(totals.revenue / targetTotal * 100) : 0}%` },
+    { label: "Net earnings", value: money(totals.revenue), sub: `of ${money(targetTotal)} target · ${targetTotal ? Math.round(totals.revenue / targetTotal * 100) : 0}%` },
     { label: "Trips", value: `${drivers.reduce((sum, driver) => sum + driver.trips, 0)}`, sub: `${round1(drivers.reduce((sum, driver) => sum + driver.km, 0))} km` },
     { label: "Fuel", value: drivers.some((driver) => driver.fuelCost) ? money(drivers.reduce((sum, driver) => sum + driver.fuelCost, 0)) : "—", sub: "issued this range" },
     { label: "Incidents", value: `${state.incidents.filter((incident) => incident.status !== "resolved").length}`, sub: "open now" }
@@ -1408,7 +1408,7 @@ function renderOperatorDialog(operatorId) {
   const mileage = state.mileageReconciliations.filter((record) => record.operator_id === operatorId);
   const timeline = operatorTimeline(operatorId, operator?.vehicle_id);
   const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
-  const revenue = Number(row.ride_revenue_ngn || 0);
+  const revenue = Number(row.net_earnings_ngn || 0);
   const progress = target ? Math.min(100, Math.round(revenue / target * 100)) : 0;
 
   el.operatorDialogTitle.textContent = personName(row.person_id);
