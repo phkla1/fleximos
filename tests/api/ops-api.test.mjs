@@ -735,6 +735,15 @@ test("manual corrections guard authoritative records, merge fields, and keep his
   assert.equal(resync.body.status, "completed");
   const history3 = await request(`/ops/v1/daily-records/overrides?operator_id=operator_demo_wole&record_date=${recordDate}`);
   assert.equal(history3.body.data.length, beforeCount, "live re-sync writes no override history");
+
+  // Per-amoeba rollup aggregates that day's records by amoeba.
+  const rollup = await request(`/ops/v1/daily-performance/by-amoeba?date_from=${recordDate}&date_to=${recordDate}`);
+  assert.equal(rollup.response.status, 200);
+  assert.ok(Array.isArray(rollup.body.data) && rollup.body.data.length >= 1);
+  const rollupRow = rollup.body.data.find((row) => String(row.record_date).slice(0, 10) === recordDate);
+  assert.ok(rollupRow, "rollup has a row for the record date");
+  assert.ok("amoeba_id" in rollupRow);
+  assert.equal(Number(rollupRow.ride_revenue_ngn), 30000); // the live re-sync value
 });
 
 test("configures revenue pace and fuel efficiency controls", async () => {

@@ -61,6 +61,7 @@ const el = Object.fromEntries(
     "teamDialog", "teamDialogTitle", "teamDialogSummary", "teamOperatorList",
     "operatorSummaryCount", "vehicleSummaryCount", "performanceAmoebaFilter",
     "performanceOperatorFilter", "performanceRangeLabel", "performanceMetric",
+    "perfFrom", "perfTo",
     "perfRiderChart", "perfRiderTrend", "perfAmoebaChart", "perfAmoebaTrend",
     "alertGroupDialog", "alertGroupDialogTitle",
     "alertGroupDialogSummary", "alertGroupList",
@@ -91,6 +92,9 @@ const todayLagos = new Intl.DateTimeFormat("en-CA", {
 el.ingestionForm.elements.record_date.value = todayLagos;
 el.dateFrom.value = todayLagos;
 el.dateTo.value = todayLagos;
+// The performance panel defaults to the last 7 days (its own range).
+el.perfTo.value = todayLagos;
+(() => { const d = new Date(`${todayLagos}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.perfFrom.value = d.toISOString().slice(0, 10); })();
 el.paceProfileForm.elements.effective_from.value = todayLagos;
 el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
 el.economicsPolicyForm.elements.effective_from.value = todayLagos;
@@ -226,6 +230,163 @@ function perfTrend(series, dates, metric, multi) {
     ? `<div class="perf-legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`).join("")}</div>`
     : "";
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Daily ${multi ? "per-amoeba" : "total"} trend">${axis}${lines}${peak}${startLbl}${endLbl}</svg>${legend}`;
+}
+
+// The performance panel has its OWN date range and fetches its OWN data, so
+// analysing history here never reloads the rest of the page. Per-rider detail
+// is scoped to the selected amoeba server-side; the cross-amoeba comparison
+// uses a small per-amoeba rollup — both scale without pulling the whole fleet.
+const perf = { from: null, to: null, riderRows: [], amoebaRollup: [], overrides: [] };
+
+function perfApplyPreset(preset) {
+  const to = todayLagos;
+  const d = new Date(`${to}T00:00:00Z`);
+  if (preset === "today") { /* keep to */ }
+  else if (preset === "7d") d.setUTCDate(d.getUTCDate() - 6);
+  else if (preset === "30d") d.setUTCDate(d.getUTCDate() - 29);
+  else if (preset === "month") d.setUTCDate(1);
+  el.perfFrom.value = d.toISOString().slice(0, 10);
+  el.perfTo.value = to;
+  loadPerformancePanel();
+}
+
+async function loadPerformancePanel() {
+  let from = el.perfFrom.value || el.perfTo.value || todayLagos;
+  let to = el.perfTo.value || from;
+  if (from > to) [from, to] = [to, from];
+  el.perfFrom.value = from; el.perfTo.value = to;
+  perf.from = from; perf.to = to;
+  const range = `date_from=${from}&date_to=${to}`;
+  const amoeba = el.performanceAmoebaFilter.value;
+  try {
+    const [rollup, riders, overrides] = await Promise.all([
+      ops(`/ops/v1/daily-performance/by-amoeba?${range}`).catch(() => ({ data: [] })),
+      amoeba ? ops(`/ops/v1/daily-performance?${range}&amoeba_id=${amoeba}`).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+      amoeba ? ops(`/ops/v1/daily-records/overrides?${range}&amoeba_id=${amoeba}`).catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
+    ]);
+    perf.amoebaRollup = rollup.data || [];
+    perf.riderRows = riders.data || [];
+    perf.overrides = overrides.data || [];
+    renderPerformancePanel();
+  } catch (error) { showError(error); }
+}
+
+function renderPerformancePanel() {
+  if (!el.performanceRows) return;
+  const metric = (el.performanceMetric && el.performanceMetric.value) || "net_earnings_ngn";
+  const selectedAmoeba = el.performanceAmoebaFilter.value;
+  const selectedOperator = el.performanceOperatorFilter.value;
+  const from = perf.from, to = perf.to;
+  const dates = enumerateDates(from, to);
+  if (el.performanceRangeLabel) {
+    el.performanceRangeLabel.textContent = !from ? "Pick a date range above."
+      : from === to ? `Cumulative performance · ${to}`
+      : `Cumulative performance · ${from} to ${to} (${dates.length} days)`;
+  }
+
+  // Cumulative per-rider table (respects the operator sub-filter).
+  const correctedRiderIds = new Set((perf.overrides || []).map((item) => item.operator_id));
+  const tableRows = perf.riderRows.filter((record) => !selectedOperator || record.operator_id === selectedOperator);
+  const riderAgg = new Map();
+  tableRows.forEach((record) => {
+    let agg = riderAgg.get(record.operator_id);
+    if (!agg) {
+      agg = { operator_id: record.operator_id, person_id: record.person_id, platforms: new Set(),
+        days: new Set(), offered: 0, completed: 0, revenue: 0, net: 0, hours: 0, qualities: new Set() };
+      riderAgg.set(record.operator_id, agg);
+    }
+    if (record.platform_display_name) agg.platforms.add(record.platform_display_name);
+    agg.days.add(String(record.record_date).slice(0, 10));
+    agg.offered += Number(record.trips_total || 0);
+    agg.completed += Number(record.trips_completed || 0);
+    agg.revenue += Number(record.ride_revenue_ngn || 0);
+    agg.net += Number(record.net_earnings_ngn || 0);
+    agg.hours += Number(record.hours_online || 0);
+    agg.qualities.add(record.data_quality);
+  });
+  const riders = [...riderAgg.values()].sort((a, b) => b.net - a.net);
+  const recordRows = riders.map((agg) => {
+    const completionPct = agg.offered ? Math.round((agg.completed / agg.offered) * 100) : 0;
+    const perHour = agg.hours ? agg.net / agg.hours : 0;
+    const qualityLabel = agg.qualities.size > 1 ? "mixed" : [...agg.qualities][0] || "—";
+    const qualityClass = agg.qualities.size > 1 ? "" : [...agg.qualities][0] || "";
+    const corrected = correctedRiderIds.has(agg.operator_id)
+      ? ` <span class="corrected-tag" title="One or more days in this range were manually corrected.">corrected</span>` : "";
+    return `
+    <tr>
+      <td>${escapeHtml(nameForPerson(agg.person_id))}</td>
+      <td>${escapeHtml([...agg.platforms].join(", "))}</td>
+      <td>${agg.days.size}</td>
+      <td>${agg.completed.toLocaleString()} / ${agg.offered.toLocaleString()} <small>(${completionPct}%)</small></td>
+      <td>₦${Math.round(agg.revenue).toLocaleString()}</td>
+      <td>₦${Math.round(agg.net).toLocaleString()}</td>
+      <td>${agg.hours.toFixed(1)}</td>
+      <td>₦${Math.round(perHour).toLocaleString()}</td>
+      <td><span class="quality ${escapeHtml(qualityClass)}">${escapeHtml(qualityLabel)}</span>${corrected}</td>
+    </tr>`;
+  });
+  const coveredIds = new Set(riders.map((agg) => agg.operator_id));
+  const missingRows = selectedAmoeba
+    ? state.operators
+        .filter((operator) => operator.amoeba_id === selectedAmoeba && operator.operator_status === "active")
+        .filter((operator) => (!selectedOperator || operator.operator_id === selectedOperator) && !coveredIds.has(operator.operator_id))
+        .map((operator) => `
+          <tr class="missing-record">
+            <td>${escapeHtml(nameForPerson(operator.person_id))}</td>
+            <td colspan="8">No performance record ${from === to ? `for ${escapeHtml(to)}` : `between ${escapeHtml(from)} and ${escapeHtml(to)}`} — not reported by any platform feed or manual entry.</td>
+          </tr>`)
+    : [];
+  el.performanceRows.innerHTML = recordRows.length || missingRows.length
+    ? recordRows.join("") + missingRows.join("")
+    : `<tr><td colspan="9" class="empty">${selectedAmoeba ? "No active operators in this amoeba." : "Choose an amoeba to view its riders, then an operator for detail."}</td></tr>`;
+
+  // Per-rider graphs: all riders in the amoeba (operator sub-filter is table-only).
+  const riderScopeEl = document.getElementById("perfRiderScope");
+  if (!selectedAmoeba) {
+    el.perfRiderChart.innerHTML = `<div class="empty">Choose an amoeba to compare its riders.</div>`;
+    el.perfRiderTrend.innerHTML = "";
+    if (riderScopeEl) riderScopeEl.textContent = "";
+  } else {
+    const graphRiders = new Map();
+    perf.riderRows.forEach((record) => {
+      graphRiders.set(record.operator_id, (graphRiders.get(record.operator_id) || 0) + perfMetricValue(record, metric));
+    });
+    const riderItems = [...graphRiders.entries()]
+      .map(([operatorId, value]) => {
+        const row = perf.riderRows.find((record) => record.operator_id === operatorId);
+        return { label: nameForPerson(row && row.person_id), value };
+      })
+      .sort((a, b) => b.value - a.value);
+    el.perfRiderChart.innerHTML = perfBars(riderItems, metric);
+    const riderDaily = dates.map((date) =>
+      perf.riderRows.filter((record) => String(record.record_date).slice(0, 10) === date)
+        .reduce((sum, record) => sum + perfMetricValue(record, metric), 0));
+    el.perfRiderTrend.innerHTML = riderItems.length
+      ? perfTrend([{ label: "Amoeba total", color: PERF_COLORS[0], points: riderDaily }], dates, metric, false)
+      : "";
+    if (riderScopeEl) riderScopeEl.textContent = `${nameForAmoeba(selectedAmoeba)} · ${el.performanceMetric.selectedOptions[0].text.toLowerCase()}`;
+  }
+
+  // Per-amoeba graphs from the rollup: ranked bars for ALL amoebas; a multi-line
+  // daily trend limited to the top few so it stays legible.
+  const amoebaAgg = new Map();
+  perf.amoebaRollup.forEach((record) => {
+    const amoebaId = record.amoeba_id || "unassigned";
+    let agg = amoebaAgg.get(amoebaId);
+    if (!agg) { agg = { amoebaId, total: 0, perDate: new Map() }; amoebaAgg.set(amoebaId, agg); }
+    const value = perfMetricValue(record, metric);
+    agg.total += value;
+    const date = String(record.record_date).slice(0, 10);
+    agg.perDate.set(date, (agg.perDate.get(date) || 0) + value);
+  });
+  const amoebaList = [...amoebaAgg.values()].sort((a, b) => b.total - a.total);
+  el.perfAmoebaChart.innerHTML = perfBars(
+    amoebaList.map((agg) => ({ label: nameForAmoeba(agg.amoebaId), value: agg.total })), metric);
+  const amoebaSeries = amoebaList.slice(0, 6).map((agg, index) => ({
+    label: nameForAmoeba(agg.amoebaId), color: PERF_COLORS[index % PERF_COLORS.length],
+    points: dates.map((date) => agg.perDate.get(date) || 0)
+  }));
+  el.perfAmoebaTrend.innerHTML = amoebaSeries.length ? perfTrend(amoebaSeries, dates, metric, true) : "";
 }
 
 // The active operator currently holding a vehicle (the one-holder guard keeps this to one).
@@ -667,141 +828,7 @@ function render() {
     </article>
   `).join("") : `<div class="empty">${hasVehicleScope ? "No vehicles match this scope." : "Choose a fleet scope to view vehicles."}</div>`;
 
-  const selectedAmoeba = el.performanceAmoebaFilter.value;
-  const selectedOperator = el.performanceOperatorFilter.value;
-  const amoebaOperatorIds = new Set(
-    selectedAmoeba ? state.operators.filter((operator) => operator.amoeba_id === selectedAmoeba).map((operator) => operator.operator_id) : []
-  );
-  const performance = selectedAmoeba ? state.dailyPerformance.filter((record) =>
-    amoebaOperatorIds.has(record.operator_id) &&
-    (!selectedOperator || record.operator_id === selectedOperator)
-  ) : [];
-  // Latest override (before-image) per operator+date, so a corrected row can be
-  // flagged with its reason.
-  const overrideByKey = new Map();
-  (state.recordOverrides || []).forEach((item) => {
-    const key = `${item.operator_id}|${String(item.record_date).slice(0, 10)}`;
-    if (!overrideByKey.has(key)) overrideByKey.set(key, item);
-  });
-  // Cumulative performance per rider across the selected date range (not one
-  // row per day). The range comes from the global From/To pickers.
-  const metric = (el.performanceMetric && el.performanceMetric.value) || "net_earnings_ngn";
-  const dates = enumerateDates(state.dateFrom, state.dateTo);
-  const correctedRiderIds = new Set((state.recordOverrides || []).map((item) => item.operator_id));
-
-  const riderAgg = new Map();
-  performance.forEach((record) => {
-    let agg = riderAgg.get(record.operator_id);
-    if (!agg) {
-      agg = { operator_id: record.operator_id, person_id: record.person_id, platforms: new Set(),
-        days: new Set(), offered: 0, completed: 0, revenue: 0, net: 0, hours: 0, qualities: new Set() };
-      riderAgg.set(record.operator_id, agg);
-    }
-    if (record.platform_display_name) agg.platforms.add(record.platform_display_name);
-    agg.days.add(String(record.record_date).slice(0, 10));
-    agg.offered += Number(record.trips_total || 0);
-    agg.completed += Number(record.trips_completed || 0);
-    agg.revenue += Number(record.ride_revenue_ngn || 0);
-    agg.net += Number(record.net_earnings_ngn || 0);
-    agg.hours += Number(record.hours_online || 0);
-    agg.qualities.add(record.data_quality);
-  });
-  const riders = [...riderAgg.values()].sort((a, b) => b.net - a.net);
-
-  const recordRows = riders.map((agg) => {
-    const completionPct = agg.offered ? Math.round((agg.completed / agg.offered) * 100) : 0;
-    const perHour = agg.hours ? agg.net / agg.hours : 0;
-    const qualityLabel = agg.qualities.size > 1 ? "mixed" : [...agg.qualities][0] || "—";
-    const qualityClass = agg.qualities.size > 1 ? "" : [...agg.qualities][0] || "";
-    const corrected = correctedRiderIds.has(agg.operator_id)
-      ? ` <span class="corrected-tag" title="One or more days in this range were manually corrected.">corrected</span>` : "";
-    return `
-    <tr>
-      <td>${escapeHtml(nameForPerson(agg.person_id))}</td>
-      <td>${escapeHtml([...agg.platforms].join(", "))}</td>
-      <td>${agg.days.size}</td>
-      <td>${agg.completed.toLocaleString()} / ${agg.offered.toLocaleString()} <small>(${completionPct}%)</small></td>
-      <td>₦${Math.round(agg.revenue).toLocaleString()}</td>
-      <td>₦${Math.round(agg.net).toLocaleString()}</td>
-      <td>${agg.hours.toFixed(1)}</td>
-      <td>₦${Math.round(perHour).toLocaleString()}</td>
-      <td><span class="quality ${escapeHtml(qualityClass)}">${escapeHtml(qualityLabel)}</span>${corrected}</td>
-    </tr>
-  `;
-  });
-  // Active operators in scope with no record across the range are listed so a
-  // short table is never mistaken for full coverage.
-  const coveredIds = new Set(riders.map((agg) => agg.operator_id));
-  const missingRows = selectedAmoeba
-    ? state.operators
-        .filter((operator) => amoebaOperatorIds.has(operator.operator_id) && operator.operator_status === "active")
-        .filter((operator) => (!selectedOperator || operator.operator_id === selectedOperator) && !coveredIds.has(operator.operator_id))
-        .map((operator) => `
-          <tr class="missing-record">
-            <td>${escapeHtml(nameForPerson(operator.person_id))}</td>
-            <td colspan="8">No performance record ${state.dateFrom === state.dateTo ? `for ${escapeHtml(state.dateTo)}` : `between ${escapeHtml(state.dateFrom)} and ${escapeHtml(state.dateTo)}`} — not reported by any platform feed or manual entry.</td>
-          </tr>
-        `)
-    : [];
-  el.performanceRows.innerHTML = recordRows.length || missingRows.length
-    ? recordRows.join("") + missingRows.join("")
-    : `<tr><td colspan="9" class="empty">${selectedAmoeba ? "No active operators in this amoeba." : "Choose an amoeba to view its riders, then an operator for detail."}</td></tr>`;
-
-  if (el.performanceRangeLabel) {
-    el.performanceRangeLabel.textContent = state.dateFrom === state.dateTo
-      ? `Cumulative performance · ${state.dateTo}`
-      : `Cumulative performance · ${state.dateFrom} to ${state.dateTo} (${dates.length} days)`;
-  }
-
-  // Per-rider graphs always cover ALL riders in the selected amoeba (the
-  // operator sub-filter only narrows the table above): ranked bars + a single
-  // aggregate trend line for the amoeba.
-  const riderScopeEl = document.getElementById("perfRiderScope");
-  if (!selectedAmoeba) {
-    el.perfRiderChart.innerHTML = `<div class="empty">Choose an amoeba to compare its riders.</div>`;
-    el.perfRiderTrend.innerHTML = "";
-    if (riderScopeEl) riderScopeEl.textContent = "";
-  } else {
-    const amoebaPerformance = state.dailyPerformance.filter((record) => amoebaOperatorIds.has(record.operator_id));
-    const graphRiders = new Map();
-    amoebaPerformance.forEach((record) => {
-      graphRiders.set(record.operator_id,
-        (graphRiders.get(record.operator_id) || 0) + perfMetricValue(record, metric));
-    });
-    const riderItems = [...graphRiders.entries()]
-      .map(([operatorId, value]) => ({ label: nameForPerson(
-        (state.operators.find((operator) => operator.operator_id === operatorId) || {}).person_id), value }))
-      .sort((a, b) => b.value - a.value);
-    el.perfRiderChart.innerHTML = perfBars(riderItems, metric);
-    const amoebaDaily = dates.map((date) =>
-      amoebaPerformance.filter((record) => String(record.record_date).slice(0, 10) === date)
-        .reduce((sum, record) => sum + perfMetricValue(record, metric), 0));
-    el.perfRiderTrend.innerHTML = riderItems.length
-      ? perfTrend([{ label: "Amoeba total", color: PERF_COLORS[0], points: amoebaDaily }], dates, metric, false)
-      : "";
-    if (riderScopeEl) riderScopeEl.textContent = `${nameForAmoeba(selectedAmoeba)} · ${el.performanceMetric.selectedOptions[0].text.toLowerCase()}`;
-  }
-
-  // Per-amoeba graphs (always all amoebas in scope): ranked bars + a multi-line
-  // daily trend (few amoebas, so legible).
-  const amoebaAgg = new Map();
-  state.dailyPerformance.forEach((record) => {
-    const amoebaId = record.amoeba_id || "unassigned";
-    let agg = amoebaAgg.get(amoebaId);
-    if (!agg) { agg = { amoebaId, total: 0, perDate: new Map() }; amoebaAgg.set(amoebaId, agg); }
-    const value = perfMetricValue(record, metric);
-    agg.total += value;
-    const date = String(record.record_date).slice(0, 10);
-    agg.perDate.set(date, (agg.perDate.get(date) || 0) + value);
-  });
-  const amoebaList = [...amoebaAgg.values()].sort((a, b) => b.total - a.total);
-  el.perfAmoebaChart.innerHTML = perfBars(
-    amoebaList.map((agg) => ({ label: nameForAmoeba(agg.amoebaId), value: agg.total })), metric);
-  const amoebaSeries = amoebaList.slice(0, 6).map((agg, index) => ({
-    label: nameForAmoeba(agg.amoebaId), color: PERF_COLORS[index % PERF_COLORS.length],
-    points: dates.map((date) => agg.perDate.get(date) || 0)
-  }));
-  el.perfAmoebaTrend.innerHTML = amoebaSeries.length ? perfTrend(amoebaSeries, dates, metric, true) : "";
+  renderPerformancePanel();
 
   el.ingestionRuns.innerHTML = state.ingestionRuns.length ? state.ingestionRuns.slice(0, 6).map((run) => `
     <article class="data-row run-row">
@@ -1374,14 +1401,14 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
   el.ingestionForm.elements.record_date.value = operatingDate;
-  const [teamBoard, dailyPerformance, ingestionRuns, dailyReports, rangedAlerts, cohortBoard, recordOverrides] = await Promise.all([
+  // The performance panel fetches its own range-scoped data, so it is not part
+  // of this page-wide load.
+  const [teamBoard, ingestionRuns, dailyReports, rangedAlerts, cohortBoard] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
-    ops(`/ops/v1/daily-performance?${range}`),
     ops(`/ops/v1/ingestion-runs?${range}`),
     ops(`/ops/v1/daily-reports?${range}`),
     ops(`/ops/v1/alerts?${range}`),
-    ops(`/ops/v1/onboarding/cohort-board?record_date=${operatingDate}`).catch(() => ({ data: [] })),
-    ops(`/ops/v1/daily-records/overrides?${range}`).catch(() => ({ data: [] }))
+    ops(`/ops/v1/onboarding/cohort-board?record_date=${operatingDate}`).catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     people: people.data,
@@ -1395,8 +1422,6 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     alerts: rangedAlerts.data,
     teamBoard: teamBoard.data,
     cohortBoard: cohortBoard.data,
-    dailyPerformance: dailyPerformance.data,
-    recordOverrides: recordOverrides.data || [],
     ingestionRuns: ingestionRuns.data,
     paceProfiles: paceProfiles.data,
     economicsPolicies: economicsPolicies.data,
@@ -1443,6 +1468,9 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   syncEfficiencyPolicyForm();
   syncEconomicsPolicyForm();
   render();
+  // The performance panel fetches its own range-scoped data after the page load
+  // so it reflects any new records without being part of the page-wide fetch.
+  loadPerformancePanel().catch(showError);
   setConnection("connected", "Live APIs connected");
   setNotice(message);
 }
@@ -1470,10 +1498,15 @@ el.ingestionForm.elements.operator_id.addEventListener("change", updateRegistrat
 el.alertFilter.addEventListener("change", render);
 el.performanceAmoebaFilter.addEventListener("change", () => {
   el.performanceOperatorFilter.value = "";
-  render();
+  updatePerformanceFilters();
+  loadPerformancePanel();
 });
-el.performanceOperatorFilter.addEventListener("change", render);
-el.performanceMetric.addEventListener("change", render);
+el.performanceOperatorFilter.addEventListener("change", renderPerformancePanel);
+el.performanceMetric.addEventListener("change", renderPerformancePanel);
+el.perfFrom.addEventListener("change", loadPerformancePanel);
+el.perfTo.addEventListener("change", loadPerformancePanel);
+document.querySelectorAll("[data-perf-preset]").forEach((button) =>
+  button.addEventListener("click", () => perfApplyPreset(button.dataset.perfPreset)));
 el.vehicleAmoebaFilter.addEventListener("change", render);
 el.vehicleSearch.addEventListener("input", render);
 el.operatorAmoebaFilter.addEventListener("change", render);

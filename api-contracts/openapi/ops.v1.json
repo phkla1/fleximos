@@ -5460,6 +5460,51 @@
           }
         }
       }
+    },
+    "/daily-performance/by-amoeba": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Per-amoeba daily rollup of headline metrics over a range",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-amoeba daily totals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmoebaDailyRollupPage"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8450,6 +8495,53 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DailyRecordOverride"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AmoebaDailyRollup": {
+        "type": "object",
+        "properties": {
+          "amoeba_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "record_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "ride_revenue_ngn": {
+            "type": "number"
+          },
+          "net_earnings_ngn": {
+            "type": "number"
+          },
+          "trips_completed": {
+            "type": "number"
+          },
+          "hours_online": {
+            "type": "number"
+          }
+        }
+      },
+      "AmoebaDailyRollupPage": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmoebaDailyRollup"
             }
           },
           "next_cursor": {

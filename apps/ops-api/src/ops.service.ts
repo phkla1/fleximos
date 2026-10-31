@@ -1738,6 +1738,31 @@ export class OpsService {
     );
   }
 
+  // Per-(amoeba, date) rollup of the headline metrics over a range — a small
+  // GROUP BY so the cross-amoeba comparison scales without shipping every row.
+  async amoebaDailyRollup(
+    filters: { date_from?: string; date_to?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const { from, to } = this.dateRange(filters);
+    const params: unknown[] = [from, to];
+    const clauses = [`d.record_date BETWEEN $1 AND $2`];
+    this.addScope(clauses, params, scope);
+    return this.db.many(
+      `SELECT o.amoeba_id, d.record_date::text AS record_date,
+        SUM(d.ride_revenue_ngn) AS ride_revenue_ngn,
+        SUM(d.net_earnings_ngn) AS net_earnings_ngn,
+        SUM(d.trips_completed) AS trips_completed,
+        SUM(d.hours_online) AS hours_online
+       FROM ops_platform_daily_records d
+       JOIN ops_operators o ON o.operator_id = d.operator_id
+       WHERE ${clauses.join(" AND ")}
+       GROUP BY o.amoeba_id, d.record_date
+       ORDER BY d.record_date ASC`,
+      params
+    );
+  }
+
   async teamBoard(
     filters: { record_date?: string; date_from?: string; date_to?: string; amoeba_id?: string },
     scope: OpsDataScope = {}

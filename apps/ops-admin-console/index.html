@@ -132,7 +132,17 @@
         <details class="management-panel">
           <summary>View performance records</summary>
           <p class="section-intro" id="performanceRangeLabel">Cumulative performance over the selected date range.</p>
-          <p class="section-intro field-hint">The date range is set by the <strong>From</strong> / <strong>To</strong> pickers at the top of the page. Set From = To for a single day. Totals and graphs below are cumulative across that range.</p>
+          <div class="perf-range">
+            <label>From<input id="perfFrom" type="date" /></label>
+            <label>To<input id="perfTo" type="date" /></label>
+            <div class="perf-presets" role="group" aria-label="Quick date ranges">
+              <button type="button" data-perf-preset="today">Today</button>
+              <button type="button" data-perf-preset="7d">Last 7 days</button>
+              <button type="button" data-perf-preset="30d">Last 30 days</button>
+              <button type="button" data-perf-preset="month">This month</button>
+            </div>
+          </div>
+          <p class="section-intro field-hint">This panel has its own date range (independent of the page's From/To). Set From = To for a single day. Totals and graphs are cumulative across the range.</p>
           <div class="history-filters">
             <label>Amoeba<select id="performanceAmoebaFilter"></select></label>
             <label>Operator<select id="performanceOperatorFilter"></select></label>

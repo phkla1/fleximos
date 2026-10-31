@@ -383,17 +383,20 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#performanceAmoebaFilter")).toBeVisible();
     await expect(page.locator("#performanceOperatorFilter")).toHaveValue("");
     await expect(page.locator("#performanceRows")).toContainText("Choose an amoeba");
+    // This panel owns its date range; widen it so the seeded history is in scope.
+    await page.locator('[data-perf-preset="30d"]').click();
+    // The per-amoeba comparison renders from the rollup even before an amoeba is picked.
+    await expect(page.locator("#perfAmoebaChart .perf-bar-row").first()).toBeVisible();
     await page.locator("#performanceAmoebaFilter").selectOption({ index: 1 });
     expect(await page.locator("#performanceOperatorFilter option").count()).toBeGreaterThan(1);
+    // The panel fetches its own scoped data; wait for the cumulative table to fill.
+    await expect(page.locator("#performanceRows")).not.toContainText("Choose an amoeba");
+    await expect(page.locator("#perfRiderChart .perf-bar-row").first()).toBeVisible();
     await page.locator("#performanceOperatorFilter").selectOption({ index: 1 });
-    expect(await page.locator("#performanceRows tr").count()).toBeGreaterThan(0);
-    // Cumulative header + comparison graphs render.
     await expect(page.locator("#performanceRangeLabel")).toContainText("Cumulative performance");
-    expect(await page.locator("#perfAmoebaChart .perf-bar-row").count()).toBeGreaterThan(0);
-    expect(await page.locator("#perfRiderChart .perf-bar-row").count()).toBeGreaterThan(0);
     // The graph metric toggle re-renders without error.
     await page.locator("#performanceMetric").selectOption("ride_revenue_ngn");
-    expect(await page.locator("#perfAmoebaChart .perf-bar-row").count()).toBeGreaterThan(0);
+    await expect(page.locator("#perfAmoebaChart .perf-bar-row").first()).toBeVisible();
     // The technical import-run audit lives under Data health.
     await page.locator('.rail nav a[href="#data-health"]').click();
     await expect(page.getByText("View platform import runs", { exact: true })).toBeVisible();

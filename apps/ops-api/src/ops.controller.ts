@@ -712,6 +712,24 @@ export class OpsController {
 
   @ApiTags("Reporting")
   @ApiBearerAuth()
+  @Get("ops/v1/daily-performance/by-amoeba")
+  async amoebaDailyRollup(
+    @Req() req: Request,
+    @Query("date_from") dateFrom?: string,
+    @Query("date_to") dateTo?: string
+  ) {
+    const actor = await this.auth(req);
+    return {
+      data: await this.ops.amoebaDailyRollup(
+        { date_from: dateFrom, date_to: dateTo },
+        this.identity.dataScope(actor)
+      ),
+      next_cursor: null
+    };
+  }
+
+  @ApiTags("Reporting")
+  @ApiBearerAuth()
   @Get("ops/v1/pacing")
   async pacingBoard(
     @Req() req: Request,
