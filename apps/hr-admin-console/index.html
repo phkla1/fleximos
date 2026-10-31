@@ -287,6 +287,18 @@
       </form>
     </dialog>
 
+    <dialog id="pinDialog">
+      <form method="dialog" class="dialog-body">
+        <h2 id="pinDialogTitle">Sign-in PIN</h2>
+        <p class="subtle">Give this 6-digit PIN to the operator now. It is shown once and cannot be retrieved again — if lost, reset it.</p>
+        <p id="pinValue" class="pin-value"></p>
+        <div class="dialog-actions">
+          <button type="button" id="pinCopyButton" class="ghost">Copy</button>
+          <button value="default" class="primary">Done</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="../role-console-assets/flexi-env.js"></script>
     <script src="../role-console-assets/admin-kit.js"></script>
     <script src="./assets/app.js"></script>

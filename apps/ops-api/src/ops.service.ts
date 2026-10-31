@@ -325,6 +325,32 @@ export class OpsService {
     return operator;
   }
 
+  // Reset an operator's sign-in PIN. Authorization is by data scope: a
+  // supervisor can only act on operators in the amoebas they supervise
+  // (getOperator throws otherwise); the identity service issues the new PIN.
+  async resetOperatorPin(operatorId: string, scope: OpsDataScope, actorPersonId: string) {
+    const operator: any = await this.getOperator(operatorId, scope);
+    const usersResponse = await fetch(`${this.foundationBase}/identity/v1/users`, {
+      headers: { Authorization: `Bearer ${this.serviceToken}` }
+    });
+    if (!usersResponse.ok) throw new BadRequestException("Could not reach the identity service to reset the PIN.");
+    const usersBody: any = await usersResponse.json();
+    const user = (usersBody.data || []).find((item: any) => item.person_id === operator.person_id && item.status === "active");
+    if (!user) throw new BadRequestException("This operator has no active login account yet — create one in the HR console first.");
+    const resetResponse = await fetch(`${this.foundationBase}/identity/v1/users/${user.user_id}/reset-pin`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.serviceToken}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": this.id("pinreset")
+      },
+      body: JSON.stringify({ reset_by: actorPersonId })
+    });
+    if (!resetResponse.ok) throw new BadRequestException("The identity service rejected the PIN reset.");
+    const resetBody: any = await resetResponse.json();
+    return { operator_id: operatorId, person_id: operator.person_id, pin: resetBody.pin };
+  }
+
   async createOperator(body: RecordBody) {
     for (const field of ["person_id", "operator_type", "amoeba_id", "site_id"]) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);

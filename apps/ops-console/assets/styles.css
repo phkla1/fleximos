@@ -307,7 +307,9 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .dialog-heading button { border: 0; background: #eceff1; border-radius: 8px; width: 30px; height: 30px; font-size: 16px; flex: none; }
 .dialog-body label { display: grid; gap: 4px; font-size: 11px; font-weight: 800; color: var(--muted); }
 .dialog-body textarea { padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; resize: vertical; }
+.pin-value { font-size: 34px; font-weight: 800; letter-spacing: 0.3em; text-align: center; margin: 8px 0 4px; font-variant-numeric: tabular-nums; }
 .dialog-actions { display: flex; justify-content: end; gap: 8px; margin-top: 12px; }
+.dialog-actions button.ghost { background: #eceff1; color: var(--ink); }
 .dialog-actions button { padding: 9px 15px; border: 0; border-radius: 9px; background: var(--green); color: #fff; font-weight: 800; }
 .dialog-actions button.secondary { background: #eceff1; color: var(--ink); }
 

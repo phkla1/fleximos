@@ -692,6 +692,77 @@
           }
         }
       }
+    },
+    "/users/{user_id}/reset-pin": {
+      "post": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Reset a user's sign-in PIN and return the new PIN once",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reset_by": {
+                    "type": "string",
+                    "description": "Attribute the reset to this person (trusted service callers only)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New PIN (shown once)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user_id",
+                    "pin"
+                  ],
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "pin": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

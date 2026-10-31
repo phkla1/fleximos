@@ -66,6 +66,27 @@ below (`CARTRACKER_*`, `TANKVOLT_*`, `ORBIT_*`, `SPEEDAF_*`, `MONNIFY_*`). Every
 other env var (ports, DB URLs, feature flags like `MEDIA_STRICT_CAPTURE`) is read
 plainly and is unaffected — never add `_TEST`/`_PROD` to those.
 
+#### Operator sign-in PINs
+
+Operators sign in to the driver PWA with a phone number and a 6-digit PIN
+(hashed; five wrong tries locks the account for 15 minutes). PINs are issued by
+HR at account creation and resettable by HR (hr-admin console) or the operator's
+amoeba supervisor (supervisor console) — the new PIN is shown once.
+
+```bash
+FLEXI_BOOTSTRAP_PIN=000000            # the FIRST owner's PIN only; change it
+FLEXI_SEED_DEMO=false                 # MUST be false in production
+```
+
+- `FLEXI_BOOTSTRAP_PIN` sets only the seeded founder's PIN so the first owner can
+  sign in; change it from the default. Everyone else gets a random PIN at
+  creation.
+- With `FLEXI_SEED_DEMO=true`, **all** newly created accounts share the bootstrap
+  PIN (for demos/tests) — keep it `false`/unset in production so each operator
+  gets a random PIN.
+- **Migration:** operators created before this release have no PIN and cannot
+  sign in until HR or their supervisor resets it (which issues a random PIN).
+
 For an integration variable, the rule is just **append `_TEST` or `_PROD` to the
 end**. The resolver prefers the suffixed name for the active mode and otherwise
 falls back to the bare variable. For example, for `TANKVOLT_API_KEY`:

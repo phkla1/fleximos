@@ -5505,6 +5505,64 @@
           }
         }
       }
+    },
+    "/operators/{operator_id}/reset-pin": {
+      "post": {
+        "tags": [
+          "Operators"
+        ],
+        "summary": "Reset an operator's sign-in PIN (supervisor of their amoeba, or manager/admin)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "operator_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New PIN (shown once)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "operator_id",
+                    "pin"
+                  ],
+                  "properties": {
+                    "operator_id": {
+                      "type": "string"
+                    },
+                    "person_id": {
+                      "type": "string"
+                    },
+                    "pin": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

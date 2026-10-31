@@ -103,6 +103,35 @@ test.describe("hr-admin console", () => {
     await expect(page.locator("#notice")).toContainText("deactivated");
   });
 
+  test("issues a PIN when creating a user and lets HR reset it", async ({ page }) => {
+    await page.goto(adminUrl);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    const unique = Date.now();
+    const name = `PIN HR ${unique}`;
+    await page.locator("#people .create > summary").click({ force: true });
+    await page.locator('#personForm input[name="display_name"]').fill(name);
+    await page.locator('#personForm input[name="phone"]').fill(`+23482${String(unique).slice(-8)}`);
+    await page.locator("#personForm").getByRole("button", { name: "Create person" }).click();
+    await expect(page.locator("#notice")).toContainText("Person created.");
+
+    await page.locator('.rail nav a[href="#users"]').click();
+    await expect(page.locator("#users")).toBeVisible();
+    await page.locator("#users .create > summary").click({ force: true });
+    await page.locator('#userForm select[name="person_id"]').selectOption({ label: name });
+    await page.locator("#userForm").getByRole("button", { name: "Create user" }).click();
+    // The new account's PIN is revealed once.
+    await expect(page.locator("#pinDialog")).toBeVisible();
+    await expect(page.locator("#pinValue")).toHaveText(/^\d{6}$/);
+    await page.locator("#pinDialog").getByRole("button", { name: "Done" }).click();
+
+    // HR can reset it from the user row.
+    const row = page.locator("#userRows tr").filter({ hasText: name });
+    await row.getByRole("button", { name: "Reset PIN" }).click();
+    await page.locator("#confirmButton").click();
+    await expect(page.locator("#pinDialog")).toBeVisible();
+    await expect(page.locator("#pinValue")).toHaveText(/^\d{6}$/);
+  });
+
   test("mobile layout has no horizontal page overflow", async ({ page }) => {
     await page.goto(adminUrl);
     await expect(page.locator("#notice")).toContainText("Connected");

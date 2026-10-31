@@ -34,6 +34,12 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#operatorDialog")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Today's timeline" })).toBeVisible();
     await expect(page.locator("#operatorDialog .progress-track")).toBeVisible();
+    // Reset the rider's sign-in PIN from the sheet; the new PIN is revealed once.
+    page.on("dialog", (dialog) => dialog.accept());
+    await page.locator("[data-reset-pin]").first().click();
+    await expect(page.locator("#pinDialog")).toBeVisible();
+    await expect(page.locator("#pinValue")).toHaveText(/^\d{6}$/);
+    await page.locator("#pinDialog").getByRole("button", { name: "Done" }).click();
     await page.locator("[data-close-operator]").click();
     await expect(page.locator("#operatorDialog")).not.toBeVisible();
   });

@@ -306,6 +306,15 @@
       </div>
     </dialog>
 
+    <dialog id="pinDialog">
+      <form method="dialog" class="dialog-body">
+        <div class="dialog-heading"><h2 id="pinDialogTitle">Sign-in PIN</h2><button value="cancel" aria-label="Close">×</button></div>
+        <p class="muted">Give this 6-digit PIN to the rider now. It is shown once and can't be retrieved again — if lost, reset it.</p>
+        <p id="pinValue" class="pin-value"></p>
+        <div class="dialog-actions"><button type="button" id="pinCopyButton" class="ghost">Copy</button><button value="default" class="primary">Done</button></div>
+      </form>
+    </dialog>
+
     <dialog id="actionDialog">
       <form method="dialog" class="dialog-body">
         <div class="dialog-heading"><h2 id="dialogTitle">Alert action</h2><button value="cancel" aria-label="Close">×</button></div>

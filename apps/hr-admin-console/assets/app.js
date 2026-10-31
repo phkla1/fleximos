@@ -18,7 +18,8 @@ const els = Object.fromEntries([
   "peopleCount", "usersCount", "roleAssignmentsCount", "amoebasCount", "sitesCount", "serviceAccountsCount",
   "peopleRows", "userRows", "roleAssignmentRows", "amoebaRows", "siteRows", "serviceAccountRows",
   "personForm", "userForm", "roleAssignmentForm", "amoebaForm", "siteForm", "serviceAccountForm",
-  "confirmDialog", "confirmTitle", "confirmBody", "confirmButton"
+  "confirmDialog", "confirmTitle", "confirmBody", "confirmButton",
+  "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton"
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const params = new URLSearchParams(window.location.search);
@@ -152,7 +153,10 @@ function actionsCell(section, id, status, { archive = false } = {}) {
   const dead = status === "inactive" || status === "suspended" || status === "archived";
   const verb = archive ? (dead ? "Restore" : "Archive") : (dead ? "Reactivate" : "Deactivate");
   const danger = dead ? "" : "danger-text";
+  const resetPin = section === "users" && !dead
+    ? `<button type="button" class="linklike" data-reset-pin data-id="${escapeHtml(id)}">Reset PIN</button>` : "";
   return `<td class="actions"><button type="button" class="ghost" data-edit="${section}" data-id="${escapeHtml(id)}">Edit</button>
+    ${resetPin}
     <button type="button" class="linklike ${danger}" data-lifecycle="${section}" data-id="${escapeHtml(id)}" data-next="${dead ? "active" : (archive ? "archived" : "inactive")}">${verb}</button>
     ${idChip(id)}</td>`;
 }
@@ -340,11 +344,13 @@ function bindCreate(form, path, prefix, transform, label) {
     button.disabled = true;
     try {
       const body = transform(formData(form), form);
-      await api(path, { method: "POST", headers: { "Idempotency-Key": idempotencyKey(prefix) }, body: JSON.stringify(body) });
+      const created = await api(path, { method: "POST", headers: { "Idempotency-Key": idempotencyKey(prefix) }, body: JSON.stringify(body) });
       form.reset();
       const panel = form.closest(".create"); if (panel) panel.open = false;
       await refresh();
       setNotice(`${label} created.`);
+      // A new account is issued a sign-in PIN — reveal it once.
+      if (created && created.initial_pin) revealPin(`PIN for ${personName(created.person_id)}`, created.initial_pin);
     } catch (error) { setNotice(error.message, true); }
     finally { button.disabled = false; }
   });
@@ -449,6 +455,16 @@ function askConfirm(title, body, confirmLabel, onConfirm) {
   pendingLifecycle = onConfirm;
   els.confirmDialog.showModal();
 }
+
+// Show a freshly-issued PIN once. It is never retrievable again.
+function revealPin(title, pin) {
+  els.pinDialogTitle.textContent = title;
+  els.pinValue.textContent = pin;
+  els.pinDialog.showModal();
+}
+els.pinCopyButton?.addEventListener("click", () => {
+  navigator.clipboard?.writeText(els.pinValue.textContent).then(() => setNotice("PIN copied.")).catch(() => {});
+});
 els.confirmDialog.addEventListener("close", async () => {
   if (els.confirmDialog.returnValue === "default" && pendingLifecycle) { const fn = pendingLifecycle; pendingLifecycle = null; await fn(); }
   pendingLifecycle = null;
@@ -476,6 +492,19 @@ document.addEventListener("click", async (event) => {
     save.disabled = true;
     try { const msg = await SAVE[section](id, row); editing[section] = null; roleDraft = null; await refresh(); setNotice(msg); }
     catch (error) { save.disabled = false; setNotice(error.message, true); }
+    return;
+  }
+
+  const resetPin = event.target.closest("[data-reset-pin]");
+  if (resetPin) {
+    const id = resetPin.dataset.id;
+    const name = personName(state.users.find((u) => u.user_id === id)?.person_id) || id;
+    askConfirm(`Reset PIN for ${name}?`, "A new 6-digit PIN is issued and shown once. Their current PIN stops working immediately.", "Reset PIN", async () => {
+      try {
+        const result = await api(`/identity/v1/users/${id}/reset-pin`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey("pin-reset") } });
+        revealPin(`New PIN for ${name}`, result.pin);
+      } catch (error) { setNotice(error.message, true); }
+    });
     return;
   }
 

@@ -218,7 +218,7 @@ test("scopes supervisor and operator reads inside the Ops API", async () => {
     })
   });
   assert.equal(ownOperator.body.supervisor_person_id, supervisor.person_id, "operator inherits the amoeba's supervisor");
-  await request("/ops/v1/operators", {
+  const otherOperator = await request("/ops/v1/operators", {
     method: "POST",
     headers: { "Idempotency-Key": "ops-scope-operator-other" },
     body: JSON.stringify({
@@ -250,6 +250,28 @@ test("scopes supervisor and operator reads inside the Ops API", async () => {
   }).then((response) => response.json());
   assert.equal(operatorRoster.data.length, 1);
   assert.equal(operatorRoster.data[0].operator_id, ownOperator.body.operator_id);
+
+  // A supervisor can reset the PIN of an operator in their amoeba, and the new
+  // PIN works at login.
+  const reset = await fetch(`${baseUrl}/ops/v1/operators/${ownOperator.body.operator_id}/reset-pin`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${supervisorToken.access_token}`, "Content-Type": "application/json", "Idempotency-Key": "ops-scope-reset-own" }
+  });
+  assert.equal(reset.status, 200);
+  const resetBody = await reset.json();
+  assert.match(String(resetBody.pin), /^\d{6}$/);
+  const relogin = await fetch(`${foundationBaseUrl}/identity/v1/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_or_email: ownPerson.phone, pin: resetBody.pin })
+  });
+  assert.equal(relogin.status, 200, "the reset PIN signs the operator in");
+
+  // A supervisor cannot reset the PIN of an operator outside their amoebas.
+  const denied = await fetch(`${baseUrl}/ops/v1/operators/${otherOperator.body.operator_id}/reset-pin`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${supervisorToken.access_token}`, "Content-Type": "application/json", "Idempotency-Key": "ops-scope-reset-denied" }
+  });
+  assert.equal(denied.status, 404, "an out-of-scope operator is not resettable");
 });
 
 test("unions Manager and Finance assignments without granting system administration", async () => {

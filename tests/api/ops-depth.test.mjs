@@ -367,7 +367,7 @@ test("keeps depth mutations behind role authorization", async () => {
     },
     body: JSON.stringify({ display_name: "Depth Operator", phone: "+2347000000441" })
   }).then((response) => response.json());
-  await fetch(`${foundationBaseUrl}/identity/v1/users`, {
+  const depthUser = await fetch(`${foundationBaseUrl}/identity/v1/users`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -375,11 +375,11 @@ test("keeps depth mutations behind role authorization", async () => {
       "Idempotency-Key": "depth-auth-user-001"
     },
     body: JSON.stringify({ person_id: person.person_id, roles: ["operator"], status: "active" })
-  });
+  }).then((response) => response.json());
   const login = await fetch(`${foundationBaseUrl}/identity/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone_or_email: "+2347000000441", pin: "000000" })
+    body: JSON.stringify({ phone_or_email: "+2347000000441", pin: depthUser.initial_pin })
   }).then((response) => response.json());
 
   const forbiddenExpense = await fetch(`${baseUrl}/ops/v1/expenses`, {

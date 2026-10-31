@@ -72,6 +72,43 @@ test("returns a normalized identity profile for human sessions", async () => {
   assert.deepEqual(profile.role_assignments, []);
 });
 
+test("issues a PIN at creation, enforces it on login, locks out, and resets", async () => {
+  const person = await request("/identity/v1/people", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pin-person-001" },
+    body: JSON.stringify({ display_name: "PIN Tester", phone: "+2347000000777" })
+  });
+  const created = await request("/identity/v1/users", {
+    method: "POST",
+    headers: { "Idempotency-Key": "pin-user-001" },
+    body: JSON.stringify({ person_id: person.body.person_id, roles: ["operator"], status: "active" })
+  });
+  assert.equal(created.response.status, 201);
+  assert.match(String(created.body.initial_pin), /^\d{6}$/);
+  assert.equal(created.body.pin_hash, undefined, "the PIN hash is never returned");
+
+  const login = (pin) => fetch(`${baseUrl}/identity/v1/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_or_email: "+2347000000777", pin })
+  });
+  assert.equal((await login("123123")).status, 401, "wrong PIN is rejected");
+  assert.equal((await login(created.body.initial_pin)).status, 200, "correct PIN signs in");
+
+  // Five consecutive wrong PINs lock the account.
+  for (let i = 0; i < 5; i++) await login("000001");
+  const locked = await login(created.body.initial_pin);
+  assert.equal(locked.status, 401, "locked even with the right PIN");
+  assert.equal((await locked.json()).error.code, "account_locked");
+
+  // A reset issues a new working PIN and clears the lockout.
+  const reset = await request(`/identity/v1/users/${created.body.user_id}/reset-pin`, {
+    method: "POST", headers: { "Idempotency-Key": "pin-reset-001" }, body: "{}"
+  });
+  assert.equal(reset.response.status, 200);
+  assert.match(String(reset.body.pin), /^\d{6}$/);
+  assert.equal((await login(reset.body.pin)).status, 200, "the new PIN works and the lock is cleared");
+});
+
 test("creates, returns, and deactivates scoped role assignments", async () => {
   const person = await request("/identity/v1/people", {
     method: "POST",
@@ -127,7 +164,7 @@ test("creates, returns, and deactivates scoped role assignments", async () => {
   const login = await fetch(`${baseUrl}/identity/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone_or_email: "+2347000000011", pin: "000000" })
+    body: JSON.stringify({ phone_or_email: "+2347000000011", pin: user.body.initial_pin })
   }).then((response) => response.json());
   const activeProfile = await fetch(`${baseUrl}/identity/v1/me`, {
     headers: { Authorization: `Bearer ${login.access_token}` }

@@ -37,6 +37,7 @@ const el = Object.fromEntries([
   "deliveryList", "deliveryBatchForm", "deliverySummaryLabel",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
+  "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton",
   "boardListToggle", "boardMapToggle", "boardPaceToggle", "boardMapView",
   "boardPaceView", "paceBoard", "vehicleMap",
   "mapStatus", "mapPositionList", "mapNoFeed", "trackerSources", "controlDialog",
@@ -74,6 +75,16 @@ function setNotice(message, error = false) {
   el.notice.textContent = message;
   el.notice.classList.toggle("error", error);
 }
+
+// Show a freshly-issued PIN once. It is never retrievable again.
+function revealPin(title, pin) {
+  el.pinDialogTitle.textContent = title;
+  el.pinValue.textContent = pin;
+  el.pinDialog.showModal();
+}
+el.pinCopyButton?.addEventListener("click", () => {
+  navigator.clipboard?.writeText(el.pinValue.textContent).then(() => setNotice("PIN copied.")).catch(() => {});
+});
 
 function setConnection(status, text) {
   const root = document.querySelector(".connection-status");
@@ -1406,6 +1417,7 @@ function renderOperatorDialog(operatorId) {
     <div class="platform-line">${(row.platforms || []).map((platform) => `<span class="${platform.vehicle_type === "car" ? "car" : "bike"}">${escapeHtml(platform.display_name)}</span>`).join("") || "<span>No platform feed</span>"}</div>
     <div class="sheet-actions row-actions">
       ${phone ? `<a class="call-button" href="tel:${escapeHtml(phone)}">📞 Call</a>` : ""}
+      <button type="button" class="ghost" data-reset-pin="${escapeHtml(row.operator_id)}">Reset PIN</button>
       ${row.alerts.filter((alert) => alert.resolution_status !== "resolved").length ? "" : `<span class="pill resolved">No open alerts</span>`}
     </div>
     ${row.alerts.length ? `<h3>Alerts</h3><div class="alert-list">${row.alerts.map((alert) => alertRow(alert)).join("")}</div>` : ""}
@@ -1722,6 +1734,20 @@ document.addEventListener("click", async (event) => {
   if (closeOperator) {
     el.operatorDialog.close();
     openOperatorId = null;
+    return;
+  }
+  const resetPinButton = event.target.closest("[data-reset-pin]");
+  if (resetPinButton) {
+    const operatorId = resetPinButton.dataset.resetPin;
+    if (!window.confirm("Reset this rider's sign-in PIN? A new 6-digit PIN is issued and shown once; their current PIN stops working immediately.")) return;
+    resetPinButton.disabled = true;
+    try {
+      const result = await request(opsApiBase, `/ops/v1/operators/${operatorId}/reset-pin`, {
+        method: "POST", headers: { "Idempotency-Key": key("pin-reset") }
+      });
+      revealPin("New PIN", result.pin);
+    } catch (error) { setNotice(error.message, true); }
+    finally { resetPinButton.disabled = false; }
     return;
   }
   const alertButton = event.target.closest("[data-alert-action]");

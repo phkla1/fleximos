@@ -142,6 +142,22 @@ export class OpsController {
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.ops.updateOperator(operatorId, body));
   }
 
+  @ApiTags("Operators")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Reset an operator's sign-in PIN (supervisor of their amoeba, or a manager/admin)" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/operators/:operatorId/reset-pin")
+  async resetOperatorPin(
+    @Req() req: Request,
+    @Param("operatorId") operatorId: string,
+    @Headers("idempotency-key") rawKey: string | undefined
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () =>
+      this.ops.resetOperatorPin(operatorId, this.identity.dataScope(actor), actor.person_id));
+  }
+
   @ApiTags("Cash")
   @ApiBearerAuth()
   @Patch("ops/v1/operators/:operatorId/monnify-account")

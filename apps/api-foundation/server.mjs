@@ -1,6 +1,6 @@
 import http from "node:http";
 import path from "node:path";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 
@@ -55,6 +55,36 @@ function tokenHash(token) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+// Operator PINs: a random 6-digit code, stored only as a salted scrypt hash.
+// The plaintext is shown once at issue/reset and never retrievable again.
+const PIN_LOCK_THRESHOLD = 5;
+const PIN_LOCK_MINUTES = 15;
+function generatePin() {
+  return String(Math.floor(randomBytes(4).readUInt32BE(0) % 1000000)).padStart(6, "0");
+}
+function hashPin(pin) {
+  const salt = randomBytes(16).toString("hex");
+  const derived = scryptSync(String(pin), salt, 32).toString("hex");
+  return `scrypt$${salt}$${derived}`;
+}
+function verifyPin(pin, stored) {
+  if (!stored || typeof stored !== "string") return false;
+  const [scheme, salt, expected] = stored.split("$");
+  if (scheme !== "scrypt" || !salt || !expected) return false;
+  const derived = scryptSync(String(pin), salt, 32);
+  const expectedBuf = Buffer.from(expected, "hex");
+  return derived.length === expectedBuf.length && timingSafeEqual(derived, expectedBuf);
+}
+// The first owner needs a known PIN to bootstrap; everyone else gets a random
+// one at account creation.
+const bootstrapPin = process.env.FLEXI_BOOTSTRAP_PIN || "000000";
+// Never expose the PIN hash; surface only whether a PIN is set.
+function publicUser(u) {
+  if (!u) return u;
+  const { pin_hash, ...rest } = u;
+  return { ...rest, has_pin: !!pin_hash };
+}
+
 function page(data) {
   return { data, next_cursor: null };
 }
@@ -97,6 +127,13 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
+
+    -- Operator sign-in PIN (hashed) + brute-force lockout. Additive.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_set_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_set_by TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_failed_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_locked_until TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS role_assignments (
       role_assignment_id TEXT PRIMARY KEY,
@@ -267,9 +304,10 @@ async function seedDb() {
   await addHistory("person", ownerPerson.person_id, ownerPerson.person_id, "seeded", ownerPerson);
 
   await exec(
-    `INSERT INTO users (user_id, person_id, roles, status, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [user.user_id, user.person_id, user.roles, user.status, user.created_at, user.updated_at]
+    `INSERT INTO users (user_id, person_id, roles, status, created_at, updated_at, pin_hash, pin_set_at, pin_set_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [user.user_id, user.person_id, user.roles, user.status, user.created_at, user.updated_at,
+     hashPin(bootstrapPin), timestamp, user.person_id]
   );
   await addHistory("user", user.user_id, ownerPerson.person_id, "seeded", user);
 
@@ -652,7 +690,25 @@ async function handleIdentity(req, res, parts) {
        LIMIT 1`,
       candidateList
     );
-    if (!user || body.pin !== "000000") return error(res, 401, "invalid_login", "Invalid login credentials.");
+    // Uniform response for an unknown account or one without a PIN set — no
+    // account enumeration.
+    if (!user || !user.pin_hash) return error(res, 401, "invalid_login", "Invalid login credentials.");
+    // Brute-force lockout: after N consecutive wrong PINs, lock for a window.
+    if (user.pin_locked_until && new Date(user.pin_locked_until) > new Date()) {
+      return error(res, 401, "account_locked", "Too many attempts. Try again later or ask HR or your supervisor to reset your PIN.");
+    }
+    if (!verifyPin(String(body.pin || ""), user.pin_hash)) {
+      const failed = Number(user.pin_failed_count || 0) + 1;
+      const lockUntil = failed >= PIN_LOCK_THRESHOLD ? new Date(Date.now() + PIN_LOCK_MINUTES * 60000).toISOString() : null;
+      await exec(
+        "UPDATE users SET pin_failed_count = $2, pin_locked_until = $3, updated_at = $4 WHERE user_id = $1",
+        [user.user_id, lockUntil ? 0 : failed, lockUntil, now()]
+      );
+      return error(res, 401, "invalid_login", "Invalid login credentials.");
+    }
+    if (Number(user.pin_failed_count || 0) !== 0 || user.pin_locked_until) {
+      await exec("UPDATE users SET pin_failed_count = 0, pin_locked_until = NULL, updated_at = $2 WHERE user_id = $1", [user.user_id, now()]);
+    }
     return json(res, 200, {
       access_token: `dev_access_${user.user_id}`,
       refresh_token: `dev_refresh_${user.user_id}`,
@@ -762,7 +818,7 @@ async function handleIdentity(req, res, parts) {
     return json(res, response.status, response.body);
   }
 
-  if (resource === "users" && !id && req.method === "GET") return json(res, 200, page(await many("SELECT * FROM users ORDER BY created_at ASC")));
+  if (resource === "users" && !id && req.method === "GET") return json(res, 200, page((await many("SELECT * FROM users ORDER BY created_at ASC")).map(publicUser)));
 
   if (resource === "users" && !id && req.method === "POST") {
     const key = await assertIdempotency(req, res);
@@ -779,6 +835,10 @@ async function handleIdentity(req, res, parts) {
     }
     const response = await onceForIdempotency(key, async () => {
       const timestamp = now();
+      // Every account is issued a 6-digit sign-in PIN at creation; the plaintext
+      // is returned once here and never again. Demo/seed installs use the shared
+      // bootstrap PIN for easy sign-in; production issues a random PIN.
+      const pin = SEED_DEMO ? bootstrapPin : generatePin();
       const user = {
         user_id: prefixed("user"),
         person_id: body.person_id,
@@ -787,16 +847,14 @@ async function handleIdentity(req, res, parts) {
         created_at: timestamp,
         updated_at: timestamp
       };
-      await exec("INSERT INTO users (user_id, person_id, roles, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", [
-        user.user_id,
-        user.person_id,
-        user.roles,
-        user.status,
-        user.created_at,
-        user.updated_at
-      ]);
+      await exec(
+        `INSERT INTO users (user_id, person_id, roles, status, created_at, updated_at, pin_hash, pin_set_at, pin_set_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [user.user_id, user.person_id, user.roles, user.status, user.created_at, user.updated_at,
+         hashPin(pin), timestamp, auth.actor_person_id]
+      );
       await addHistory("user", user.user_id, auth.actor_person_id, "created", user);
-      return { status: 201, body: user };
+      return { status: 201, body: { ...user, initial_pin: pin } };
     });
     return json(res, response.status, response.body);
   }
@@ -808,7 +866,34 @@ async function handleIdentity(req, res, parts) {
 
   if (resource === "users" && id && !action && req.method === "GET") {
     const user = await one("SELECT * FROM users WHERE user_id = $1", [id]);
-    return user ? json(res, 200, user) : error(res, 404, "not_found", "User not found.");
+    return user ? json(res, 200, publicUser(user)) : error(res, 404, "not_found", "User not found.");
+  }
+
+  if (resource === "users" && id && action === "reset-pin" && req.method === "POST") {
+    if (!assertSystemAdmin(auth, res)) return;
+    const key = await assertIdempotency(req, res);
+    if (!key) return;
+    const cached = await idempotentResponse(key);
+    if (cached) return json(res, cached.status, cached.body);
+    const target = await one("SELECT user_id FROM users WHERE user_id = $1", [id]);
+    if (!target) return error(res, 404, "not_found", "User not found.");
+    // A trusted service (e.g. the Ops API doing a supervisor reset) can attribute
+    // the reset to the real actor; otherwise it is the authenticated caller.
+    const resetBody = await readBody(req).catch(() => ({}));
+    const resetBy = (auth.kind === "service" || auth.kind === "service_account") && resetBody.reset_by
+      ? String(resetBody.reset_by) : auth.actor_person_id;
+    const response = await onceForIdempotency(key, async () => {
+      const pin = generatePin();
+      const timestamp = now();
+      await exec(
+        `UPDATE users SET pin_hash = $2, pin_set_at = $3, pin_set_by = $4,
+           pin_failed_count = 0, pin_locked_until = NULL, updated_at = $3 WHERE user_id = $1`,
+        [id, hashPin(pin), timestamp, resetBy]
+      );
+      await addHistory("user", id, resetBy, "pin_reset", { pin_set_at: timestamp, pin_set_by: resetBy });
+      return { status: 200, body: { user_id: id, pin } };
+    });
+    return json(res, response.status, response.body);
   }
 
   if (resource === "users" && id && !action && req.method === "PATCH") {
@@ -836,7 +921,7 @@ async function handleIdentity(req, res, parts) {
         updated.updated_at
       ]);
       await addHistory("user", id, auth.actor_person_id, "updated", body);
-      return { status: 200, body: updated };
+      return { status: 200, body: publicUser(updated) };
     });
     return json(res, response.status, response.body);
   }
