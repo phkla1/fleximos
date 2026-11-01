@@ -1426,7 +1426,12 @@ function renderAccommodation() {
   }).join("") : `<div class="empty">No site has beds yet. Set accommodation beds on a site in the HR console.</div>`;
 }
 
-async function refresh(message = "Connected to Fleximotion Ops.") {
+// allowClamp: on first load only, snap an empty date range to the most recent
+//   day that has data, so the admin isn't greeted by a blank board. An explicit
+//   date pick is always honoured (shown empty if empty).
+// rangeBanner: label the notice with the ACTUAL queried range, computed after
+//   any clamp, so the banner can never disagree with the data on screen.
+async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp = false, rangeBanner = false } = {}) {
   setConnection("", "Connecting");
   setNotice("Loading operational data...");
   const [people, amoebas, sites, users, roleAssignments, operators, vehicles, platformAccounts, alerts, allDailyPerformance, paceProfiles, economicsPolicies, efficiencyPolicies, scheduledJobs, scheduledJobRuns, notificationDeliveries, serviceHealth, trackerInventory, vehiclePositions] = await Promise.all([
@@ -1470,7 +1475,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   // If the chosen range has no performance data at all, snap to the most
   // recent day that does, so a fresh console never opens onto emptiness.
   const rangeHasData = availableDates.some((date) => date >= dateFrom && date <= dateTo);
-  if (!rangeHasData && availableDates.length) {
+  if (allowClamp && !rangeHasData && availableDates.length) {
     dateFrom = availableDates[0];
     dateTo = availableDates[0];
   }
@@ -1551,7 +1556,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   loadPerformancePanel().catch(showError);
   loadAttendance().catch(showError);
   setConnection("connected", "Live APIs connected");
-  setNotice(message);
+  setNotice(rangeBanner ? describeRange() : message);
 }
 
 el.vehicleForm.elements.vehicle_type.addEventListener("change", updateVehicleTrackerUi);
@@ -1641,8 +1646,8 @@ for (const tile of document.querySelectorAll(".metrics a[data-jump]")) {
 const describeRange = () => el.dateFrom.value === el.dateTo.value
   ? `Showing operations for ${el.dateTo.value}.`
   : `Showing operations from ${el.dateFrom.value} to ${el.dateTo.value}.`;
-el.dateFrom.addEventListener("change", () => refresh(describeRange()).catch(showError));
-el.dateTo.addEventListener("change", () => refresh(describeRange()).catch(showError));
+el.dateFrom.addEventListener("change", () => refresh(undefined, { rangeBanner: true }).catch(showError));
+el.dateTo.addEventListener("change", () => refresh(undefined, { rangeBanner: true }).catch(showError));
 
 el.operatorForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -2350,4 +2355,4 @@ if (window.AdminKit) {
   AdminKit.wireNavSearch(document.getElementById("navSearch"));
 }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-refresh().catch(showError);
+refresh(undefined, { allowClamp: true }).catch(showError);

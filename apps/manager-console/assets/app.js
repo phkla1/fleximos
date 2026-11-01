@@ -489,7 +489,10 @@ async function loadPnlAndLeaderboard() {
   state.fleetFuel = { cost: Math.round(fuelCost), km: Math.round(fuelKm) };
 }
 
-async function refresh() {
+// allowClamp (first load only): snap an empty date range to the most recent day
+// that has data, so the manager isn't greeted by a blank board. An explicit date
+// pick is always honoured (shown empty if empty).
+async function refresh({ allowClamp = false } = {}) {
   connection("", "Connecting");
   el.notice.classList.remove("error");
   el.notice.textContent = "Loading scoped Manager data...";
@@ -501,7 +504,7 @@ async function refresh() {
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   const rangeHasData = dates.some((date) => date >= dateFrom && date <= dateTo);
-  if (!rangeHasData && dates.length) {
+  if (allowClamp && !rangeHasData && dates.length) {
     dateFrom = dates[0];
     dateTo = dates[0];
   }
@@ -676,4 +679,4 @@ document.getElementById("exportLeaderboardCsv").addEventListener("click", () => 
 
 document.getElementById("refreshButton").addEventListener("click", () => refresh().catch(showError));
 function showError(error) { unlockSubmitButtons(); connection("error", "API error"); el.notice.textContent = error.message; el.notice.classList.add("error"); }
-refresh().catch(showError);
+refresh({ allowClamp: true }).catch(showError);

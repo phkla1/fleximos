@@ -1504,7 +1504,12 @@ function renderOperatorDialog(operatorId) {
 
 /* ---------- data refresh ---------- */
 
-async function refresh(message = "Connected to Fleximotion Ops.") {
+// allowClamp: on first load only, snap an empty date range to the most recent
+//   day that has data, so the supervisor isn't greeted by a blank board.
+//   An explicit date pick is always honoured (shown empty if empty).
+// rangeBanner: label the notice with the ACTUAL queried range, computed after
+//   any clamp, so the banner can never disagree with the data on screen.
+async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp = false, rangeBanner = false } = {}) {
   setConnection("", "Connecting");
   setNotice("Loading amoeba data...");
   const [people, operators, allPerformance] = await Promise.all([
@@ -1526,7 +1531,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   const rangeHasData = availableDates.some((date) => date >= dateFrom && date <= dateTo);
-  if (!rangeHasData && availableDates.length) {
+  if (allowClamp && !rangeHasData && availableDates.length) {
     dateFrom = availableDates[0];
     dateTo = availableDates[0];
   }
@@ -1606,7 +1611,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   });
   render();
   setConnection("connected", "Amoeba data connected");
-  setNotice(message);
+  setNotice(rangeBanner ? describeRange() : message);
 }
 
 /* ---------- events ---------- */
@@ -1726,8 +1731,8 @@ document.getElementById("closeoutGauge")?.addEventListener("click", () => {
 const describeRange = () => el.dateFrom.value === el.dateTo.value
   ? `Showing amoeba activity for ${el.dateTo.value}.`
   : `Showing amoeba activity from ${el.dateFrom.value} to ${el.dateTo.value}.`;
-el.dateFrom.addEventListener("change", () => refresh(describeRange()).catch(showError));
-el.dateTo.addEventListener("change", () => refresh(describeRange()).catch(showError));
+el.dateFrom.addEventListener("change", () => refresh(undefined, { rangeBanner: true }).catch(showError));
+el.dateTo.addEventListener("change", () => refresh(undefined, { rangeBanner: true }).catch(showError));
 
 el.fuelIssueForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1862,7 +1867,7 @@ document.addEventListener("click", async (event) => {
     }
     el.dateFrom.value = from;
     el.dateTo.value = lagosToday();
-    refresh(describeRange()).catch(showError);
+    refresh(undefined, { rangeBanner: true }).catch(showError);
     return;
   }
   const deviationButton = event.target.closest("[data-deviation-decision]");
@@ -2125,4 +2130,4 @@ function showError(error) {
 }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-refresh().catch(showError);
+refresh(undefined, { allowClamp: true }).catch(showError);
