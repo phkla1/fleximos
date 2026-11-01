@@ -235,11 +235,18 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator(".assignment-row").first()).toBeVisible();
   });
 
-  test("offers the Speedaf import panel on the deliveries tab", async ({ page }) => {
+  test("offers a customer-driven delivery import and a per-customer feed strip", async ({ page }) => {
     await page.goto(url);
     await expect(page.locator("#notice")).toContainText("Connected");
     await page.locator("[data-tab-link='deliveries']").click();
-    await page.getByText("Import Speedaf export (.xlsx)").click();
+
+    // The feed strip shows how each delivery customer's parcels arrive — Speedaf
+    // on a (currently unconfigured) auto-pull; a file customer by upload.
+    const feeds = page.locator("#deliveryFeeds .feed-chip");
+    await expect(feeds.first()).toBeVisible();
+    await expect(page.locator("#deliveryFeeds")).toContainText("Speedaf");
+
+    await page.getByText("Import a delivery export").click();
     await expect(page.locator("#importFile")).toBeVisible();
     await expect(page.locator("#importCustomer")).toBeVisible();
     await expect(page.getByRole("button", { name: "Import export" })).toBeVisible();

@@ -551,3 +551,15 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .unmapped-row strong { font-size: 13.5px; }
 .unmapped-row small { color: var(--muted); }
 .unmapped-row select { margin-left: auto; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; max-width: 200px; }
+
+/* Delivery feed strip: per-customer, how today's parcels arrive. */
+.feed-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.feed-chip { flex: 1 1 200px; min-width: 180px; background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.feed-chip.ok { border-left-color: var(--green); }
+.feed-chip.warn { border-left-color: var(--amber); }
+.feed-chip strong { display: block; font-size: 14px; }
+.feed-chip .feed-tag { display: inline-block; font-size: 11px; font-weight: 600; color: var(--muted); margin: 2px 0; }
+.feed-chip.ok .feed-tag { color: var(--green); }
+.feed-chip.warn .feed-tag { color: var(--amber); }
+.feed-chip small { display: block; color: var(--muted); font-size: 12px; }

@@ -17,6 +17,7 @@ const state = {
   deliveryAssignments: [],
   deliveryExceptions: [],
   deliveryCustomers: [],
+  revenueSources: [],
   deliveryStops: [],
   deliverySummary: null,
   checkins: [],
@@ -34,7 +35,7 @@ const el = Object.fromEntries([
   "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
   "maintenanceForm", "maintenanceList", "alertList", "alertFilter",
   "topActions", "conditionGrid", "carRevenueChip", "bikeRevenueChip",
-  "deliveryList", "deliveryBatchForm", "deliverySummaryLabel",
+  "deliveryList", "deliveryBatchForm", "deliverySummaryLabel", "deliveryFeeds",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
   "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton",
@@ -1181,6 +1182,29 @@ function renderDeliveries() {
   const customerOptions = state.deliveryCustomers.filter((customer) => customer.status === "active");
   el.deliveryBatchForm.elements.delivery_customer_id.innerHTML = customerOptions.map((customer) =>
     `<option value="${escapeHtml(customer.delivery_customer_id)}">${escapeHtml(customer.name)}</option>`).join("");
+
+  // Per-customer feed strip: how today's parcels arrive for each delivery
+  // customer, and whether the supervisor should expect an automatic pull, do a
+  // file upload, or enter by hand. Manual entry is always a valid fallback.
+  if (el.deliveryFeeds) {
+    const feeds = (state.revenueSources || []).filter((source) => source.kind === "delivery_customer" && source.status === "active");
+    const feedHow = (source) => {
+      if (source.integration_mode === "headless" || source.integration_mode === "api") {
+        return source.connector && source.connector.configured
+          ? { cls: "ok", label: "Auto-pull on", note: "feed set up — parcels arrive automatically" }
+          : { cls: "warn", label: "Auto-pull off", note: "connector not configured yet — import or enter by hand" };
+      }
+      if (source.integration_mode === "file") return { cls: "warn", label: "File upload", note: "upload the customer's export, or enter by hand" };
+      return { cls: "", label: "Manual", note: "enter the batch by hand" };
+    };
+    el.deliveryFeeds.innerHTML = feeds.length ? feeds.map((source) => {
+      const how = feedHow(source);
+      return `<div class="feed-chip ${how.cls}">
+        <strong>${escapeHtml(source.name)}</strong>
+        <span class="feed-tag">${escapeHtml(how.label)}</span>
+        <small>${escapeHtml(how.note)}</small></div>`;
+    }).join("") : `<div class="feed-chip"><small>No delivery customers active. An admin defines them under Revenue sources.</small></div>`;
+  }
   const amoebas = [...new Set(state.operators.map((operator) => operator.amoeba_id))];
   el.deliveryBatchForm.elements.amoeba_id.innerHTML = amoebas.map((amoebaId) =>
     `<option value="${escapeHtml(amoebaId)}">${escapeHtml(amoebaId.replace("amoeba_", ""))}</option>`).join("");
@@ -1676,7 +1700,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins] = await Promise.all([
+  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, revenueSources, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/pacing?record_date=${operatingDate}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/alerts?${range}`),
@@ -1692,6 +1716,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops(`/ops/v1/delivery-assignments?${range}`).catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-exceptions").catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
+    ops("/ops/v1/revenue-sources").catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
@@ -1729,6 +1754,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     deliveryAssignments: deliveryAssignments.data.filter((assignment) => assignedIds.has(assignment.operator_id)),
     deliveryExceptions: deliveryExceptions.data.filter((exception) => assignedAmoebas.has(exception.amoeba_id)),
     deliveryCustomers: deliveryCustomers.data,
+    revenueSources: revenueSources.data || [],
     deliveryStops: deliveryStops.data,
     deliverySummary,
     // The cockpit check-in queue is today's check-ins — a "now" action, decoupled
