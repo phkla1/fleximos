@@ -295,8 +295,8 @@ function renderPnl() {
     ["Central costs", money(pnl.central_expenses_ngn), ""],
     ["Delivery revenue", money(pnl.totals.delivery_contract_revenue_ngn || 0), ""],
     ["Delivery margin", money(pnl.totals.delivery_margin_ngn || 0), Number(pnl.totals.delivery_margin_ngn) > 0 ? "metric-good" : ""],
-    ["Fuel (policy-priced)", state.fleetFuel?.cost
-      ? `${money(state.fleetFuel.cost)}${state.fleetFuel.km ? ` · ₦${(state.fleetFuel.cost / state.fleetFuel.km).toFixed(0)}/km` : ""}`
+    ["Fuel / charge (mileage-estimated)", state.fleetFuel?.cost
+      ? `${money(state.fleetFuel.cost)}${state.fleetFuel.actual && state.fleetFuel.km ? ` · ₦${(state.fleetFuel.actual / state.fleetFuel.km).toFixed(0)}/km actual` : ""}`
       : "No unit price set", ""],
     ["Hourly P&L", pnl.totals.hourly_pnl_ngn === null ? "—" : `${money(pnl.totals.hourly_pnl_ngn)}/h`, Number(pnl.totals.hourly_pnl_ngn) < 0 ? "metric-risk" : "metric-good"]
   ].map(([name, value, cls]) => `<article class="${cls}"><span>${name}</span><strong>${value}</strong></article>`).join("");
@@ -483,11 +483,13 @@ async function loadPnlAndLeaderboard() {
   state.pnl = pnl;
   state.expenses = expenses.data;
   state.leaderboard = leaderboard;
-  // Fleet fuel spend from the efficiency policy's ₦/unit price — the cost
-  // side of the mileage story (supervisor review, Aug 2026).
+  // Fleet fuel/charge: the mileage-derived estimate (fuel_cost_ngn — tracker
+  // distance preferred, platform fallback, priced at the policy rate), with the
+  // actual dispensed spend kept alongside for the real ₦/km signal.
   const fuelCost = mileage.data.reduce((sum, row) => sum + Number(row.fuel_cost_ngn || 0), 0);
-  const fuelKm = mileage.data.reduce((sum, row) => sum + Number(row.official_distance_km || 0), 0);
-  state.fleetFuel = { cost: Math.round(fuelCost), km: Math.round(fuelKm) };
+  const fuelActual = mileage.data.reduce((sum, row) => sum + Number(row.actual_fuel_cost_ngn || 0), 0);
+  const fuelKm = mileage.data.reduce((sum, row) => sum + Number(row.tracker_distance_km ?? row.official_distance_km ?? 0), 0);
+  state.fleetFuel = { cost: Math.round(fuelCost), actual: Math.round(fuelActual), km: Math.round(fuelKm) };
 }
 
 // allowClamp (first load only): snap an empty date range to the most recent day

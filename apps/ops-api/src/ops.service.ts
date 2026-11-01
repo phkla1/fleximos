@@ -1446,13 +1446,27 @@ export class OpsService {
       const trackerVariance = official !== null && official > 0 && tracker !== null ? ((tracker - official) / official) * 100 : null;
       const pricePerUnit = row.price_per_unit_ngn === null || row.price_per_unit_ngn === undefined
         ? null : Number(row.price_per_unit_ngn);
-      const fuelCost = pricePerUnit !== null && row.fuel_quantity
+      // Fuel/charge cost is a MILEAGE-derived estimate: the day's distance —
+      // tracker distance preferred, platform distance as the fallback — divided
+      // by the policy's km-per-unit and priced at the policy unit rate. The same
+      // path serves petrol (₦/litre) and EV charge (₦/kWh) because the policy
+      // lookup above is powertrain-aware. The supervisor-entered dispensed
+      // quantity is NOT the cost basis; it drives the variance and actual ₦/km.
+      const distanceForCost = tracker !== null ? tracker : official;
+      const kmPerUnit = Number(row.expected_distance_km) > 0 && Number(row.standard_daily_fuel_quantity) > 0
+        ? Number(row.expected_distance_km) / Number(row.standard_daily_fuel_quantity) : null;
+      const fuelCost = pricePerUnit !== null && kmPerUnit && distanceForCost !== null && distanceForCost > 0
+        ? Math.round((distanceForCost / kmPerUnit) * pricePerUnit * 100) / 100 : null;
+      // Actual dispensed cost (what was issued × unit price) is kept as the
+      // reconciliation/audit figure and powers the real ₦/km efficiency signal.
+      const actualFuelCost = pricePerUnit !== null && row.fuel_quantity
         ? Math.round(Number(row.fuel_quantity) * pricePerUnit * 100) / 100 : null;
       return {
         ...row,
         record_date: date,
         fuel_cost_ngn: fuelCost,
-        fuel_cost_per_km_ngn: fuelCost !== null && official ? Math.round((fuelCost / official) * 100) / 100 : null,
+        actual_fuel_cost_ngn: actualFuelCost,
+        fuel_cost_per_km_ngn: actualFuelCost !== null && distanceForCost ? Math.round((actualFuelCost / distanceForCost) * 100) / 100 : null,
         expected_distance_km: expected === null ? null : Math.round(expected * 10) / 10,
         fuel_efficiency_variance_pct: fuelVariance === null ? null : Math.round(fuelVariance * 10) / 10,
         official_distance_status: expected === null || official === null ? "not_available" : Math.abs(fuelVariance!) <= tolerance ? "acceptable" : "exception",

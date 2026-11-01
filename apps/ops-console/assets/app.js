@@ -327,6 +327,9 @@ function driverMetrics(analysis) {
     const litres = recon.reduce((sum, record) =>
       sum + (record.fuel_unit === "litres" ? Number(record.fuel_quantity || 0) : 0), 0);
     const fuelCost = recon.reduce((sum, record) => sum + Number(record.fuel_cost_ngn || 0), 0);
+    // fuelCost is the mileage-derived estimate; ₦/km stays honest by using the
+    // actual dispensed spend over distance, not the (degenerate) estimate/km.
+    const actualFuelCost = recon.reduce((sum, record) => sum + Number(record.actual_fuel_cost_ngn || 0), 0);
     const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
     const earnings = Number(row.net_earnings_ngn || 0);
     const trips = Number(row.trips_total || 0);
@@ -346,7 +349,7 @@ function driverMetrics(analysis) {
       kmPerTrip: trips && km ? round1(km / trips) : 0,
       earningsPerKm: km ? Math.round(earnings / km) : 0,
       fuelCost: Math.round(fuelCost),
-      fuelCostPerKm: km && fuelCost ? Math.round(fuelCost / km * 100) / 100 : 0,
+      fuelCostPerKm: km && actualFuelCost ? Math.round(actualFuelCost / km * 100) / 100 : 0,
       kmPerLitre: litres && km ? round1(km / litres) : 0,
       attendance: String(row.current_status).replaceAll("_", " "),
       incidents,
@@ -455,8 +458,8 @@ const DRIVER_COLUMNS = [
   { key: "km", label: "KM", numeric: true },
   { key: "kmPerTrip", label: "KM/trip", numeric: true },
   { key: "earningsPerKm", label: "₦/KM", numeric: true },
-  { key: "fuelCost", label: "Fuel ₦", numeric: true, render: (row) => row.fuelCost ? money(row.fuelCost) : "—" },
-  { key: "fuelCostPerKm", label: "Fuel ₦/KM", numeric: true, render: (row) => row.fuelCostPerKm || "—" },
+  { key: "fuelCost", label: "Fuel ₦ (est.)", numeric: true, render: (row) => row.fuelCost ? money(row.fuelCost) : "—" },
+  { key: "fuelCostPerKm", label: "Fuel ₦/KM (actual)", numeric: true, render: (row) => row.fuelCostPerKm || "—" },
   { key: "kmPerLitre", label: "KM/L", numeric: true, render: (row) => row.kmPerLitre || "—" },
   { key: "attendance", label: "Attendance" },
   { key: "incidents", label: "Incidents", numeric: true },
@@ -472,7 +475,7 @@ const VEHICLE_COLUMNS = [
   { key: "earnings", label: "Earnings ₦", numeric: true, render: (row) => money(row.earnings) },
   { key: "trips", label: "Trips", numeric: true },
   { key: "km", label: "KM", numeric: true },
-  { key: "fuelCost", label: "Fuel ₦", numeric: true, render: (row) => row.fuelCost ? money(row.fuelCost) : "—" },
+  { key: "fuelCost", label: "Fuel ₦ (est.)", numeric: true, render: (row) => row.fuelCost ? money(row.fuelCost) : "—" },
   { key: "idleDays", label: "Idle days", numeric: true },
   { key: "downtime", label: "Downtime hrs", render: () => `<span class="subtle">— awaiting tracker telemetry</span>`, csv: () => "awaiting telemetry" },
   { key: "maintenanceState", label: "Maintenance" },

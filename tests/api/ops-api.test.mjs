@@ -820,8 +820,17 @@ test("configures revenue pace and fuel efficiency controls", async () => {
   assert.equal(reconciliation.response.status, 200);
   assert.equal(reconciliation.body.data[0].tracker_variance_status, "tracker_unavailable");
   assert.equal(reconciliation.body.data[0].official_distance_status, "exception");
-  // The default policy carries ₦1,050/litre, so 5 litres price out at ₦5,250.
-  assert.equal(Number(reconciliation.body.data[0].fuel_cost_ngn), 5250);
+  // Fuel cost is now MILEAGE-derived: distance (tracker preferred, else platform)
+  // ÷ the policy's 20 km/litre (expected 100 ÷ std 5), priced at the unit rate.
+  // No tracker yet, so it follows the platform distance; the dispensed 5 litres
+  // is retained as the ACTUAL spend (5 × unit price) for audit and the real ₦/km.
+  {
+    const r = reconciliation.body.data[0];
+    assert.equal(r.tracker_distance_km, null);
+    const price = Number(r.price_per_unit_ngn);
+    assert.equal(Number(r.fuel_cost_ngn), Math.round(Number(r.official_distance_km) / 20 * price * 100) / 100);
+    assert.equal(Number(r.actual_fuel_cost_ngn), Math.round(5 * price * 100) / 100);
+  }
 
   const pricedPolicy = await request("/ops/v1/vehicle-efficiency-policies", {
     method: "POST",
@@ -838,7 +847,15 @@ test("configures revenue pace and fuel efficiency controls", async () => {
   assert.equal(Number(pricedPolicy.body.price_per_unit_ngn), 1200);
 
   const repriced = await request("/ops/v1/mileage-reconciliations?record_date=2026-06-06");
-  assert.equal(Number(repriced.body.data[0].fuel_cost_ngn), 6000);
+  // Repriced to ₦1,200/litre (effective 2026-06-05, so it now wins): the estimate
+  // and the actual both re-price, still off the platform distance and 20 km/litre.
+  {
+    const r = repriced.body.data[0];
+    const price = Number(r.price_per_unit_ngn);
+    assert.equal(price, 1200);
+    assert.equal(Number(r.fuel_cost_ngn), Math.round(Number(r.official_distance_km) / 20 * price * 100) / 100);
+    assert.equal(Number(r.actual_fuel_cost_ngn), Math.round(5 * price * 100) / 100);
+  }
 
   // Re-saving the same vehicle type + effective date corrects the version
   // in place — it must not stack a duplicate policy row.
@@ -1398,6 +1415,9 @@ test("stores tracker distances daily and reconciles against them", async () => {
   const row = recon.body.data.find((item) => item.vehicle_id === "vehicle_demo_001");
   assert.equal(Number(row.tracker_distance_km), 118.4);
   assert.notEqual(row.tracker_variance_status, "tracker_unavailable");
+  // Mileage-derived cost now follows the TRACKER distance (118.4 km), outranking
+  // the platform figure, at the active policy's 20 km/litre and unit price.
+  assert.equal(Number(row.fuel_cost_ngn), Math.round(118.4 / 20 * Number(row.price_per_unit_ngn) * 100) / 100);
 
   // Manual fallback records a day by hand and re-saving corrects in place.
   const manual = await request("/ops/v1/tracker-daily-records", {
