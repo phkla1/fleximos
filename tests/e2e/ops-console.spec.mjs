@@ -197,6 +197,11 @@ test.describe("Supervisor Ops console", () => {
   });
 
   test("submits a structured daily closeout", async ({ page }) => {
+    // The closeout window only opens 18:00–04:00 Lagos (client gate in app.js).
+    // Pin the clock to this evening — on today's Lagos date, so the seeded
+    // closeout still matches — so the test is deterministic at any wall-clock hour.
+    const lagosDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    await page.clock.setFixedTime(new Date(`${lagosDate}T20:00:00+01:00`));
     await page.goto(`${url}#closeout`);
     await expect(page.locator("#notice")).toContainText("Connected");
     const cards = page.locator(".closeout-card");

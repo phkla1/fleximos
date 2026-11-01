@@ -20,9 +20,11 @@ const query = new URLSearchParams(location.search);
 const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
 const token = window.flexiServiceToken();
-const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-el.dateFrom.value = today;
-el.dateTo.value = today;
+// Current date in Lagos (WAT). A function, not a load-time constant, so a tab
+// left open across midnight still reads the real "today" on every use.
+const lagosToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+el.dateFrom.value = lagosToday();
+el.dateTo.value = lagosToday();
 
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const money = (value) => `₦${Math.round(Number(value || 0)).toLocaleString()}`;
@@ -435,7 +437,7 @@ const ATT_MARK = { present: "✓", pending: "•", rejected: "✕", offsite: "!"
 function renderAttendance() {
   if (!el.attendanceRows) return;
   const dates = attendanceDates(state.dateFrom, state.dateTo);
-  const todayStr = today;
+  const todayStr = lagosToday();
   const byKey = new Map();
   (state.checkins || []).forEach((item) => byKey.set(`${item.operator_id}|${String(item.check_in_date).slice(0, 10)}`, item));
   const operators = (state.operators || [])
@@ -495,7 +497,7 @@ async function refresh() {
     foundation("/identity/v1/people"), foundation("/amoeba/v1/amoebas"), ops("/ops/v1/operators"), ops("/ops/v1/daily-performance")
   ]);
   const dates = [...new Set(allPerformance.data.map((item) => String(item.record_date).slice(0, 10)))].sort().reverse();
-  let dateFrom = el.dateFrom.value || el.dateTo.value || today;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   const rangeHasData = dates.some((date) => date >= dateFrom && date <= dateTo);
@@ -509,7 +511,7 @@ async function refresh() {
   state.dateTo = dateTo;
   state.operatingDate = dateTo;
   const expenseDate = el.expenseForm.querySelector('input[name="expense_date"]');
-  if (!expenseDate.value) expenseDate.value = today;
+  if (!expenseDate.value) expenseDate.value = lagosToday();
   Object.assign(state, { people: people.data, amoebas: amoebas.data, operators: operators.data });
   setupReportForm();
   el.expenseForm.querySelector('select[name="amoeba_id"]').innerHTML =

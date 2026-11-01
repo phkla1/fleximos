@@ -57,11 +57,13 @@ const token = window.flexiServiceToken();
 let actorPersonId = query.get("actorPersonId") || "person_founder_wole";
 let openOperatorId = null;
 let closeoutDetailOpen = false;
-const todayLagos = new Intl.DateTimeFormat("en-CA", {
+// Current date in Lagos (WAT). A function, not a load-time constant, so a tab
+// left open across midnight still reads the real "today" on every use.
+const lagosToday = () => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
-el.dateFrom.value = todayLagos;
-el.dateTo.value = todayLagos;
+el.dateFrom.value = lagosToday();
+el.dateTo.value = lagosToday();
 
 /* ---------- helpers ---------- */
 
@@ -251,7 +253,7 @@ function analyseTeam() {
     const openIncidents = state.incidents.filter((incident) => incident.operator_id === item.operator_id && incident.status !== "resolved");
     const vehicleIssue = operator?.vehicle_id && (issues.overdue.has(operator.vehicle_id) || issues.inRepair.has(operator.vehicle_id));
     const fuelRisk = exceptionOperatorIds.has(item.operator_id)
-      || (operator?.vehicle_id && !fuelConfirmed.has(item.operator_id) && state.dateTo === todayLagos);
+      || (operator?.vehicle_id && !fuelConfirmed.has(item.operator_id) && state.dateTo === lagosToday());
     const offlineAfterOnline = item.current_status === "offline" && Number(item.hours_online) > 0;
     return { ...item, operator, alerts, openIncidents, vehicleIssue, fuelRisk, offlineAfterOnline };
   });
@@ -558,7 +560,7 @@ function topActionCandidates(analysis) {
     });
   }
   const fuel = checklist.find((item) => item.id === "fuel");
-  if (fuel?.count && state.dateTo === todayLagos) {
+  if (fuel?.count && state.dateTo === lagosToday()) {
     actions.push({
       weight: 50,
       tone: "yellow",
@@ -653,7 +655,7 @@ function operatorTile(row, compact = false) {
   const progress = target ? Math.min(100, Math.round(revenue / target * 100)) : 0;
   const paceLabel = String(row.pace_status || "not_available").replaceAll("_", " ");
   const expected = Number(row.expected_revenue_ngn || 0);
-  const expectedLabel = state.operatingDate < todayLagos ? "Expected by close" : "Expected now";
+  const expectedLabel = state.operatingDate < lagosToday() ? "Expected by close" : "Expected now";
   return `
     <button type="button" class="operator-tile pace-${escapeHtml(row.pace_status || "none")}" data-open-operator="${escapeHtml(row.operator_id)}">
       <div class="tile-heading">
@@ -1227,7 +1229,7 @@ function checkinFence(checkin) {
 const ATT_MARK = { present: "✓", pending: "•", rejected: "✕", offsite: "!", absent: "–", future: "·" };
 function renderAttendance() {
   if (!el.attendanceRows) return;
-  const from = state.dateFrom, to = state.dateTo || todayLagos;
+  const from = state.dateFrom, to = state.dateTo || lagosToday();
   const dates = [];
   if (from && to) {
     const cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
@@ -1244,7 +1246,7 @@ function renderAttendance() {
     const cells = dates.map((date) => {
       const checkin = byKey.get(`${operator.operator_id}|${date}`);
       let status;
-      if (!checkin) status = date <= todayLagos ? "absent" : "future";
+      if (!checkin) status = date <= lagosToday() ? "absent" : "future";
       else if (checkin.status === "rejected") status = "rejected";
       else if (checkin.status === "pending") status = "pending";
       else status = checkin.geofence_ok === false ? "offsite" : "present";
@@ -1314,7 +1316,7 @@ function renderImportControls() {
   el.importCustomer.innerHTML = customers.map((customer) =>
     `<option value="${escapeHtml(customer.delivery_customer_id)}">${escapeHtml(customer.name)}</option>`).join("");
   if (current) el.importCustomer.value = current;
-  if (!el.importDate.value) el.importDate.value = state.dateTo || todayLagos;
+  if (!el.importDate.value) el.importDate.value = state.dateTo || lagosToday();
   if (!el.importResult.dataset.rendered) renderImportResult();
 }
 
@@ -1520,7 +1522,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
   const availableDates = [...new Set(allPerformance.data
     .filter((record) => assignedIds.has(record.operator_id))
     .map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
-  let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   const rangeHasData = availableDates.some((date) => date >= dateFrom && date <= dateTo);
@@ -1849,17 +1851,17 @@ document.addEventListener("click", async (event) => {
   }
   const quickRange = event.target.closest("[data-quick-range]");
   if (quickRange) {
-    const now = new Date(`${todayLagos}T00:00:00`);
-    let from = todayLagos;
+    const now = new Date(`${lagosToday()}T00:00:00`);
+    let from = lagosToday();
     if (quickRange.dataset.quickRange === "week") {
       const monday = new Date(now);
       monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
       from = monday.toISOString().slice(0, 10);
     } else if (quickRange.dataset.quickRange === "month") {
-      from = `${todayLagos.slice(0, 8)}01`;
+      from = `${lagosToday().slice(0, 8)}01`;
     }
     el.dateFrom.value = from;
-    el.dateTo.value = todayLagos;
+    el.dateTo.value = lagosToday();
     refresh(describeRange()).catch(showError);
     return;
   }

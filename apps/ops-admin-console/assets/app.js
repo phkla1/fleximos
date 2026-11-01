@@ -87,24 +87,26 @@ document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("en-
   dateStyle: "full",
   timeZone: "Africa/Lagos"
 }).format(new Date());
-const todayLagos = new Intl.DateTimeFormat("en-CA", {
+// Current date in Lagos (WAT). A function, not a load-time constant, so a tab
+// left open across midnight still reads the real "today" on every use.
+const lagosToday = () => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
-el.ingestionForm.elements.record_date.value = todayLagos;
-el.dateFrom.value = todayLagos;
-el.dateTo.value = todayLagos;
+el.ingestionForm.elements.record_date.value = lagosToday();
+el.dateFrom.value = lagosToday();
+el.dateTo.value = lagosToday();
 // The performance panel defaults to the last 7 days (its own range).
-el.perfTo.value = todayLagos;
-(() => { const d = new Date(`${todayLagos}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.perfFrom.value = d.toISOString().slice(0, 10); })();
+el.perfTo.value = lagosToday();
+(() => { const d = new Date(`${lagosToday()}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.perfFrom.value = d.toISOString().slice(0, 10); })();
 // Attendance register defaults to the last 7 days too.
-el.attTo.value = todayLagos;
-(() => { const d = new Date(`${todayLagos}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.attFrom.value = d.toISOString().slice(0, 10); })();
-el.paceProfileForm.elements.effective_from.value = todayLagos;
-el.efficiencyPolicyForm.elements.effective_from.value = todayLagos;
-el.economicsPolicyForm.elements.effective_from.value = todayLagos;
-el.allocatedPriceForm.elements.effective_from.value = todayLagos;
-el.onboardingRampForm.elements.effective_from.value = todayLagos;
-el.supervisorOnboardingForm.elements.start_date.value = todayLagos;
+el.attTo.value = lagosToday();
+(() => { const d = new Date(`${lagosToday()}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); el.attFrom.value = d.toISOString().slice(0, 10); })();
+el.paceProfileForm.elements.effective_from.value = lagosToday();
+el.efficiencyPolicyForm.elements.effective_from.value = lagosToday();
+el.economicsPolicyForm.elements.effective_from.value = lagosToday();
+el.allocatedPriceForm.elements.effective_from.value = lagosToday();
+el.onboardingRampForm.elements.effective_from.value = lagosToday();
+el.supervisorOnboardingForm.elements.start_date.value = lagosToday();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -243,7 +245,7 @@ function perfTrend(series, dates, metric, multi) {
 const perf = { from: null, to: null, riderRows: [], amoebaRollup: [], overrides: [] };
 
 function perfApplyPreset(preset) {
-  const to = todayLagos;
+  const to = lagosToday();
   const d = new Date(`${to}T00:00:00Z`);
   if (preset === "today") { /* keep to */ }
   else if (preset === "7d") d.setUTCDate(d.getUTCDate() - 6);
@@ -255,7 +257,7 @@ function perfApplyPreset(preset) {
 }
 
 async function loadPerformancePanel() {
-  let from = el.perfFrom.value || el.perfTo.value || todayLagos;
+  let from = el.perfFrom.value || el.perfTo.value || lagosToday();
   let to = el.perfTo.value || from;
   if (from > to) [from, to] = [to, from];
   el.perfFrom.value = from; el.perfTo.value = to;
@@ -427,7 +429,7 @@ function renderAttendance(checkins, { fromEl, toEl, amoebaEl, rowsEl, summaryEl 
     .filter((operator) => operator.operator_status === "active")
     .filter((operator) => !selectedAmoeba || operator.amoeba_id === selectedAmoeba)
     .sort((a, b) => nameForPerson(a.person_id).localeCompare(nameForPerson(b.person_id)));
-  const rows = buildAttendance(checkins, operators, dates, todayLagos);
+  const rows = buildAttendance(checkins, operators, dates, lagosToday());
   rowsEl.innerHTML = rows.length ? rows.map((row) => `
     <tr>
       <td>${escapeHtml(nameForPerson(row.operator.person_id))}</td>
@@ -445,7 +447,7 @@ function renderAttendance(checkins, { fromEl, toEl, amoebaEl, rowsEl, summaryEl 
 }
 async function loadAttendance() {
   if (!el.attFrom) return;
-  let from = el.attFrom.value || el.attTo.value || todayLagos;
+  let from = el.attFrom.value || el.attTo.value || lagosToday();
   let to = el.attTo.value || from;
   if (from > to) [from, to] = [to, from];
   el.attFrom.value = from; el.attTo.value = to;
@@ -654,7 +656,7 @@ function syncPaceProfileForm() { fillPaceForm(currentPaceProfile(el.paceProfileF
 function policyStatus(policy, peers) {
   // Judge against the real calendar day — the data-snapped operating
   // date can lag a day behind and mislabel today's policy "scheduled".
-  const today = todayLagos;
+  const today = lagosToday();
   const from = String(policy.effective_from).slice(0, 10);
   const to = policy.effective_to ? String(policy.effective_to).slice(0, 10) : null;
   if (from > today) return "scheduled";
@@ -672,7 +674,7 @@ function effectiveWindow(policy) {
 
 function currentEfficiencyPolicy(vehicleType) {
   return state.efficiencyPolicies
-    .filter((policy) => policy.vehicle_type === vehicleType && String(policy.effective_from).slice(0, 10) <= (state.operatingDate || todayLagos))
+    .filter((policy) => policy.vehicle_type === vehicleType && String(policy.effective_from).slice(0, 10) <= (state.operatingDate || lagosToday()))
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
 }
 
@@ -698,7 +700,7 @@ function syncEfficiencyPolicyForm() { fillEfficiencyForm(currentEfficiencyPolicy
 
 function currentEconomicsPolicy() {
   return state.economicsPolicies
-    .filter((item) => String(item.effective_from).slice(0, 10) <= (state.operatingDate || todayLagos))
+    .filter((item) => String(item.effective_from).slice(0, 10) <= (state.operatingDate || lagosToday()))
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
 }
 function refreshEconomicsFormUi() {
@@ -1462,7 +1464,7 @@ async function refresh(message = "Connected to Fleximotion Ops.") {
     ops("/ops/v1/onboarding/settings").catch(() => ({ cohort_anchor_dow: 3 }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
-  let dateFrom = el.dateFrom.value || el.dateTo.value || todayLagos;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   // If the chosen range has no performance data at all, snap to the most
@@ -1904,7 +1906,7 @@ el.allocatedPriceForm.addEventListener("submit", async (event) => {
       })
     });
     el.allocatedPriceForm.reset();
-    el.allocatedPriceForm.elements.effective_from.value = todayLagos;
+    el.allocatedPriceForm.elements.effective_from.value = lagosToday();
     await refresh("Allocated price saved.");
   } catch (error) { showError(error); }
 });

@@ -23,11 +23,13 @@ let currentAssignments = [];
 let currentStops = [];
 let activeStopId = null;
 
-const today = new Intl.DateTimeFormat("en-CA", {
+// Current date in Lagos (WAT). A function, not a load-time constant, so a PWA
+// left open across midnight still checks in for the real "today", not yesterday.
+const lagosToday = () => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
-el.dateFrom.value = today;
-el.dateTo.value = today;
+el.dateFrom.value = lagosToday();
+el.dateTo.value = lagosToday();
 
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -230,7 +232,7 @@ function renderCheckin() {
 async function refreshCheckin() {
   if (!currentOperator) return;
   try {
-    const result = await api(opsBase, `/ops/v1/checkins?check_in_date=${today}`);
+    const result = await api(opsBase, `/ops/v1/checkins?check_in_date=${lagosToday()}`);
     currentCheckin = (result.data || []).find((row) => row.operator_id === currentOperator.operator_id) || null;
   } catch {
     currentCheckin = null;
@@ -268,7 +270,7 @@ async function doCheckin() {
     await api(opsBase, "/ops/v1/checkins", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("checkin") },
-      body: JSON.stringify({ check_in_date: today, gps_lat: coords?.lat ?? null, gps_lng: coords?.lng ?? null })
+      body: JSON.stringify({ check_in_date: lagosToday(), gps_lat: coords?.lat ?? null, gps_lng: coords?.lng ?? null })
     });
     appMessage(coords ? "Checked in — waiting for your supervisor to confirm." : "Checked in without GPS — waiting for your supervisor.");
   } catch (error) {
@@ -292,7 +294,7 @@ async function load() {
   currentOperator = operator;
   void refreshCheckin();
   startCheckinPolling();
-  let dateFrom = el.dateFrom.value || el.dateTo.value || today;
+  let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
   el.dateFrom.value = dateFrom;
