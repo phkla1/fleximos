@@ -39,7 +39,7 @@ const el = Object.fromEntries([
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
   "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton",
   "boardListToggle", "boardMapToggle", "boardPaceToggle", "boardMapView",
-  "boardPaceView", "paceBoard", "vehicleMap",
+  "boardPaceView", "paceBoard", "vehicleMap", "boardListExtras",
   "mapStatus", "mapPositionList", "mapNoFeed", "trackerSources", "controlDialog",
   "controlDialogTitle", "controlDialogContext", "controlReason",
   "controlOverrideField", "controlOverride", "confirmControlButton",
@@ -860,15 +860,100 @@ function paceTile(row) {
     </article>`;
 }
 
+// Decimal hour-of-day in Lagos for a timestamp (14.5 = 14:30), or null.
+function lagosHourOf(ts) {
+  if (!ts) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ts));
+  const h = Number(parts.find((p) => p.type === "hour")?.value);
+  const m = Number(parts.find((p) => p.type === "minute")?.value);
+  return Number.isNaN(h) ? null : h + (Number.isNaN(m) ? 0 : m) / 60;
+}
+
+function checkinMark(checkin, leftPct) {
+  if (!checkin) return "";
+  const cls = checkin.status === "approved" ? "ok" : checkin.status === "rejected" ? "bad" : "pending";
+  const glyph = checkin.status === "approved" ? "✓" : checkin.status === "rejected" ? "✕" : "•";
+  return `<span class="pt-mark ${cls}" style="left:${leftPct}%" title="Check-in ${escapeHtml(checkin.status)} · ${timeOf(checkin.requested_at)}">${glyph}</span>`;
+}
+
+// Pace as a live timeline: one bar per rider from check-in (go-online) to now
+// (or to their last-seen time if they have since dropped offline, so the bar
+// visibly stops short of now). Colour = pace, worst pace first. Tap a row to
+// drill into the rider. We have no stored session segments, so a single bar
+// per rider — not per online stretch — is the honest view of the data.
 function renderPaceBoard() {
-  const rows = [...state.pacing].sort((a, b) => {
-    const byStatus = (PACE_ORDER[a.combined_pace_status] ?? 5) - (PACE_ORDER[b.combined_pace_status] ?? 5);
-    if (byStatus !== 0) return byStatus;
-    return (a.combined_pace_variance_pct ?? 0) - (b.combined_pace_variance_pct ?? 0);
+  const rows = latestAnalysis ? latestAnalysis.rows : [];
+  if (!rows.length) { el.paceBoard.innerHTML = `<div class="empty">No assigned operators for this day.</div>`; return; }
+  const checkinByOp = new Map((state.checkins || []).map((item) => [item.operator_id, item]));
+  const viewingToday = state.dateTo === lagosToday();
+  const nowH = viewingToday ? (lagosHourOf(new Date().toISOString()) ?? 18) : 18;
+
+  const model = rows.map((row) => {
+    const checkin = checkinByOp.get(row.operator_id);
+    let startH = lagosHourOf(checkin && checkin.requested_at);
+    if (startH == null && Number(row.hours_online) > 0 && row.last_seen_at) {
+      startH = (lagosHourOf(row.last_seen_at) ?? nowH) - Number(row.hours_online);
+    }
+    const online = !["offline", "not_seen_today"].includes(row.current_status);
+    const notSeen = row.current_status === "not_seen_today" || startH == null;
+    const endH = online ? nowH : (lagosHourOf(row.last_seen_at) ?? startH ?? nowH);
+    const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
+    const earned = Number(row.net_earnings_ngn || 0);
+    const status = notSeen ? "absent" : (row.pace_status || "not_available");
+    return { row, checkin, startH, endH, online, notSeen, target, earned, status, pctValue: target > 0 ? Math.round(earned / target * 100) : 0 };
   });
-  el.paceBoard.innerHTML = rows.length
-    ? `<div class="team-board">${rows.map((row) => paceTile(row)).join("")}</div>`
-    : `<div class="empty">No pacing data for this day yet.</div>`;
+
+  const ORDER = { absent: -1, at_risk: 0, behind: 1, not_available: 2, on_track: 3, ahead: 4 };
+  model.sort((a, b) => (ORDER[a.status] ?? 2) - (ORDER[b.status] ?? 2) || a.pctValue - b.pctValue);
+
+  const axisStart = 6;
+  const axisEnd = Math.max(8, Math.ceil(nowH));
+  const span = axisEnd - axisStart || 1;
+  const x = (h) => Math.max(0, Math.min(100, ((h - axisStart) / span) * 100));
+  const ticks = [];
+  for (let h = axisStart; h <= axisEnd; h += 2) ticks.push(h);
+  const tickBars = ticks.map((h) => `<span class="pt-tick" style="left:${x(h)}%"></span>`).join("") + `<span class="pt-tick pt-now-line" style="left:100%"></span>`;
+  const axisLabels = ticks.map((h) => `<span class="pt-axis-label" style="left:${x(h)}%">${String(h).padStart(2, "0")}:00</span>`).join("") + `<span class="pt-axis-label pt-now">now</span>`;
+
+  const body = model.map((m) => {
+    let track;
+    if (m.notSeen) {
+      track = tickBars + `<span class="pt-empty">no check-in today</span>`;
+    } else {
+      const left = x(m.startH);
+      const width = Math.max(1.5, x(m.endH) - left);
+      const offTail = (!m.online && m.endH < nowH) ? `<span class="pt-offtail" style="left:${x(m.endH)}%;width:${Math.max(0, 100 - x(m.endH))}%" title="Offline since ${timeOf(m.row.last_seen_at)}"></span>` : "";
+      track = tickBars + offTail + `<span class="pt-seg ${escapeHtml(m.status)}" style="left:${left}%;width:${width}%"></span>` + checkinMark(m.checkin, x(m.startH));
+    }
+    const sub = m.notSeen ? "not checked in" : `/ ${money(m.target)} · ${m.pctValue}%`;
+    return `
+      <button type="button" class="pt-row" data-open-operator="${escapeHtml(m.row.operator_id)}">
+        <span class="pt-name"><span class="pt-name-main">${escapeHtml(personName(m.row.person_id))}</span><span class="pt-name-sub">${escapeHtml(String(m.row.current_status).replaceAll("_", " "))}</span></span>
+        <span class="pt-track">${track}</span>
+        <span class="pt-metric"><span class="pt-metric-main">${money(m.earned)}</span><span class="pt-metric-sub tone-${PACE_TONE[m.status] || "grey"}">${escapeHtml(sub)}</span></span>
+      </button>`;
+  }).join("");
+
+  el.paceBoard.innerHTML = `
+    <div class="pt-legend">
+      <span class="pt-lc"><i class="on_track"></i>on track</span>
+      <span class="pt-lc"><i class="behind"></i>behind</span>
+      <span class="pt-lc"><i class="at_risk"></i>at risk</span>
+      <span class="pt-lc"><i class="pt-lc-empty"></i>not checked in</span>
+      <span class="pt-lc pt-lc-mark"><span class="pt-mark ok">✓</span>check-in</span>
+    </div>
+    <div class="pt-head"><span></span><span class="pt-axis">${axisLabels}</span><span></span></div>
+    <div class="pt-rows">${body}</div>`;
+}
+
+function incidentAlertRow(incident) {
+  return `
+    <article class="alert-row ${incident.severity === "high" ? "tier-3" : "tier-1"}">
+      <div><strong>${escapeHtml(String(incident.incident_type).replaceAll("_", " "))}</strong><small>${escapeHtml(personName(incident.person_id))} · ${timeOf(incident.occurred_at)}</small></div>
+      <div><span class="row-label">Severity</span><strong>${escapeHtml(incident.severity)}</strong><small>${escapeHtml(incident.description || "No notes")}</small></div>
+      <div><span class="pill ${escapeHtml(incident.status)}">${escapeHtml(incident.status)}</span></div>
+      <div class="row-actions"><button type="button" class="secondary" data-goto-tab="field">Open in Field</button></div>
+    </article>`;
 }
 
 function renderAlerts() {
@@ -881,7 +966,17 @@ function renderAlerts() {
     return map;
   }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length);
 
-  el.alertList.innerHTML = groups.length ? groups.map(([type, groupAlerts]) => {
+  // SOS/incidents are a separate stream (operator "Get support now" posts an
+  // incident) that also lives on Field — but the most urgent events belong on
+  // Alerts too, so open incidents lead the list unless filtered to resolved.
+  const openIncidents = (state.incidents || []).filter((item) => item.status !== "resolved");
+  const incidentGroup = (filter !== "resolved" && openIncidents.length) ? `
+    <details class="board-group tone-red" open>
+      <summary><span class="group-count">${openIncidents.length}</span>SOS / incidents<small>operator-raised · also on Field</small></summary>
+      <div class="alert-list">${openIncidents.map((item) => incidentAlertRow(item)).join("")}</div>
+    </details>` : "";
+
+  const alertGroups = groups.map(([type, groupAlerts]) => {
     const people = new Set(groupAlerts.map((alert) => alert.person_id));
     const maxTier = Math.max(...groupAlerts.map((alert) => Number(alert.tier)));
     return `
@@ -889,7 +984,9 @@ function renderAlerts() {
         <summary><span class="group-count">${people.size}</span>${escapeHtml(String(type).replaceAll("_", " "))}<small>${groupAlerts.length} alert${groupAlerts.length === 1 ? "" : "s"} · highest tier ${maxTier}</small></summary>
         <div class="alert-list">${groupAlerts.map((alert) => alertRow(alert)).join("")}</div>
       </details>`;
-  }).join("") : `<div class="empty">No alerts match this view.</div>`;
+  }).join("");
+
+  el.alertList.innerHTML = (incidentGroup + alertGroups) || `<div class="empty">No alerts or incidents match this view.</div>`;
 }
 
 function renderField() {
@@ -1518,9 +1615,9 @@ function renderOperatorDialog(operatorId) {
 //   An explicit date pick is always honoured (shown empty if empty).
 // rangeBanner: label the notice with the ACTUAL queried range, computed after
 //   any clamp, so the banner can never disagree with the data on screen.
-async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp = false, rangeBanner = false } = {}) {
-  setConnection("", "Connecting");
-  setNotice("Loading amoeba data...");
+async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp = false, rangeBanner = false, quiet = false } = {}) {
+  if (!quiet) setConnection("", "Connecting");
+  if (!quiet) setNotice("Loading amoeba data...");
   const [people, operators, allPerformance] = await Promise.all([
     foundation("/identity/v1/people"),
     ops("/ops/v1/operators"),
@@ -1620,7 +1717,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   });
   render();
   setConnection("connected", "Amoeba data connected");
-  setNotice(rangeBanner ? describeRange() : message);
+  if (!quiet) setNotice(rangeBanner ? describeRange() : message);
 }
 
 /* ---------- events ---------- */
@@ -1675,6 +1772,7 @@ function setBoardView(mode) {
   el.boardMapView.hidden = !isMap;
   el.boardPaceView.hidden = !isPace;
   el.teamBoard.hidden = !isList;
+  el.boardListExtras.hidden = !isList;
   el.boardListToggle.classList.toggle("active", isList);
   el.boardMapToggle.classList.toggle("active", isMap);
   el.boardPaceToggle.classList.toggle("active", isPace);
@@ -2143,3 +2241,16 @@ function showError(error) {
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
 refresh(undefined, { allowClamp: true }).catch(showError);
+
+// Auto-refresh so operator check-ins and SOS surface without a manual tap.
+// Quiet (no banner/connection flashing), and skipped while the supervisor is
+// mid-input or has a dialog open so a full re-render can't wipe a typed note.
+setInterval(() => {
+  const busy = document.hidden
+    || document.querySelector("dialog[open]")
+    || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement && document.activeElement.tagName);
+  if (!busy) refresh(undefined, { quiet: true }).catch(() => {});
+}, 20000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refresh(undefined, { quiet: true }).catch(() => {});
+});

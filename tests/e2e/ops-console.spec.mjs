@@ -324,20 +324,25 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#teamBoard")).toBeVisible();
   });
 
-  test("shows the resumption-aware pace war-room board", async ({ page }) => {
+  test("shows the live pace timeline and scopes the list extras to List mode", async ({ page }) => {
     await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
     await expect(page.locator("#notice")).toContainText("Connected");
+    // In List mode the comparison tables are visible.
+    await expect(page.locator("#boardListExtras")).toBeVisible();
 
     await page.locator("#boardPaceToggle").click();
     await expect(page.locator("#boardPaceView")).toBeVisible();
     await expect(page.locator("#teamBoard")).toBeHidden();
-    await expect(page.locator("#boardPaceView")).toContainText("Call-time briefing");
-    // At least one rider tile (or the empty state) renders.
-    const paceContent = page.locator("#paceBoard .pace-tile, #paceBoard .empty");
+    // The comparison tables belong to List only — hidden on Pace now.
+    await expect(page.locator("#boardListExtras")).toBeHidden();
+    await expect(page.locator("#boardPaceView")).toContainText("coloured by pace");
+    // At least one rider row (or the empty state) renders in the timeline.
+    const paceContent = page.locator("#paceBoard .pt-row, #paceBoard .empty");
     await expect(paceContent.first()).toBeVisible();
 
     await page.locator("#boardListToggle").click();
     await expect(page.locator("#teamBoard")).toBeVisible();
+    await expect(page.locator("#boardListExtras")).toBeVisible();
     await expect(page.locator("#boardPaceView")).toBeHidden();
   });
 

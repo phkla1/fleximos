@@ -103,8 +103,8 @@
           </span>
         </div>
         <div id="boardPaceView" hidden>
-          <p class="subtle">Call-time briefing, live and ranked. Resumption → scheduled deliveries → online target → combined vs the day's target.</p>
-          <div id="paceBoard" class="board-groups"></div>
+          <p class="subtle">Each rider's day so far — bar runs from check-in to now, coloured by pace, worst first. Tap a rider to drill in.</p>
+          <div id="paceBoard"></div>
         </div>
         <div id="boardMapView" hidden>
           <div id="vehicleMap" class="vehicle-map"></div>
@@ -116,6 +116,7 @@
         </div>
         <div id="teamBoard" class="board-groups"></div>
 
+        <div id="boardListExtras">
         <details class="management-panel" open>
           <summary>Driver comparison table — tap a column to rank</summary>
           <div class="table-scroll"><table id="driverTable" class="compare-table"></table></div>
@@ -132,6 +133,7 @@
           <summary>Platform records for this range</summary>
           <div id="performanceList" class="performance-list"></div>
         </details>
+        </div>
       </section>
 
       <!-- ============ ALERT QUEUE ============ -->

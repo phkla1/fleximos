@@ -473,6 +473,46 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .pace-pill.tone-green { background: var(--green-bg); color: var(--green-dark); }
 .pace-flag { padding: 1px 7px; border-radius: 6px; background: var(--red-bg); color: var(--red); font-size: 11px; font-weight: 800; }
 .pace-flag.ramp-chip { background: #e4edf5; color: #23527c; margin-right: 6px; }
+
+/* Pace timeline (Board → Pace): one bar per rider, check-in → now. */
+.pt-legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 2px 0 12px; font-size: 12px; color: var(--muted); }
+.pt-lc { display: inline-flex; align-items: center; gap: 6px; }
+.pt-lc i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; background: var(--muted); }
+.pt-lc i.on_track { background: var(--green); }
+.pt-lc i.behind { background: var(--amber); }
+.pt-lc i.at_risk { background: var(--red); }
+.pt-lc-empty { border: 1px dashed var(--muted); background: transparent !important; }
+.pt-lc-mark .pt-mark { position: static; transform: none; color: var(--green); font-weight: 700; }
+.pt-head, .pt-row { display: grid; grid-template-columns: 90px 1fr 120px; gap: 10px; align-items: center; }
+.pt-head { margin-bottom: 2px; }
+.pt-axis { position: relative; height: 16px; }
+.pt-axis-label { position: absolute; font-size: 11px; color: var(--muted); transform: translateX(-50%); white-space: nowrap; }
+.pt-axis-label.pt-now { right: 0; left: auto; transform: none; font-weight: 700; color: var(--ink); }
+.pt-rows { display: grid; gap: 2px; }
+.pt-row { width: 100%; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 9px 0; cursor: pointer; font: inherit; color: inherit; }
+.pt-row:hover { background: var(--canvas); }
+.pt-name { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pt-name-main { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-name-sub { font-size: 11px; color: var(--muted); }
+.pt-track { position: relative; height: 24px; border-radius: 6px; background: var(--canvas); display: block; }
+.pt-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.pt-now-line { background: var(--muted); }
+.pt-seg { position: absolute; top: 4px; height: 16px; border-radius: 4px; background: var(--muted); }
+.pt-seg.on_track, .pt-seg.ahead { background: var(--green); }
+.pt-seg.behind { background: var(--amber); }
+.pt-seg.at_risk { background: var(--red); }
+.pt-offtail { position: absolute; top: 4px; height: 16px; border-radius: 4px; background: repeating-linear-gradient(90deg, transparent, transparent 3px, var(--line) 3px, var(--line) 5px); }
+.pt-mark { position: absolute; top: -6px; transform: translateX(-50%); font-size: 12px; line-height: 1; font-weight: 700; }
+.pt-mark.ok { color: var(--green); }
+.pt-mark.bad { color: var(--red); }
+.pt-mark.pending { color: var(--muted); }
+.pt-empty { position: absolute; inset: 4px 6px; border: 1px dashed var(--muted); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+.pt-metric { text-align: right; display: flex; flex-direction: column; gap: 1px; }
+.pt-metric-main { font-size: 12.5px; font-weight: 800; white-space: nowrap; }
+.pt-metric-sub { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.pt-metric-sub.tone-red { color: var(--red); }
+.pt-metric-sub.tone-yellow { color: var(--amber); }
+.pt-metric-sub.tone-green { color: var(--green); }
 @media (max-width: 520px) { .pace-metrics { grid-template-columns: 1fr; } }
 .vehicle-map { height: 420px; border-radius: 14px; border: 1px solid var(--line); background: #e8efec; }
 .vehicle-map:empty::after { content: "Map loads here"; display: grid; place-items: center; height: 100%; color: var(--muted); }
