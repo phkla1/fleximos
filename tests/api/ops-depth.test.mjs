@@ -339,6 +339,17 @@ test("ranks operators on the leaderboard and validates config weights", async ()
   assert.equal(top.badge, "gold");
   assert.ok(top.performance_score > 0 && top.performance_score <= 100);
   assert.ok(top.components.acceptance_score > 0);
+  // N/A-aware scoring: a component with no applicable data is null (not a
+  // misleading 0 or 100), and the blend renormalises over what applies.
+  for (const entry of leaderboard.body.entries) {
+    if (Number(entry.expected_cash_ngn) === 0) {
+      assert.equal(entry.components.cash_receipt_score, null, "no cash expected → cash is N/A, not a default 100");
+    }
+    if (Number(entry.trips_completed) === 0) {
+      assert.equal(entry.components.acceptance_score, null, "no ride-hailing trips → acceptance is N/A, not a 0");
+    }
+    assert.ok(entry.performance_score >= 0 && entry.performance_score <= 100);
+  }
 
   const sorted = await request(`/ops/v1/leaderboard?period_start=${today}&period_end=${today}&sort=trips`);
   assert.equal(sorted.body.sort, "trips");

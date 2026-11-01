@@ -391,17 +391,20 @@ async function load() {
     mine ? (mine.performance_score >= 75 ? "green" : mine.performance_score >= 50 ? "yellow" : "red") : "green");
   el.myScore.textContent = mine ? `Score ${Math.round(mine.performance_score)}/100` : "";
   const medals = { gold: "🥇", silver: "🥈", bronze: "🥉" };
+  // A component that doesn't apply to this operator (e.g. cash for a delivery
+  // rider) comes back null; show "—" rather than a misleading 0 or 100.
+  const comp = (value) => value === null || value === undefined ? "—" : value;
   el.leaderboard.innerHTML = leaderboard.length ? leaderboard.slice(0, 5).map((entry) => `
     <div class="leader-row ${entry.operator_id === operator.operator_id ? "me" : ""}">
       <span class="leader-rank">${entry.badge ? medals[entry.badge] : entry.rank}</span>
       <div><strong>${entry.operator_id === operator.operator_id ? "You" : `Driver ${entry.rank}`}</strong>
-      <span>Acceptance ${entry.components.acceptance_score} · Online ${entry.components.time_online_score} · Cash ${entry.components.cash_receipt_score}</span></div>
+      <span>Acceptance ${comp(entry.components.acceptance_score)} · Online ${comp(entry.components.time_online_score)} · Cash ${comp(entry.components.cash_receipt_score)}</span></div>
       <strong class="leader-score">${Math.round(entry.performance_score)}</strong>
     </div>
   `).join("") + (mine && mine.rank > 5 ? `
     <div class="leader-row me">
       <span class="leader-rank">${mine.rank}</span>
-      <div><strong>You</strong><span>Acceptance ${mine.components.acceptance_score} · Online ${mine.components.time_online_score} · Cash ${mine.components.cash_receipt_score}</span></div>
+      <div><strong>You</strong><span>Acceptance ${comp(mine.components.acceptance_score)} · Online ${comp(mine.components.time_online_score)} · Cash ${comp(mine.components.cash_receipt_score)}</span></div>
       <strong class="leader-score">${Math.round(mine.performance_score)}</strong>
     </div>` : "") : `<div class="empty">No amoeba activity in the last 7 days.</div>`;
 

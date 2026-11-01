@@ -333,10 +333,13 @@ function renderLeaderboard() {
   if (!board) return;
   el.leaderboardIntro.textContent = `Performance Score weights — acceptance ${Math.round(board.weights.acceptance_weight * 100)}%, time online ${Math.round(board.weights.online_weight * 100)}%, cash ${Math.round(board.weights.cash_weight * 100)}%, Net Earnings ${Math.round(board.weights.revenue_weight * 100)}%. Period ${board.period_start} → ${board.period_end}.`;
   const medals = { gold: "🥇", silver: "🥈", bronze: "🥉" };
+  // A component that doesn't apply to an operator (e.g. cash for a delivery
+  // rider) is null; show "n/a" rather than a misleading 0 or 100.
+  const comp = (value) => value === null || value === undefined ? "n/a" : value;
   el.leaderboardList.innerHTML = board.entries.length ? board.entries.map((entry) => `
     <article class="data-row ${entry.rank <= 3 ? "alert" : ""}" style="${entry.rank <= 3 ? "border-left-color: var(--green);" : ""}">
       <div><strong>${entry.badge ? `${medals[entry.badge]} ` : `${entry.rank}. `}${escapeHtml(operatorName(entry.operator_id))}</strong><small>${escapeHtml(amoebaName(entry.amoeba_id))}${entry.vehicle_plate ? ` · ${escapeHtml(entry.vehicle_plate)}` : ""} · ${entry.days_worked} day${entry.days_worked === 1 ? "" : "s"} worked</small></div>
-      <div><span class="row-label">Score</span><strong>${entry.performance_score}</strong><small>acceptance ${entry.components.acceptance_score} · online ${entry.components.time_online_score} (${(Number(entry.hours_online) / Math.max(1, entry.days_worked)).toFixed(1)}h/day vs ${Number(board.expected_hours_per_operator || 10)}h expected) · cash ${entry.components.cash_receipt_score}</small></div>
+      <div><span class="row-label">Score</span><strong>${entry.performance_score}</strong><small>acceptance ${comp(entry.components.acceptance_score)} · online ${comp(entry.components.time_online_score)} (${(Number(entry.hours_online) / Math.max(1, entry.days_worked)).toFixed(1)}h/day vs ${Number(board.expected_hours_per_operator || 10)}h expected) · cash ${comp(entry.components.cash_receipt_score)}</small></div>
       <div><span class="row-label">Net Earnings</span><strong>${money(entry.net_earnings_ngn)}</strong><small>${entry.trips_completed} trips · ${entry.hours_online}h online</small></div>
       <div><span class="row-label">Cash</span><strong>${money(entry.remitted_ngn)}</strong><small>${Number(entry.cash_shortfall_ngn) > 0 ? `${money(entry.cash_shortfall_ngn)} short` : "No shortfall"}</small></div>
       <div></div>

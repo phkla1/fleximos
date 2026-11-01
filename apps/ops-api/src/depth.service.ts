@@ -1077,26 +1077,49 @@ export class DepthService {
       });
     }
 
+    const round1 = (value: number | null) => value === null ? null : Math.round(value * 10) / 10;
     const entries = rows.map((row) => {
       const daysWorked = Number(row.days_worked);
-      const acceptanceScore = Math.min(100, Math.max(0, Number(row.acceptance_pct || 0)));
-      const onlineScore = Math.min(100, (Number(row.hours_online || 0) / Math.max(1, expectedHours * daysWorked)) * 100);
+      // Each component is MEASURED or N/A for this operator; an N/A component is
+      // dropped from the blend (not scored 0 or 100), and the remaining weights
+      // are renormalised. This keeps the score honest for a mixed ride-hailing +
+      // delivery fleet instead of penalising/flattering operators on metrics
+      // that don't apply to them.
+      //
+      // Acceptance is a ride-hailing metric: N/A for an operator with no platform
+      // trips in the window (trips proxy). A recorded 0% on an operator who DID
+      // run trips is a real 0, not "no data".
+      const acceptanceApplicable = Number(row.trips_completed || 0) > 0;
+      const acceptanceScore = acceptanceApplicable ? Math.min(100, Math.max(0, Number(row.acceptance_pct || 0))) : null;
+      const onlineApplicable = daysWorked > 0;
+      const onlineScore = onlineApplicable
+        ? Math.min(100, (Number(row.hours_online || 0) / Math.max(1, expectedHours * daysWorked)) * 100)
+        : null;
       const expectedCash = Number(row.expected_cash_ngn || 0);
       const remitted = Number(remittances.find((item) => item.operator_id === row.operator_id)?.remitted_ngn || 0);
       const shortfall = Math.max(0, expectedCash - remitted);
-      const cashScore = expectedCash > 0 ? Math.max(0, 100 * (1 - shortfall / expectedCash)) : 100;
+      // Cash receipting only applies when cash was actually expected; no cash
+      // trips means there is nothing to account for — N/A, not a perfect 100.
+      const cashApplicable = expectedCash > 0;
+      const cashScore = cashApplicable ? Math.max(0, 100 * (1 - shortfall / expectedCash)) : null;
       const dailyTarget = Number(row.daily_revenue_target_ngn || 0);
       const delivery = deliveryTotals.get(row.operator_id);
       const combinedEarnings = Number(row.net_earnings_ngn || 0) + (delivery?.earned || 0);
       const combinedTarget = dailyTarget * daysWorked + (delivery?.target || 0);
-      const revenueScore = combinedTarget > 0
-        ? Math.min(100, (combinedEarnings / combinedTarget) * 100)
+      const revenueApplicable = combinedTarget > 0;
+      const revenueScore = revenueApplicable ? Math.min(100, (combinedEarnings / combinedTarget) * 100) : null;
+
+      // Blend only the applicable components, renormalising their weights.
+      const parts = [
+        { score: acceptanceScore, weight: Number(config.acceptance_weight) },
+        { score: onlineScore, weight: Number(config.online_weight) },
+        { score: cashScore, weight: Number(config.cash_weight) },
+        { score: revenueScore, weight: Number(config.revenue_weight) }
+      ].filter((part) => part.score !== null && part.weight > 0) as { score: number; weight: number }[];
+      const weightSum = parts.reduce((sum, part) => sum + part.weight, 0);
+      const performanceScore = weightSum > 0
+        ? parts.reduce((sum, part) => sum + part.weight * part.score, 0) / weightSum
         : 0;
-      const performanceScore =
-        Number(config.acceptance_weight) * acceptanceScore
-        + Number(config.online_weight) * onlineScore
-        + Number(config.cash_weight) * cashScore
-        + Number(config.revenue_weight) * revenueScore;
       return {
         operator_id: row.operator_id,
         person_id: row.person_id,
@@ -1109,16 +1132,16 @@ export class DepthService {
         delivery_target_allocated_ngn: Math.round((delivery?.target || 0) * 100) / 100,
         trips_completed: Number(row.trips_completed || 0),
         hours_online: Math.round(Number(row.hours_online || 0) * 100) / 100,
-        acceptance_pct: Math.round(acceptanceScore * 10) / 10,
+        acceptance_pct: round1(acceptanceScore),
         expected_cash_ngn: Math.round(expectedCash * 100) / 100,
         remitted_ngn: Math.round(remitted * 100) / 100,
         cash_shortfall_ngn: Math.round(shortfall * 100) / 100,
         performance_score: Math.round(performanceScore * 10) / 10,
         components: {
-          acceptance_score: Math.round(acceptanceScore * 10) / 10,
-          time_online_score: Math.round(onlineScore * 10) / 10,
-          cash_receipt_score: Math.round(cashScore * 10) / 10,
-          revenue_score: options.hideRevenueComponent ? null : Math.round(revenueScore * 10) / 10
+          acceptance_score: round1(acceptanceScore),
+          time_online_score: round1(onlineScore),
+          cash_receipt_score: round1(cashScore),
+          revenue_score: options.hideRevenueComponent ? null : round1(revenueScore)
         }
       };
     });
@@ -1126,10 +1149,10 @@ export class DepthService {
     const sortKeys: Record<string, (entry: any) => number> = {
       score: (entry) => entry.performance_score,
       net_earnings: (entry) => entry.net_earnings_ngn,
-      acceptance: (entry) => entry.acceptance_pct,
+      acceptance: (entry) => entry.acceptance_pct ?? -1,
       trips: (entry) => entry.trips_completed,
       online: (entry) => entry.hours_online,
-      cash: (entry) => entry.components.cash_receipt_score
+      cash: (entry) => entry.components.cash_receipt_score ?? -1
     };
     const sortKey = sortKeys[filters.sort || "score"] ? filters.sort || "score" : "score";
     entries.sort((a, b) => sortKeys[sortKey](b) - sortKeys[sortKey](a));
