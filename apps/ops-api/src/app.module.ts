@@ -18,6 +18,7 @@ import { SchedulerService } from "./scheduler.service.js";
 import { NotificationService } from "./notification.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
+import { RevenueSourcesService } from "./revenue-sources.service.js";
 
 @Module({
   controllers: [OpsController, DepthController, DeliveriesController],
@@ -36,6 +37,7 @@ import { IntegrationStatusService } from "./integration-status.service.js";
     NotificationService,
     TrackerIngestService,
     IntegrationStatusService,
+    RevenueSourcesService,
     JobRunnerService,
     SchedulerService
   ]

@@ -20,6 +20,7 @@ import { AuthService } from "./auth.service.js";
 import { DeliveriesService } from "./deliveries.service.js";
 import { DeliveriesImportService } from "./deliveries-import.service.js";
 import { OpsService } from "./ops.service.js";
+import { RevenueSourcesService } from "./revenue-sources.service.js";
 
 @Controller()
 export class DeliveriesController {
@@ -27,6 +28,7 @@ export class DeliveriesController {
     @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
     @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService,
     @Inject(OpsService) private readonly ops: OpsService,
+    @Inject(RevenueSourcesService) private readonly revenueSources: RevenueSourcesService,
     @Inject(AuthService) private readonly identity: AuthService
   ) {}
 
@@ -56,6 +58,27 @@ export class DeliveriesController {
     const body = await factory();
     await this.ops.remember(key, status, body);
     return body;
+  }
+
+  /* ---------- revenue sources (unified platforms + delivery customers) ---------- */
+
+  @ApiTags("Deliveries")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List every revenue source (ride platforms + delivery customers) with its integration mode and connector state" })
+  @Get("ops/v1/revenue-sources")
+  async listRevenueSources(@Req() req: Request) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    const sources = await this.revenueSources.list();
+    // Contract price is finance/manager-facing; strip it from the pricing block
+    // for supervisors, who still see the operator-facing allocated rate.
+    const canSeeContract = this.canSeeContract(actor);
+    return {
+      data: sources.map((source) => source.pricing && !canSeeContract
+        ? { ...source, pricing: { ...source.pricing, contract_price_ngn: null } }
+        : source),
+      next_cursor: null
+    };
   }
 
   /* ---------- customers + allocated price (admin-defined, like platforms) ---------- */

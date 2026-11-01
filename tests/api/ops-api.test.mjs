@@ -408,7 +408,13 @@ test("lists seeded roster, connector accounts, and alerts", async () => {
   assert.equal(operators.body.data[0].platform_registrations.length, 1);
 
   const platforms = await request("/ops/v1/platform-accounts");
-  assert.equal(platforms.body.data.length, 3);
+  // Bolt + two Uber accounts, plus the seeded inDrive ride platform.
+  assert.equal(platforms.body.data.length, 4);
+  const indrive = platforms.body.data.find((account) => account.platform === "indrive");
+  assert.ok(indrive, "inDrive is seeded as a ride platform");
+  assert.equal(indrive.integration_mode, "file");
+  // Uber is dormant in Nigeria, so it ships inactive.
+  assert.ok(platforms.body.data.filter((account) => account.platform === "uber").every((account) => account.is_active === false));
 
   const alerts = await request("/ops/v1/alerts?resolution_status=open");
   assert.equal(alerts.body.data.length, 2);
@@ -1166,6 +1172,33 @@ test("performance-report cash records require a declared period and lift the per
   const correctedRow = correctedStatus.body.data.find((item) => item.operator_id === operator.operator_id);
   assert.equal(Number(correctedRow.performance_cash_ngn), 10000, "derived share wins again when it is higher");
   assert.equal(correctedRow.expected_cash_basis, "cash_trip_revenue_share");
+});
+
+test("unifies ride platforms and delivery customers as revenue sources with integration modes", async () => {
+  const sources = await request("/ops/v1/revenue-sources");
+  assert.equal(sources.response.status, 200);
+  const byName = Object.fromEntries(sources.body.data.map((row) => [row.name, row]));
+
+  // Speedaf ships as a delivery customer, headless mode, bound to its connector.
+  const speedaf = byName["Speedaf"];
+  assert.ok(speedaf, "Speedaf is a seeded revenue source");
+  assert.equal(speedaf.kind, "delivery_customer");
+  assert.equal(speedaf.integration_mode, "headless");
+  assert.equal(speedaf.connector.provider, "speedaf");
+  assert.deepEqual(speedaf.connector.required_env, ["SPEEDAF_ACCOUNT", "SPEEDAF_PASSWORD"]);
+  assert.equal(speedaf.manual_entry_available, true);
+
+  // Konga is a delivery customer fed by an uploaded Excel — no server connector.
+  assert.equal(byName["Konga"].kind, "delivery_customer");
+  assert.equal(byName["Konga"].integration_mode, "file");
+  assert.equal(byName["Konga"].connector, null);
+
+  // Bolt is a ride platform on a real API; inDrive a ride platform on a file feed.
+  assert.equal(byName["Bolt Lagos"].kind, "ride_platform");
+  assert.equal(byName["Bolt Lagos"].integration_mode, "api");
+  assert.equal(byName["Bolt Lagos"].connector.provider, "bolt");
+  assert.equal(byName["inDrive Lagos"].integration_mode, "file");
+  assert.equal(byName["inDrive Lagos"].connector, null);
 });
 
 test("runs the stop-level dispatch workflow with rider recording", async () => {

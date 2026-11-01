@@ -3327,6 +3327,28 @@
         }
       }
     },
+    "/revenue-sources": {
+      "get": {
+        "tags": [
+          "Deliveries"
+        ],
+        "summary": "List every revenue source (ride platforms + delivery customers) with integration mode and connector state",
+        "description": "Unifies ride platforms and delivery customers. Each row carries kind, status, integration_mode (api|headless|file|manual), a connector block (provider, required_env names, configured) for automated modes, and pricing for delivery customers. Contract price is finance/manager-facing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
+    },
     "/delivery-customers": {
       "get": {
         "tags": [

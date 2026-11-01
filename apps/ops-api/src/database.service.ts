@@ -781,6 +781,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_revenue_pace_profiles ADD COLUMN IF NOT EXISTS delivery_parcels_per_hour NUMERIC(6, 2) NOT NULL DEFAULT 5;
       ALTER TABLE ops_revenue_pace_profiles ADD COLUMN IF NOT EXISTS delivery_journey_buffer_hours NUMERIC(4, 2) NOT NULL DEFAULT 1;
 
+      -- Revenue-source model: ride platforms and delivery customers are unified
+      -- as "revenue sources", each with an integration mode (api | headless |
+      -- file | manual) that says HOW its daily data arrives. Delivery customers
+      -- additionally bind to the connector that feeds them. Additive — existing
+      -- rows keep working and are backfilled in seed().
+      ALTER TABLE ops_platform_accounts ADD COLUMN IF NOT EXISTS integration_mode TEXT;
+      ALTER TABLE ops_delivery_customers ADD COLUMN IF NOT EXISTS integration_mode TEXT;
+      ALTER TABLE ops_delivery_customers ADD COLUMN IF NOT EXISTS connector_provider TEXT;
+      ALTER TABLE ops_delivery_customers ADD COLUMN IF NOT EXISTS external_account_id TEXT;
+
       -- Speedaf (and future customers) name their courier as free text on the
       -- export ("ODEH", "Uche"); map each to a real operator once, then every
       -- import auto-resolves. Amoeba is never stored here — it comes from the
@@ -1028,6 +1038,53 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
              external_account_id, is_active, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $8)`,
           [...account, timestamp]
+        );
+      }
+    }
+
+    // Revenue-source backfill + seed (idempotent, additive). Legacy platform
+    // rows predate the integration-mode column, so stamp them 'api' once; Uber
+    // is live abroad but dormant in Nigeria, so retire it at the same time (an
+    // admin re-activating it later is not clobbered, since the backfill only
+    // touches un-stamped rows).
+    await this.exec(
+      `UPDATE ops_platform_accounts
+         SET integration_mode = 'api',
+             is_active = CASE WHEN platform = 'uber' THEN FALSE ELSE is_active END
+       WHERE integration_mode IS NULL`
+    );
+    // inDrive is a ride platform coming online via a periodic Excel update, so
+    // it has no server connector — its daily data is a supervisor file upload.
+    const existingIndrive = await this.one("SELECT platform_account_id FROM ops_platform_accounts WHERE platform_account_id = 'platform_indrive_lagos'");
+    if (!existingIndrive) {
+      const ts = new Date().toISOString();
+      await this.exec(
+        `INSERT INTO ops_platform_accounts
+          (platform_account_id, platform, display_name, vehicle_type, account_subtype, credentials_key,
+           external_account_id, is_active, integration_mode, created_at, updated_at)
+         VALUES ('platform_indrive_lagos','indrive','inDrive Lagos','motorbike','ride_hailing','INDRIVE_LAGOS',NULL,TRUE,'file',$1,$1)`,
+        [ts]
+      );
+    }
+    // Delivery customers ship pre-defined and connector-linked so the system
+    // that already "knows" Speedaf also knows it is a customer. Contract prices
+    // are placeholders flagged in notes — the admin sets the real figures.
+    for (const [id, name, price, mode, provider] of [
+      ["dcustomer_speedaf", "Speedaf", 1500, "headless", "speedaf"],
+      ["dcustomer_konga", "Konga", 1200, "file", null]
+    ] as [string, string, number, string, string | null][]) {
+      const exists = await this.one(
+        "SELECT delivery_customer_id FROM ops_delivery_customers WHERE delivery_customer_id = $1 OR name = $2",
+        [id, name]
+      );
+      if (!exists) {
+        const ts = new Date().toISOString();
+        await this.exec(
+          `INSERT INTO ops_delivery_customers
+            (delivery_customer_id, name, contact, notes, contract_price_ngn, status,
+             integration_mode, connector_provider, created_at, updated_at)
+           VALUES ($1,$2,NULL,$3,$4,'active',$5,$6,$7,$7)`,
+          [id, name, "Seeded placeholder — set the real contract price.", price, mode, provider, ts]
         );
       }
     }
