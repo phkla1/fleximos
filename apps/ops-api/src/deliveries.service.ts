@@ -185,6 +185,10 @@ export class DeliveriesService {
     if (!body.name) throw new BadRequestException("name is required.");
     const contractPrice = Number(body.contract_price_ngn);
     if (!(contractPrice > 0)) throw new BadRequestException("contract_price_ngn must be a positive amount.");
+    const mode = body.integration_mode ? String(body.integration_mode) : "manual";
+    if (!["api", "headless", "file", "manual"].includes(mode)) {
+      throw new BadRequestException("integration_mode must be api, headless, file or manual.");
+    }
     const timestamp = this.now();
     const customer = {
       delivery_customer_id: this.id("dcustomer"),
@@ -193,14 +197,20 @@ export class DeliveriesService {
       notes: body.notes ? String(body.notes) : null,
       contract_price_ngn: contractPrice,
       status: "active",
+      integration_mode: mode,
+      // A connector only applies to the automated modes; a file/manual customer
+      // is fed by uploads or hand entry, never a server pull.
+      connector_provider: (mode === "api" || mode === "headless") && body.connector_provider
+        ? String(body.connector_provider) : null,
       created_at: timestamp,
       updated_at: timestamp
     };
     try {
       await this.db.exec(
         `INSERT INTO ops_delivery_customers
-          (delivery_customer_id, name, contact, notes, contract_price_ngn, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          (delivery_customer_id, name, contact, notes, contract_price_ngn, status,
+           integration_mode, connector_provider, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         Object.values(customer)
       );
     } catch {
@@ -219,14 +229,23 @@ export class DeliveriesService {
       notes: body.notes !== undefined ? (body.notes ? String(body.notes) : null) : existing.notes,
       contract_price_ngn: body.contract_price_ngn !== undefined ? Number(body.contract_price_ngn) : Number(existing.contract_price_ngn),
       status: body.status !== undefined ? String(body.status) : existing.status,
+      integration_mode: body.integration_mode !== undefined ? String(body.integration_mode) : (existing.integration_mode || "manual"),
+      connector_provider: body.connector_provider !== undefined
+        ? (body.connector_provider ? String(body.connector_provider) : null)
+        : (existing.connector_provider ?? null),
       updated_at: this.now()
     };
     if (!(updated.contract_price_ngn > 0)) throw new BadRequestException("contract_price_ngn must be a positive amount.");
     if (!["active", "inactive"].includes(updated.status)) throw new BadRequestException("status must be active or inactive.");
+    if (!["api", "headless", "file", "manual"].includes(updated.integration_mode)) throw new BadRequestException("integration_mode must be api, headless, file or manual.");
+    // A connector only belongs to the automated modes; drop it if the mode isn't.
+    if (updated.integration_mode !== "api" && updated.integration_mode !== "headless") updated.connector_provider = null;
     await this.db.exec(
-      `UPDATE ops_delivery_customers SET contact=$2, notes=$3, contract_price_ngn=$4, status=$5, updated_at=$6
+      `UPDATE ops_delivery_customers SET contact=$2, notes=$3, contract_price_ngn=$4, status=$5,
+         integration_mode=$6, connector_provider=$7, updated_at=$8
        WHERE delivery_customer_id=$1`,
-      [customerId, updated.contact, updated.notes, updated.contract_price_ngn, updated.status, updated.updated_at]
+      [customerId, updated.contact, updated.notes, updated.contract_price_ngn, updated.status,
+       updated.integration_mode, updated.connector_provider, updated.updated_at]
     );
     await this.audit("delivery_customer.updated", "delivery_customer", customerId, existing, updated, actorPersonId);
     return updated;

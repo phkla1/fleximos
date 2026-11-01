@@ -25,6 +25,7 @@ const state = {
   alertGroups: [],
   serviceHealth: null,
   deliveryCustomers: [],
+  revenueSources: [],
   allocatedPrices: [],
   onboardingRampProfiles: [],
   cohorts: [],
@@ -52,7 +53,8 @@ const el = Object.fromEntries(
     "paceProfileForm", "paceProfileList", "efficiencyPolicyForm", "efficiencyPolicyList",
     "economicsPolicyForm", "economicsPolicyList",
     "leaderboardConfigForm", "leaderboardConfigSummary",
-    "deliveryCustomerList", "deliveryCustomerForm", "allocatedPriceList", "allocatedPriceForm",
+    "deliveryCustomerList", "allocatedPriceList", "allocatedPriceForm",
+    "revenueSourceList", "revenueSourceForm", "revenueSummary", "revenueFormHint",
     "fleetPolicyForm", "fleetPolicySummary",
     "inspectionComplianceSummary", "inspectionComplianceList",
     "jobHealthSummary", "jobHealthMetrics", "scheduledJobList", "scheduledJobRuns",
@@ -1004,6 +1006,45 @@ function render() {
     </article>`;
   }).join("") || `<div class="empty">No economics policies configured.</div>`;
 
+  // Unified revenue-sources board: ride platforms + delivery customers, each
+  // with its integration mode and connector state. Connector health is overlaid
+  // from the integration-status feed (secrets are never surfaced — only whether
+  // the named env vars resolve, and the live probe result).
+  const rsModeLabel = { api: "API", headless: "Headless portal", file: "File upload", manual: "Manual only" };
+  const rsHealthFor = (src) => (state.integrationStatus || []).find((row) => row.label === src.name || (src.connector && row.key === src.connector.provider));
+  const rsCard = (src) => {
+    const health = src.connector ? rsHealthFor(src) : null;
+    const connectorBlock = src.connector
+      ? `<div><span class="row-label">Connector</span><strong>${escapeHtml(src.connector.label)}</strong>
+          <span class="pill ${src.connector.configured ? "" : "open"}">${src.connector.configured ? "configured" : "needs config"}</span>
+          <span class="pill">${escapeHtml(src.connector.env_mode)}</span>
+          ${health ? `<span class="pill ${health.status === "ok" ? "" : health.status === "not_configured" ? "open" : "superseded"}">${escapeHtml(String(health.status).replaceAll("_", " "))}</span>` : ""}
+          <small>${src.connector.required_env.length ? `Set on the server: ${src.connector.required_env.map((v) => `<code>${escapeHtml(v)}</code>`).join(", ")}${src.connector.configured ? " ✓" : " — not yet set"}` : "No credentials needed."}${health?.detail ? ` · ${escapeHtml(health.detail)}` : ""}</small></div>`
+      : `<div><span class="row-label">Daily feed</span><small>${src.integration_mode === "file" ? "Supervisor uploads the partner's Excel/CSV on the Deliver tab." : "Supervisor enters the daily numbers by hand."}</small></div>`;
+    const pricing = src.pricing
+      ? `<div><span class="row-label">Pricing</span><strong>${src.pricing.contract_price_ngn != null ? `₦${Number(src.pricing.contract_price_ngn).toLocaleString()}/pkg contract` : "contract hidden"}</strong><small>₦${Number(src.pricing.allocated_price_ngn || 0).toLocaleString()}/pkg allocated · operator-facing</small></div>`
+      : "";
+    return `
+    <article class="policy-row ${src.status === "active" ? "" : "superseded"}">
+      <div><strong>${escapeHtml(src.name)}</strong>
+        <span class="pill">${src.kind === "ride_platform" ? "Ride platform" : "Delivery customer"}</span>
+        <span class="pill ${src.status === "active" ? "" : "superseded"}">${escapeHtml(src.status)}</span>
+        <span class="pill open">${escapeHtml(rsModeLabel[src.integration_mode] || src.integration_mode)}</span></div>
+      ${connectorBlock}
+      ${pricing}
+      <div><small>Manual entry always available${src.kind === "delivery_customer" ? " on the supervisor Deliver tab" : " via Manual entry"} as a fallback.</small></div>
+    </article>`;
+  };
+  const rsPlatforms = state.revenueSources.filter((source) => source.kind === "ride_platform");
+  const rsCustomers = state.revenueSources.filter((source) => source.kind === "delivery_customer");
+  el.revenueSourceList.innerHTML = state.revenueSources.length ? `
+    <h3 class="sub-section-heading">Delivery customers</h3>
+    ${rsCustomers.map(rsCard).join("") || `<div class="empty">No delivery customers yet.</div>`}
+    <h3 class="sub-section-heading">Ride platforms</h3>
+    ${rsPlatforms.map(rsCard).join("") || `<div class="empty">No ride platforms yet.</div>`}`
+    : `<div class="empty">No revenue sources defined yet.</div>`;
+  if (el.revenueSummary) el.revenueSummary.textContent = `${rsCustomers.length} customer${rsCustomers.length === 1 ? "" : "s"} · ${rsPlatforms.length} platform${rsPlatforms.length === 1 ? "" : "s"}`;
+
   el.deliveryCustomerList.innerHTML = state.deliveryCustomers.length ? state.deliveryCustomers.map((customer) => {
     if (editingCustomerId === customer.delivery_customer_id) {
       return `
@@ -1455,11 +1496,12 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
+    ops("/ops/v1/revenue-sources").catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-allocated-prices").catch(() => ({ data: [] })),
     ops("/ops/v1/onboarding/ramp-profiles").catch(() => ({ data: [] })),
     ops("/ops/v1/onboarding/cohorts").catch(() => ({ data: [] })),
@@ -1510,7 +1552,11 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     economicsPolicies: economicsPolicies.data,
     efficiencyPolicies: efficiencyPolicies.data,
     trackerInventory,
-    integrationStatus: (integrationStatus?.integrations || []).filter((row) => row.category === "tracker"),
+    // Keep every integration row (not just trackers): the Trackers screen finds
+    // its rows by key, and the Revenue sources screen overlays platform/delivery
+    // health from the same list.
+    integrationStatus: integrationStatus?.integrations || [],
+    revenueSources: revenueSources.data || [],
     vehiclePositions: vehiclePositions || { positions: [], no_feed: [] },
     scheduledJobs: scheduledJobs.data,
     scheduledJobRuns: scheduledJobRuns.data,
@@ -1803,17 +1849,73 @@ el.leaderboardConfigForm.addEventListener("submit", async (event) => {
   } catch (error) { showError(error); }
 });
 
-el.deliveryCustomerForm.addEventListener("submit", async (event) => {
+// The add-a-revenue-source wizard: one form that defines either a delivery
+// customer or a ride platform, with its integration mode and (for automated
+// modes) its connector. Fields show/hide by kind + mode so the flow stays clear.
+function syncRevenueForm() {
+  const form = el.revenueSourceForm;
+  const kind = form.elements.kind.value;
+  const mode = form.elements.integration_mode.value;
+  const automated = mode === "api" || mode === "headless";
+  const show = (name, on) => {
+    const field = form.querySelector(`[data-rs-field="${name}"]`);
+    if (field) field.hidden = !on;
+  };
+  show("connector", automated);
+  show("platform", kind === "ride_platform");
+  show("vehicle_type", kind === "ride_platform");
+  show("subtype", kind === "ride_platform");
+  show("pricing", kind === "delivery_customer");
+  const hints = {
+    api: "The connector pulls daily data automatically. Set its credentials as env vars on the server (shown on the card once added). Manual entry stays available if a pull fails.",
+    headless: "The connector drives the partner's web portal automatically. Set its credentials as env vars on the server. Manual entry stays available if a pull fails.",
+    file: "No automated feed: the supervisor uploads the partner's Excel/CSV. A parser is needed per file format.",
+    manual: "No feed at all: the supervisor types the daily numbers."
+  };
+  el.revenueFormHint.textContent = hints[mode] || "";
+}
+
+el.revenueSourceForm.addEventListener("change", syncRevenueForm);
+syncRevenueForm();
+
+el.revenueSourceForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const values = Object.fromEntries(new FormData(el.deliveryCustomerForm));
+  const values = Object.fromEntries(new FormData(el.revenueSourceForm));
+  const mode = values.integration_mode;
+  const automated = mode === "api" || mode === "headless";
   try {
-    await ops("/ops/v1/delivery-customers", {
-      method: "POST",
-      headers: { "Idempotency-Key": key("dcustomer") },
-      body: JSON.stringify({ name: values.name, contract_price_ngn: Number(values.contract_price_ngn), contact: values.contact || null })
-    });
-    el.deliveryCustomerForm.reset();
-    await refresh("Delivery customer added.");
+    if (values.kind === "delivery_customer") {
+      if (!(Number(values.contract_price_ngn) > 0)) { showError(new Error("A delivery customer needs a contract price.")); return; }
+      await ops("/ops/v1/delivery-customers", {
+        method: "POST",
+        headers: { "Idempotency-Key": key("dcustomer") },
+        body: JSON.stringify({
+          name: values.name,
+          contract_price_ngn: Number(values.contract_price_ngn),
+          integration_mode: mode,
+          connector_provider: automated && values.connector_provider ? values.connector_provider.trim() : null,
+          status: values.status
+        })
+      });
+    } else {
+      const platform = (values.platform || values.connector_provider || values.name || "").toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      await ops("/ops/v1/platform-accounts", {
+        method: "POST",
+        headers: { "Idempotency-Key": key("platform") },
+        body: JSON.stringify({
+          platform,
+          display_name: values.name,
+          vehicle_type: values.vehicle_type || "motorbike",
+          account_subtype: values.account_subtype || "ride_hailing",
+          credentials_key: automated && values.connector_provider ? values.connector_provider.trim().toUpperCase() : platform.toUpperCase(),
+          integration_mode: mode,
+          is_active: values.status !== "inactive"
+        })
+      });
+    }
+    el.revenueSourceForm.reset();
+    syncRevenueForm();
+    await refresh("Revenue source added.");
   } catch (error) { showError(error); }
 });
 

@@ -434,6 +434,25 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "Platform Accounts"
+        ],
+        "summary": "Update a ride platform's status or integration mode (activate/retire, switch feed)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform account updated"
+          },
+          "404": {
+            "description": "Platform account not found"
+          }
+        }
       }
     },
     "/operators/{operator_id}/daily-activity": {

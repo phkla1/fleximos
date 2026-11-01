@@ -545,6 +545,21 @@ export class OpsController {
     return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.ops.createPlatformAccount(body));
   }
 
+  @ApiTags("Platform Accounts")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update a ride platform's status or integration mode (activate/retire, switch feed)" })
+  @Patch("ops/v1/platform-accounts/:platformAccountId")
+  async updatePlatformAccount(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Param("platformAccountId") platformAccountId: string,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.ops.updatePlatformAccount(platformAccountId, body));
+  }
+
   @ApiTags("Performance")
   @ApiBearerAuth()
   @Get("ops/v1/revenue-pace-profiles")

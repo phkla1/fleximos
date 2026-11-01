@@ -126,6 +126,15 @@ const patch = (base, path, key, body) => request(base, path, {
   body: JSON.stringify(body)
 });
 
+// The base seed retires Uber (dormant in Nigeria) by default, but this demo
+// fixture represents the real historical fleet, most of which ran on Uber — so
+// reactivate the Uber accounts it needs before registering operators and
+// ingesting their days. (Production/UAT, which does not load this overlay, keeps
+// Uber inactive.)
+for (const accountId of ["platform_uber_cars", "platform_uber_courier"]) {
+  await patch(opsBase, `/ops/v1/platform-accounts/${accountId}`, `realistic-seed-activate-${accountId}`, { is_active: true });
+}
+
 const peoplePage = await get(foundationBase, "/identity/v1/people");
 let people = peoplePage.data;
 let tunde = people.find((person) => person.display_name.toLowerCase() === "tunde");

@@ -31,6 +31,7 @@
           <a href="#trackers"><span class="nav-ic">📡</span>Trackers</a>
           <a href="#accommodation"><span class="nav-ic">🏠</span>Accommodation</a>
           <p class="nav-group">Configure</p>
+          <a href="#revenue"><span class="nav-ic">🔌</span>Revenue sources</a>
           <a href="#controls"><span class="nav-ic">🎚</span>Targets &amp; policy</a>
           <a href="#onboarding"><span class="nav-ic">🎓</span>Onboarding</a>
           <a href="#cohorts"><span class="nav-ic">📈</span>Cohorts</a>
@@ -419,34 +420,7 @@
           </div>
           <div class="control-panel">
             <h3>Delivery customers &amp; pricing</h3>
-            <p class="form-hint">Prescheduled-delivery customers sit beside the ride platforms as revenue sources. The <strong>contract price</strong> is what the customer pays per delivered package (finance-facing); the <strong>allocated price</strong> is one global figure used for operator performance and fees — operators only ever see the allocated value.</p>
-            <div id="deliveryCustomerList" class="data-list compact-list"></div>
-            <details class="management-panel">
-              <summary>Add a delivery customer</summary>
-              <form id="deliveryCustomerForm" class="entry-form compact-form">
-                <label>Name<input name="name" required placeholder="e.g. Speedaf" /></label>
-                <label>Contract price ₦/package<input name="contract_price_ngn" type="number" min="1" step="any" required /></label>
-                <label>Contact<input name="contact" placeholder="Optional" /></label>
-                <button type="submit">Add customer</button>
-              </form>
-            </details>
-            <div id="allocatedPriceList" class="data-list compact-list"></div>
-            <details class="management-panel">
-              <summary>Set an allocated price</summary>
-              <form id="allocatedPriceForm" class="entry-form compact-form">
-                <label>Applies to<select name="operator_class">
-                  <option value="all">All (global default)</option>
-                  <option value="rider">Riders (bikes)</option>
-                  <option value="driver">Drivers (Qute cars)</option>
-                </select></label>
-                <label>Customer<select name="delivery_customer_id"><option value="">Any customer (default)</option></select></label>
-                <label>Price ₦/package<input name="price_ngn" type="number" min="1" step="any" required /></label>
-                <label>Daily basic ₦<input name="daily_basic_ngn" type="number" min="0" step="any" value="0" /></label>
-                <label>Effective from<input name="effective_from" type="date" required /></label>
-                <p class="form-hint">Choose <strong>All</strong> for the global default, or a <strong>Driver</strong>/<strong>Rider</strong> rate. Optionally pin it to one <strong>Customer</strong> (e.g. Konga vs Speedaf). Most specific wins: customer + class beats customer, beats class, beats the global default. Versioned by date.</p>
-                <button type="submit">Save allocated price</button>
-              </form>
-            </details>
+            <p class="form-hint">Moved to its own home: define delivery customers, their integrations and pricing under <a href="#revenue">Revenue sources</a>.</p>
           </div>
           <div class="control-panel">
             <h3>Finance economics policy</h3>
@@ -466,6 +440,62 @@
               </form>
             </details>
           </div>
+        </div>
+      </section>
+
+      <section id="revenue" class="workspace-section view">
+        <div class="section-heading"><div><p class="eyebrow">Partners &amp; integrations</p><h2>Revenue sources</h2></div><span id="revenueSummary" class="subtle"></span></div>
+        <p class="form-hint">Every external partner we pull money and data from — <strong>ride platforms</strong> (operators earn on them) and <strong>delivery customers</strong> (they pay us per package) — defined in one place with its integration. Setting one up is a deliberate, one-time task; the resulting daily work sits with the supervisor. <strong>Manual entry is always available</strong> as a fallback when a feed fails.</p>
+        <div id="revenueSourceList" class="data-list"></div>
+        <details class="management-panel" id="revenueSourcePanel">
+          <summary>Add a revenue source</summary>
+          <form id="revenueSourceForm" class="entry-form compact-form">
+            <label>Name<input name="name" required placeholder="e.g. Speedaf, Bolt, Konga" /></label>
+            <label>Kind<select name="kind">
+              <option value="delivery_customer">Delivery customer — pays us per package</option>
+              <option value="ride_platform">Ride platform — operators earn on it</option>
+            </select></label>
+            <label>How does data arrive?<select name="integration_mode">
+              <option value="api">API — automated pull</option>
+              <option value="headless">Headless portal — automated pull</option>
+              <option value="file">File upload — Excel/CSV</option>
+              <option value="manual">Manual entry only</option>
+            </select></label>
+            <label data-rs-field="connector">Connector key<input name="connector_provider" placeholder="e.g. speedaf, bolt" />
+              <small class="form-hint">Names the connector and its server credentials. You set the secrets as environment variables on the server — the card below shows which.</small></label>
+            <label data-rs-field="platform">Platform slug<input name="platform" placeholder="e.g. indrive" />
+              <small class="form-hint">Short machine key for this ride platform.</small></label>
+            <label data-rs-field="vehicle_type">Vehicle type<select name="vehicle_type"><option value="motorbike">Motorbike</option><option value="car">Car</option></select></label>
+            <label data-rs-field="subtype">Subtype<input name="account_subtype" value="ride_hailing" /></label>
+            <label data-rs-field="pricing">Contract price ₦/package<input name="contract_price_ngn" type="number" min="1" step="any" />
+              <small class="form-hint">What the customer pays us per delivered package (finance-facing). Set the operator-facing allocated price below.</small></label>
+            <label>Status<select name="status"><option value="active">Active</option><option value="inactive">Inactive — dormant</option></select></label>
+            <p class="form-mode" id="revenueFormHint"></p>
+            <button type="submit">Add revenue source</button>
+          </form>
+        </details>
+
+        <div class="control-panel">
+          <h3>Delivery pricing</h3>
+          <p class="form-hint">The <strong>contract price</strong> is what the customer pays per delivered package (finance-facing); the <strong>allocated price</strong> is the operator-facing figure used for performance and fees — operators only ever see the allocated value. Edit a delivery customer below, or set allocated rates.</p>
+          <div id="deliveryCustomerList" class="data-list compact-list"></div>
+          <div id="allocatedPriceList" class="data-list compact-list"></div>
+          <details class="management-panel">
+            <summary>Set an allocated price</summary>
+            <form id="allocatedPriceForm" class="entry-form compact-form">
+              <label>Applies to<select name="operator_class">
+                <option value="all">All (global default)</option>
+                <option value="rider">Riders (bikes)</option>
+                <option value="driver">Drivers (Qute cars)</option>
+              </select></label>
+              <label>Customer<select name="delivery_customer_id"><option value="">Any customer (default)</option></select></label>
+              <label>Price ₦/package<input name="price_ngn" type="number" min="1" step="any" required /></label>
+              <label>Daily basic ₦<input name="daily_basic_ngn" type="number" min="0" step="any" value="0" /></label>
+              <label>Effective from<input name="effective_from" type="date" required /></label>
+              <p class="form-hint">Choose <strong>All</strong> for the global default, or a <strong>Driver</strong>/<strong>Rider</strong> rate. Optionally pin it to one <strong>Customer</strong> (e.g. Konga vs Speedaf). Most specific wins: customer + class beats customer, beats class, beats the global default. Versioned by date.</p>
+              <button type="submit">Save allocated price</button>
+            </form>
+          </details>
         </div>
       </section>
 

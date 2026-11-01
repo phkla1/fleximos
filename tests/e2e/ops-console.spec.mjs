@@ -366,6 +366,37 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#attendanceRows .att-strip").first()).toBeVisible();
   });
 
+  test("defines revenue sources — platforms and delivery customers — in one home with connector state", async ({ page }) => {
+    await page.goto(`${url}#revenue`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await expect(page.getByRole("heading", { name: "Revenue sources" })).toBeVisible();
+
+    // Speedaf ships as a delivery customer on a headless connector that needs
+    // its server env vars set — the card names them without showing any secret.
+    const speedaf = page.locator("#revenueSourceList article", { hasText: "Speedaf" }).first();
+    await expect(speedaf).toContainText("Delivery customer");
+    await expect(speedaf).toContainText("Headless portal");
+    await expect(speedaf).toContainText("needs config");
+    await expect(speedaf).toContainText("SPEEDAF_ACCOUNT");
+
+    // Konga is a delivery customer fed by an uploaded Excel — no connector.
+    const konga = page.locator("#revenueSourceList article", { hasText: "Konga" }).first();
+    await expect(konga).toContainText("File upload");
+    await expect(konga).toContainText("uploads the partner");
+
+    // inDrive is a ride platform; Bolt an API ride platform.
+    await expect(page.locator("#revenueSourceList")).toContainText("inDrive");
+    await expect(page.locator("#revenueSourceList article", { hasText: "Bolt" }).first()).toContainText("Ride platform");
+
+    // The add-wizard toggles fields by kind + mode: a delivery customer shows the
+    // contract-price field; switching to Manual hides the connector field.
+    await page.locator("#revenueSourcePanel summary").click();
+    const form = page.locator("#revenueSourceForm");
+    await expect(form.locator('[data-rs-field="pricing"]')).toBeVisible();
+    await form.locator('select[name="integration_mode"]').selectOption("manual");
+    await expect(form.locator('[data-rs-field="connector"]')).toBeHidden();
+  });
+
   test("keeps ingestion and roster controls out of the supervisor workspace", async ({ page }) => {
     await page.goto(url);
     await expect(page).toHaveTitle("Fleximotion Operations Administration");

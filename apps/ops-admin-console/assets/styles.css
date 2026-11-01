@@ -373,3 +373,8 @@ button.linklike.danger { color: #a53e32; }
 /* Compact team KPI figures so large naira values stop wrapping mid-number. */
 .team-kpis strong { font-size: 15.5px; overflow-wrap: normal; }
 main { max-width: 1240px; }
+
+/* The add-a-revenue-source wizard toggles fields by kind + mode; the flex
+   label rule would otherwise defeat the [hidden] attribute, so honour it. */
+#revenueSourceForm label[hidden] { display: none; }
+#revenueSourceList .pill + .pill { margin-left: 4px; }

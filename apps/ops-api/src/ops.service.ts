@@ -1480,7 +1480,17 @@ export class OpsService {
   }
 
   async createPlatformAccount(body: RecordBody) {
-    for (const field of ["platform", "display_name", "vehicle_type", "account_subtype", "credentials_key"]) {
+    const mode = body.integration_mode ? String(body.integration_mode) : "api";
+    if (!["api", "headless", "file", "manual"].includes(mode)) {
+      throw new BadRequestException("integration_mode must be api, headless, file or manual.");
+    }
+    // A connector key only matters for the automated modes (api/headless); a
+    // file/manual platform has no server credentials, so don't force one.
+    const automated = mode === "api" || mode === "headless";
+    const required = automated
+      ? ["platform", "display_name", "vehicle_type", "account_subtype", "credentials_key"]
+      : ["platform", "display_name", "vehicle_type", "account_subtype"];
+    for (const field of required) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);
     }
     const timestamp = this.now();
@@ -1490,21 +1500,47 @@ export class OpsService {
       display_name: body.display_name,
       vehicle_type: body.vehicle_type,
       account_subtype: body.account_subtype,
-      credentials_key: body.credentials_key,
+      credentials_key: body.credentials_key || String(body.platform).toUpperCase(),
       external_account_id: body.external_account_id || null,
       is_active: body.is_active ?? true,
+      integration_mode: mode,
       created_at: timestamp,
       updated_at: timestamp
     };
     await this.db.exec(
       `INSERT INTO ops_platform_accounts
         (platform_account_id, platform, display_name, vehicle_type, account_subtype,
-         credentials_key, external_account_id, is_active, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         credentials_key, external_account_id, is_active, integration_mode, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       Object.values(account)
     );
     await this.audit("platform_account.created", "platform_account", account.platform_account_id, null, account);
     return account;
+  }
+
+  async updatePlatformAccount(platformAccountId: string, body: RecordBody) {
+    const existing = await this.db.one<any>("SELECT * FROM ops_platform_accounts WHERE platform_account_id = $1", [platformAccountId]);
+    if (!existing) throw new NotFoundException("Platform account not found.");
+    const mode = body.integration_mode !== undefined ? String(body.integration_mode) : (existing.integration_mode || "api");
+    if (!["api", "headless", "file", "manual"].includes(mode)) {
+      throw new BadRequestException("integration_mode must be api, headless, file or manual.");
+    }
+    const updated = {
+      ...existing,
+      display_name: body.display_name !== undefined ? String(body.display_name) : existing.display_name,
+      is_active: body.is_active !== undefined ? Boolean(body.is_active) : existing.is_active,
+      integration_mode: mode,
+      external_account_id: body.external_account_id !== undefined ? (body.external_account_id ? String(body.external_account_id) : null) : existing.external_account_id,
+      updated_at: this.now()
+    };
+    await this.db.exec(
+      `UPDATE ops_platform_accounts SET display_name = $2, is_active = $3, integration_mode = $4,
+         external_account_id = $5, updated_at = $6
+       WHERE platform_account_id = $1`,
+      [platformAccountId, updated.display_name, updated.is_active, updated.integration_mode, updated.external_account_id, updated.updated_at]
+    );
+    await this.audit("platform_account.updated", "platform_account", platformAccountId, existing, updated);
+    return updated;
   }
 
   async registerPlatform(operatorId: string, body: RecordBody) {
