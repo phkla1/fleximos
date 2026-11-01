@@ -884,8 +884,8 @@ function checkinMark(checkin, leftPct) {
 function renderPaceBoard() {
   const rows = latestAnalysis ? latestAnalysis.rows : [];
   if (!rows.length) { el.paceBoard.innerHTML = `<div class="empty">No assigned operators for this day.</div>`; return; }
-  const checkinByOp = new Map((state.checkins || []).map((item) => [item.operator_id, item]));
   const viewingToday = state.dateTo === lagosToday();
+  const checkinByOp = new Map((viewingToday ? (state.checkins || []) : []).map((item) => [item.operator_id, item]));
   const nowH = viewingToday ? (lagosHourOf(new Date().toISOString()) ?? 18) : 18;
 
   const model = rows.map((row) => {
@@ -1618,10 +1618,11 @@ function renderOperatorDialog(operatorId) {
 async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp = false, rangeBanner = false, quiet = false } = {}) {
   if (!quiet) setConnection("", "Connecting");
   if (!quiet) setNotice("Loading amoeba data...");
-  const [people, operators, allPerformance] = await Promise.all([
+  const [people, operators, allPerformance, todayCheckins] = await Promise.all([
     foundation("/identity/v1/people"),
     ops("/ops/v1/operators"),
-    ops("/ops/v1/daily-performance")
+    ops("/ops/v1/daily-performance"),
+    ops(`/ops/v1/checkins?check_in_date=${lagosToday()}`).catch(() => ({ data: [] }))
   ]);
   if (!query.get("actorPersonId")) {
     actorPersonId = people.data.find((person) => person.display_name.toLowerCase() === "tunde")?.person_id
@@ -1630,9 +1631,16 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   }
   const assigned = operators.data.filter((operator) => operator.supervisor_person_id === actorPersonId);
   const assignedIds = new Set(assigned.map((operator) => operator.operator_id));
-  const availableDates = [...new Set(allPerformance.data
-    .filter((record) => assignedIds.has(record.operator_id))
-    .map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
+  // A day with a check-in counts as a day "with data" even before any trips are
+  // recorded, so opening the app on a fresh morning stays on today (where the
+  // pending check-in lives) instead of clamping back to the last day with trips.
+  const todayHasCheckin = (todayCheckins.data || []).some((row) => assignedIds.has(row.operator_id));
+  const availableDates = [...new Set([
+    ...(todayHasCheckin ? [lagosToday()] : []),
+    ...allPerformance.data
+      .filter((record) => assignedIds.has(record.operator_id))
+      .map((record) => String(record.record_date).slice(0, 10))
+  ])].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
@@ -1645,7 +1653,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, checkins, attendanceCheckins] = await Promise.all([
+  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/pacing?record_date=${operatingDate}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/alerts?${range}`),
@@ -1665,7 +1673,6 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
-    ops(`/ops/v1/checkins?check_in_date=${dateTo}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
@@ -1701,7 +1708,9 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     deliveryCustomers: deliveryCustomers.data,
     deliveryStops: deliveryStops.data,
     deliverySummary,
-    checkins: (checkins.data || []).filter((row) => assignedIds.has(row.operator_id) || assignedAmoebas.has(row.amoeba_id)),
+    // The cockpit check-in queue is today's check-ins — a "now" action, decoupled
+    // from whatever historical day the board happens to be showing.
+    checkins: (todayCheckins.data || []).filter((row) => assignedIds.has(row.operator_id) || assignedAmoebas.has(row.amoeba_id)),
     integrationStatus: (integrationStatus.integrations || []).filter((row) => row.category === "tracker"),
     vehiclePositions: {
       positions: (vehiclePositions.positions || []).filter((row) =>
