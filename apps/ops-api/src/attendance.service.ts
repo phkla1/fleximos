@@ -141,8 +141,11 @@ export class AttendanceService {
       created_at: timestamp,
       updated_at: timestamp
     };
-    // Re-requesting replaces the day's pending row; a decided one is preserved
-    // so an approval can't be silently reset by a stray retap.
+    // Re-requesting replaces the day's row and resets it to a fresh pending
+    // request when it is still pending OR was rejected — a rejected operator
+    // must be able to fix their location and check in again, and that new
+    // request has to reach the supervisor. An APPROVED row is preserved so a
+    // stray retap can't silently undo an approval.
     await this.db.exec(
       `INSERT INTO ops_operator_checkins
         (checkin_id, operator_id, person_id, amoeba_id, check_in_date, requested_at, gps_lat, gps_lng,
@@ -154,8 +157,10 @@ export class AttendanceService {
          gps_lat = EXCLUDED.gps_lat, gps_lng = EXCLUDED.gps_lng,
          matched_site_id = EXCLUDED.matched_site_id, matched_site_name = EXCLUDED.matched_site_name,
          distance_m = EXCLUDED.distance_m, geofence_ok = EXCLUDED.geofence_ok,
-         source = EXCLUDED.source, updated_at = EXCLUDED.updated_at
-       WHERE ops_operator_checkins.status = 'pending'`,
+         source = EXCLUDED.source, updated_at = EXCLUDED.updated_at,
+         status = EXCLUDED.status, decided_by_person_id = EXCLUDED.decided_by_person_id,
+         decided_at = EXCLUDED.decided_at, decision_note = EXCLUDED.decision_note
+       WHERE ops_operator_checkins.status IN ('pending', 'rejected')`,
       Object.values(record)
     );
     const saved = await this.db.one<any>(

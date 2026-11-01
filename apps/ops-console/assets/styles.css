@@ -300,6 +300,7 @@ button.linklike { border: 0; padding: 0; background: none; color: var(--green-da
   background: var(--surface); box-shadow: var(--shadow-soft);
   border-top: 5px solid var(--amber);
 }
+.closeout-msg { margin: 8px 0 0; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--red); background: var(--red-bg, rgba(200,0,0,0.06)); border: 1px solid var(--red); border-radius: var(--radius); }
 .closeout-card.ready { border-top-color: var(--green); }
 .closeout-card.submitted { border-top-color: var(--green-dark); background: linear-gradient(180deg, var(--green-bg), var(--surface) 40%); }
 .closeout-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; margin-bottom: 10px; }

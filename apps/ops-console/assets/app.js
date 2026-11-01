@@ -79,6 +79,14 @@ function setNotice(message, error = false) {
   el.notice.textContent = message;
   el.notice.classList.toggle("error", error);
 }
+// Inline message on one closeout card. A closeout being blocked by policy (wrong
+// hour, missing note) or rejected by the API is a business outcome, NOT a
+// connection failure — so it shows here on the card and never flips the
+// connection indicator or writes to the cockpit notice.
+function closeoutMessage(amoebaId, text) {
+  const node = document.querySelector(`[data-closeout-msg="${CSS.escape(amoebaId)}"]`);
+  if (node) { node.textContent = text || ""; node.hidden = !text; }
+}
 
 // Show a freshly-issued PIN once. It is never retrievable again.
 function revealPin(title, pin) {
@@ -1017,7 +1025,8 @@ function renderCloseout(analysis) {
           <label class="closeout-note">Supervisor note (${criticalTotal ? "required — explain the critical issues" : "optional — explain anything still open"})
             <textarea rows="2" data-closeout-note="${escapeHtml(amoebaId)}"></textarea>
           </label>
-          <button type="button" data-submit-closeout="${escapeHtml(amoebaId)}" data-critical-count="${criticalTotal}">${criticalTotal ? `Submit with ${criticalTotal} critical exception${criticalTotal === 1 ? "" : "s"}` : blockers.length ? "Submit with warnings" : "Submit closeout"}</button>`}
+          <button type="button" data-submit-closeout="${escapeHtml(amoebaId)}" data-critical-count="${criticalTotal}">${criticalTotal ? `Submit with ${criticalTotal} critical exception${criticalTotal === 1 ? "" : "s"}` : blockers.length ? "Submit with warnings" : "Submit closeout"}</button>
+          <p class="closeout-msg" data-closeout-msg="${escapeHtml(amoebaId)}" role="alert" hidden></p>`}
       </article>`;
   }).join("") : `<div class="empty">No operating units in scope.</div>`;
 
@@ -2014,17 +2023,18 @@ document.addEventListener("click", async (event) => {
   const closeoutButton = event.target.closest("[data-submit-closeout]");
   if (closeoutButton) {
     const amoebaId = closeoutButton.dataset.submitCloseout;
+    closeoutMessage(amoebaId, "");
     // End-of-day closeout only opens in the evening window (18:00–04:00 Lagos).
     const lagosHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
     if (!(lagosHour >= 18 || lagosHour < 4)) {
-      showError(new Error("Closeout opens at 6:00pm and closes at 4:00am (Lagos). Come back this evening."));
+      closeoutMessage(amoebaId, "Closeout opens at 6:00pm and closes at 4:00am (Lagos). Come back this evening.");
       return;
     }
     const note = document.querySelector(`[data-closeout-note="${amoebaId}"]`)?.value.trim() || null;
     // Critical issues can be submitted as exceptions but never silently:
     // the supervisor must say why the day is ending with them open.
     if (Number(closeoutButton.dataset.criticalCount || 0) > 0 && !note) {
-      showError(new Error("Explain the critical issues in the note before submitting — they will appear in the manager's escalation view."));
+      closeoutMessage(amoebaId, "Explain the critical issues in the note before submitting — they will appear in the manager's escalation view.");
       return;
     }
     closeoutButton.disabled = true;
@@ -2046,7 +2056,9 @@ document.addEventListener("click", async (event) => {
     } catch (error) {
       closeoutButton.disabled = false;
       closeoutButton.textContent = "Submit closeout";
-      showError(error);
+      // A rejected closeout is a business outcome — keep it on the card and
+      // leave the connection indicator alone.
+      closeoutMessage(amoebaId, `Couldn't submit closeout: ${error.message}`);
     }
   }
 });

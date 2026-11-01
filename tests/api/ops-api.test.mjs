@@ -1681,6 +1681,51 @@ test("operator check-in geofences against Sites and requires supervisor approval
   assert.ok(!singleDay.body.data.some((row) => row.checkin_id === inside.body.checkin_id), "the range excludes days outside it");
 });
 
+test("a rejected check-in can be re-requested and reaches the supervisor again", async () => {
+  const operators = await request("/ops/v1/operators");
+  const operator = operators.body.data.find((row) => row.operator_status === "active" && row.amoeba_id === "amoeba_island");
+  const DATE = "2026-06-20";
+
+  // First attempt from the wrong place; the supervisor rejects it.
+  const first = await request("/ops/v1/checkins", {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-reraise-1" },
+    body: JSON.stringify({ operator_id: operator.operator_id, gps_lat: 9.05785, gps_lng: 7.49508, check_in_date: DATE })
+  });
+  assert.equal(first.body.status, "pending");
+  const rejected = await request(`/ops/v1/checkins/${first.body.checkin_id}/decision`, {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-reject-reraise" },
+    body: JSON.stringify({ decision: "reject", decision_note: "Not at an assigned site." })
+  });
+  assert.equal(rejected.body.status, "rejected");
+
+  // The operator moves to the site and checks in again for the same day: the
+  // day's row resets to a fresh pending request (the fix — previously silently
+  // discarded, so it never reached the supervisor).
+  const second = await request("/ops/v1/checkins", {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-reraise-2" },
+    body: JSON.stringify({ operator_id: operator.operator_id, gps_lat: 6.44487, gps_lng: 3.47798, check_in_date: DATE })
+  });
+  assert.equal(second.body.status, "pending", "re-request after a reject is pending again");
+  assert.equal(second.body.decided_by_person_id, null, "the prior decision is cleared");
+  assert.equal(second.body.geofence_ok, true, "the corrected location is captured");
+
+  const list = await request(`/ops/v1/checkins?check_in_date=${DATE}`);
+  const row = list.body.data.find((item) => item.operator_id === operator.operator_id);
+  assert.equal(row.status, "pending", "the supervisor now sees it pending, not stuck on rejected");
+
+  // An APPROVED check-in (2026-06-18, earlier in this suite) is NOT reset by a
+  // stray re-tap.
+  const guard = await request("/ops/v1/checkins", {
+    method: "POST",
+    headers: { "Idempotency-Key": "checkin-approved-guard" },
+    body: JSON.stringify({ operator_id: operator.operator_id, gps_lat: 6.44487, gps_lng: 3.47798, check_in_date: "2026-06-18" })
+  });
+  assert.equal(guard.body.status, "approved", "an approved check-in stays approved");
+});
+
 test("pacing snapshot: scheduled earnings set the online target, deadline, and combined pace", async () => {
   const PACE_DATE = "2026-06-25";
 
