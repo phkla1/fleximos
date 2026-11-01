@@ -314,14 +314,20 @@ test("computes amoeba P&L with expenses, transfer pricing and central allocation
   assert.equal(island.net_earnings_ngn, 36500);
   assert.equal(island.direct_expenses_ngn, 6000);
   assert.equal(island.maintenance_costs_ngn, 18500);
+  // A resolved incident (operator_demo_wole, ₦18,500) was closed earlier in this
+  // run; convention B recognises it in P&L at resolved_at, so it lands today.
+  assert.equal(island.incident_costs_ngn, 18500);
   assert.equal(island.transfer_price_credits_ngn, 2500);
   // Only the demo operator is active, so the island bears the full central cost.
   assert.equal(island.central_allocation_ngn, 4000);
   assert.equal(
     island.gross_pnl_ngn,
-    36500 - 6000 - 18500 - 4000 + 2500
+    36500 - 6000 - 18500 - 18500 - 4000 + 2500
   );
-  assert.ok(island.hourly_pnl_ngn > 0);
+  // Incident + maintenance now outweigh the day's earnings, so the island is
+  // loss-making; hourly P&L is still derived from gross over hours online.
+  assert.ok(island.gross_pnl_ngn < 0);
+  assert.equal(island.hourly_pnl_ngn, Math.round((island.gross_pnl_ngn / island.hours_online) * 100) / 100);
 });
 
 test("ranks operators on the leaderboard and validates config weights", async () => {

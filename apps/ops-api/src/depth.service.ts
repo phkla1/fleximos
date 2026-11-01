@@ -811,6 +811,19 @@ export class DepthService {
       [periodStart, periodEnd]
     );
 
+    // Incident cost enters P&L on the same footing as maintenance: only a
+    // resolved incident with a recorded cost, dated by resolved_at — the
+    // cost lands when the matter is closed, not while it is still open.
+    const incidentCosts = await this.db.many<any>(
+      `SELECT o.amoeba_id, SUM(i.cost_implication_ngn) AS amount_ngn
+       FROM ops_incidents i
+       JOIN ops_operators o ON o.operator_id = i.operator_id
+       WHERE i.status = 'resolved' AND i.cost_implication_ngn IS NOT NULL
+         AND i.resolved_at::date BETWEEN $1 AND $2
+       GROUP BY o.amoeba_id`,
+      [periodStart, periodEnd]
+    );
+
     const transferEvents = await this.db.many<any>(
       `SELECT from_amoeba_id, to_amoeba_id, SUM(amount_ngn) AS amount_ngn
        FROM ops_transfer_price_events
@@ -847,6 +860,7 @@ export class DepthService {
         .map((row) => ({ category: row.category, amount_ngn: Number(row.amount_ngn) }));
       const directTotal = expenseBreakdown.reduce((sum, row) => sum + row.amount_ngn, 0);
       const maintenance = Number(maintenanceCosts.find((row) => row.amoeba_id === amoebaId)?.amount_ngn || 0);
+      const incident = Number(incidentCosts.find((row) => row.amoeba_id === amoebaId)?.amount_ngn || 0);
       const centralAllocation = totalHeadcount ? (centralTotal * operators) / totalHeadcount : 0;
       const transferCredits = transferEvents
         .filter((row) => row.from_amoeba_id === amoebaId)
@@ -857,7 +871,7 @@ export class DepthService {
       const delivery = deliveryByAmoeba.get(amoebaId) || { contract: 0, allocated: 0, delivered: 0 };
       // Delivery revenue enters P&L at contract price; the allocated value is
       // the operator-facing figure, and the spread is company margin.
-      const grossPnl = netEarnings + delivery.contract - directTotal - maintenance - centralAllocation + transferCredits - transferCharges;
+      const grossPnl = netEarnings + delivery.contract - directTotal - maintenance - incident - centralAllocation + transferCredits - transferCharges;
       const dailyTarget = Number(targetRows.find((row) => row.amoeba_id === amoebaId)?.daily_target_ngn || 0);
       const periodTarget = dailyTarget * dayCount;
       return {
@@ -877,6 +891,7 @@ export class DepthService {
         direct_expenses_ngn: Math.round(directTotal * 100) / 100,
         expense_breakdown: expenseBreakdown,
         maintenance_costs_ngn: Math.round(maintenance * 100) / 100,
+        incident_costs_ngn: Math.round(incident * 100) / 100,
         central_allocation_ngn: Math.round(centralAllocation * 100) / 100,
         transfer_price_credits_ngn: Math.round(transferCredits * 100) / 100,
         transfer_price_charges_ngn: Math.round(transferCharges * 100) / 100,
@@ -894,11 +909,12 @@ export class DepthService {
         delivery_margin_ngn: accumulator.delivery_margin_ngn + row.delivery_margin_ngn,
         direct_expenses_ngn: accumulator.direct_expenses_ngn + row.direct_expenses_ngn,
         maintenance_costs_ngn: accumulator.maintenance_costs_ngn + row.maintenance_costs_ngn,
+        incident_costs_ngn: accumulator.incident_costs_ngn + row.incident_costs_ngn,
         central_allocation_ngn: accumulator.central_allocation_ngn + row.central_allocation_ngn,
         gross_pnl_ngn: accumulator.gross_pnl_ngn + row.gross_pnl_ngn,
         hours_online: accumulator.hours_online + row.hours_online
       }),
-      { net_earnings_ngn: 0, delivery_contract_revenue_ngn: 0, delivery_margin_ngn: 0, direct_expenses_ngn: 0, maintenance_costs_ngn: 0, central_allocation_ngn: 0, gross_pnl_ngn: 0, hours_online: 0 }
+      { net_earnings_ngn: 0, delivery_contract_revenue_ngn: 0, delivery_margin_ngn: 0, direct_expenses_ngn: 0, maintenance_costs_ngn: 0, incident_costs_ngn: 0, central_allocation_ngn: 0, gross_pnl_ngn: 0, hours_online: 0 }
     );
 
     return {

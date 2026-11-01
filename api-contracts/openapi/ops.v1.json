@@ -8014,6 +8014,9 @@
                 "maintenance_costs_ngn": {
                   "type": "number"
                 },
+                "incident_costs_ngn": {
+                  "type": "number"
+                },
                 "central_allocation_ngn": {
                   "type": "number"
                 },

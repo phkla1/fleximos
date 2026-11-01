@@ -291,6 +291,7 @@ function renderPnl() {
     ["Net Earnings", money(pnl.totals.net_earnings_ngn), ""],
     ["Direct expenses", money(pnl.totals.direct_expenses_ngn), ""],
     ["Maintenance", money(pnl.totals.maintenance_costs_ngn), ""],
+    ["Incidents", money(pnl.totals.incident_costs_ngn || 0), ""],
     ["Central costs", money(pnl.central_expenses_ngn), ""],
     ["Delivery revenue", money(pnl.totals.delivery_contract_revenue_ngn || 0), ""],
     ["Delivery margin", money(pnl.totals.delivery_margin_ngn || 0), Number(pnl.totals.delivery_margin_ngn) > 0 ? "metric-good" : ""],
@@ -307,7 +308,7 @@ function renderPnl() {
       <span class="pill ${negative ? "pending" : ""}">${negative ? "Loss-making" : "Profitable"}</span></div>
       <div class="card-kpis">
         <span><strong>${money(row.net_earnings_ngn)}</strong> Net Earnings</span>
-        <span><strong>${money(row.direct_expenses_ngn + row.maintenance_costs_ngn)}</strong> direct costs</span>
+        <span><strong>${money(row.direct_expenses_ngn + row.maintenance_costs_ngn + (row.incident_costs_ngn || 0))}</strong> direct costs</span>
         <span><strong>${money(row.central_allocation_ngn)}</strong> central share</span>
         ${Number(row.delivery_contract_revenue_ngn) ? `<span><strong>${money(row.delivery_contract_revenue_ngn)}</strong> delivery revenue (${row.packages_delivered} pkgs, ${money(row.delivery_margin_ngn)} margin)</span>` : ""}
         <span><strong>${money(row.gross_pnl_ngn)}</strong> gross P&L</span>
@@ -651,11 +652,11 @@ document.getElementById("exportPnlCsv").addEventListener("click", () => {
   if (!state.pnl) return;
   downloadCsv(`fleximotion-pnl-${state.pnl.period_start}-to-${state.pnl.period_end}.csv`, [
     ["amoeba", "active_operators", "trips_completed", "hours_online", "net_earnings_ngn", "direct_expenses_ngn",
-      "maintenance_costs_ngn", "central_allocation_ngn", "transfer_credits_ngn", "transfer_charges_ngn",
+      "maintenance_costs_ngn", "incident_costs_ngn", "central_allocation_ngn", "transfer_credits_ngn", "transfer_charges_ngn",
       "gross_pnl_ngn", "hourly_pnl_ngn", "target_attainment_pct"],
     ...state.pnl.amoebas.map((row) => [
       amoebaName(row.amoeba_id), row.active_operators, row.trips_completed, row.hours_online,
-      row.net_earnings_ngn, row.direct_expenses_ngn, row.maintenance_costs_ngn, row.central_allocation_ngn,
+      row.net_earnings_ngn, row.direct_expenses_ngn, row.maintenance_costs_ngn, row.incident_costs_ngn ?? 0, row.central_allocation_ngn,
       row.transfer_price_credits_ngn, row.transfer_price_charges_ngn, row.gross_pnl_ngn,
       row.hourly_pnl_ngn ?? "", row.target_attainment_pct ?? ""
     ])
