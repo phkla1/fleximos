@@ -304,8 +304,19 @@ function ageDays(value) {
 const round1 = (value) => Math.round(value * 10) / 10;
 
 // One consolidated row per driver: money in, distance, fuel (litres and ₦),
+// Incidents counted and costed for contribution are scoped to the selected
+// range by occurred_at — the day the incident happened — so they line up with
+// the range-scoped fuel and maintenance figures rather than a lifetime total.
+function incidentsInRange() {
+  return state.incidents.filter((incident) => {
+    const day = String(incident.occurred_at).slice(0, 10);
+    return day >= state.dateFrom && day <= state.dateTo;
+  });
+}
+
 // attendance and incidents — the flat view the supervisors asked for.
 function driverMetrics(analysis) {
+  const rangeIncidents = incidentsInRange();
   return analysis.rows.map((row) => {
     const recon = state.mileageReconciliations.filter((record) => record.operator_id === row.operator_id);
     // Tracker distance is the truthful road KM (includes off-app
@@ -319,7 +330,9 @@ function driverMetrics(analysis) {
     const target = Number(row.range_revenue_target_ngn ?? row.daily_revenue_target_ngn ?? 0);
     const earnings = Number(row.net_earnings_ngn || 0);
     const trips = Number(row.trips_total || 0);
-    const incidents = state.incidents.filter((incident) => incident.operator_id === row.operator_id).length;
+    const operatorIncidents = rangeIncidents.filter((incident) => incident.operator_id === row.operator_id);
+    const incidents = operatorIncidents.length;
+    const incidentCost = operatorIncidents.reduce((sum, incident) => sum + Number(incident.cost_implication_ngn || 0), 0);
     return {
       operator_id: row.operator_id,
       name: personName(row.person_id),
@@ -337,6 +350,7 @@ function driverMetrics(analysis) {
       kmPerLitre: litres && km ? round1(km / litres) : 0,
       attendance: String(row.current_status).replaceAll("_", " "),
       incidents,
+      incidentCost: Math.round(incidentCost),
       pace: String(row.pace_status || "—").replaceAll("_", " ")
     };
   });
@@ -446,6 +460,7 @@ const DRIVER_COLUMNS = [
   { key: "kmPerLitre", label: "KM/L", numeric: true, render: (row) => row.kmPerLitre || "—" },
   { key: "attendance", label: "Attendance" },
   { key: "incidents", label: "Incidents", numeric: true },
+  { key: "incidentCost", label: "Incident ₦", numeric: true, render: (row) => row.incidentCost ? money(row.incidentCost) : "—" },
   { key: "pace", label: "Status" }
 ];
 
@@ -466,7 +481,7 @@ const VEHICLE_COLUMNS = [
 
 // Per-team money-in/money-out rollup for the selected range; the This
 // week chip turns this into the weekly report. Contribution = earnings −
-// fuel − maintenance (full opex stays in the manager console).
+// fuel − maintenance − incident cost (full opex stays in the manager console).
 function teamSummaries(analysis) {
   const drivers = driverMetrics(analysis);
   const amoebaIds = [...new Set(state.operators.map((operator) => operator.amoeba_id))];
@@ -482,7 +497,9 @@ function teamSummaries(analysis) {
         && String(report.created_at).slice(0, 10) >= state.dateFrom
         && String(report.created_at).slice(0, 10) <= state.dateTo)
       .reduce((sum, report) => sum + Number(report.cost_ngn || 0), 0);
-    const incidents = state.incidents.filter((incident) => operatorIds.has(incident.operator_id)).length;
+    const teamIncidents = incidentsInRange().filter((incident) => operatorIds.has(incident.operator_id));
+    const incidents = teamIncidents.length;
+    const incidentCost = teamIncidents.reduce((sum, incident) => sum + Number(incident.cost_implication_ngn || 0), 0);
     const absent = analysis.rows.filter((row) => operatorIds.has(row.operator_id) && row.current_status === "not_seen_today").length;
     const exceptions = analysis.mileageExceptions.filter((record) => operatorIds.has(record.operator_id)).length
       + state.deliveryExceptions.filter((exception) => exception.amoeba_id === amoebaId && exception.status === "open").length;
@@ -496,7 +513,8 @@ function teamSummaries(analysis) {
       km: round1(teamDrivers.reduce((sum, driver) => sum + driver.km, 0)),
       fuelCost: Math.round(fuelCost),
       maintenanceCost: Math.round(maintenanceCost),
-      contribution: Math.round(earnings - fuelCost - maintenanceCost),
+      incidentCost: Math.round(incidentCost),
+      contribution: Math.round(earnings - fuelCost - maintenanceCost - incidentCost),
       absent,
       incidents,
       exceptions
@@ -751,13 +769,14 @@ function renderCockpit(analysis) {
   const vehicles = vehicleMetrics(analysis);
   const drivers = driverMetrics(analysis);
   const targetTotal = drivers.reduce((sum, driver) => sum + driver.target, 0);
+  const rangeIncidentCost = incidentsInRange().reduce((sum, incident) => sum + Number(incident.cost_implication_ngn || 0), 0);
   const kpis = [
     { label: "Vehicles", value: `${vehicles.length}`, sub: `${vehicles.filter((vehicle) => vehicle.status === "assigned" && vehicle.trips > 0).length} active · ${vehicles.filter((vehicle) => vehicle.status !== "in maintenance" && !(vehicle.trips > 0)).length} idle · ${vehicles.filter((vehicle) => vehicle.status === "in maintenance").length} maint.` },
     { label: "Drivers", value: `${analysis.rows.length}`, sub: `${analysis.rows.filter((row) => row.current_status !== "not_seen_today").length} working · ${analysis.rows.filter((row) => row.current_status === "not_seen_today").length} absent` },
     { label: "Net earnings", value: money(totals.revenue), sub: `of ${money(targetTotal)} target · ${targetTotal ? Math.round(totals.revenue / targetTotal * 100) : 0}%` },
     { label: "Trips", value: `${drivers.reduce((sum, driver) => sum + driver.trips, 0)}`, sub: `${round1(drivers.reduce((sum, driver) => sum + driver.km, 0))} km` },
     { label: "Fuel", value: drivers.some((driver) => driver.fuelCost) ? money(drivers.reduce((sum, driver) => sum + driver.fuelCost, 0)) : "—", sub: "issued this range" },
-    { label: "Incidents", value: `${state.incidents.filter((incident) => incident.status !== "resolved").length}`, sub: "open now" }
+    { label: "Incidents", value: `${state.incidents.filter((incident) => incident.status !== "resolved").length}`, sub: rangeIncidentCost ? `open now · ${money(rangeIncidentCost)} cost (range)` : "open now" }
   ];
   el.kpiStrip.innerHTML = kpis.map((kpi) => `
     <div class="kpi-cell"><strong>${kpi.value}</strong><span>${escapeHtml(kpi.label)}</span><small>${escapeHtml(kpi.sub)}</small></div>`).join("");
@@ -1141,6 +1160,7 @@ function renderCloseout(analysis) {
         <div><dt>KM</dt><dd>${summary.km}</dd></div>
         <div><dt>Fuel ₦</dt><dd>${summary.fuelCost ? money(summary.fuelCost) : "—"}</dd></div>
         <div><dt>Maintenance ₦</dt><dd>${summary.maintenanceCost ? money(summary.maintenanceCost) : "—"}</dd></div>
+        <div><dt>Incident ₦</dt><dd>${summary.incidentCost ? money(summary.incidentCost) : "—"}</dd></div>
         <div><dt>Contribution</dt><dd><strong>${money(summary.contribution)}</strong></dd></div>
         <div><dt>Absent</dt><dd>${summary.absent}</dd></div>
         <div><dt>Incidents</dt><dd>${summary.incidents}</dd></div>
@@ -1766,7 +1786,7 @@ el.exportVehiclesCsv.addEventListener("click", () =>
   downloadCsv(`vehicles-${state.dateFrom}-to-${state.dateTo}.csv`, VEHICLE_COLUMNS, latestVehicleMetrics));
 el.exportWeeklyCsv.addEventListener("click", () => {
   if (!latestAnalysis) return;
-  const columns = ["team", "drivers", "earnings", "target", "targetPct", "trips", "km", "fuelCost", "maintenanceCost", "contribution", "absent", "incidents", "exceptions"]
+  const columns = ["team", "drivers", "earnings", "target", "targetPct", "trips", "km", "fuelCost", "maintenanceCost", "incidentCost", "contribution", "absent", "incidents", "exceptions"]
     .map((key) => ({ key, label: key === "team" ? "amoeba" : key }));
   downloadCsv(`amoeba-summary-${state.dateFrom}-to-${state.dateTo}.csv`, columns, teamSummaries(latestAnalysis));
 });

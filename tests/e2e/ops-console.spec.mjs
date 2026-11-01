@@ -165,6 +165,7 @@ test.describe("Supervisor Ops console", () => {
     await expect(summaryCard).toBeVisible();
     await expect(summaryCard).toContainText("Contribution");
     await expect(summaryCard).toContainText("Fuel ₦");
+    await expect(summaryCard).toContainText("Incident ₦");
 
     const download = page.waitForEvent("download");
     await page.locator("#exportWeeklyCsv").click();
