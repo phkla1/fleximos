@@ -2104,19 +2104,22 @@ test("daily target defaults by housing (25k standard / 28k accommodated) with a 
   assert.equal(Number(row.daily_revenue_target_ngn), 28000, "cleared override returns to the default");
 });
 
-test("cohorts auto-create per week+class+amoeba; manual create is gone; Day-1 weekday is settable", async () => {
+test("cohorts auto-create per week+class+amoeba; backdated manual create works; Day-1 weekday is settable", async () => {
   const unique = String(Date.now()).slice(-7);
   // Default anchor weekday is Wednesday (3).
   const settings0 = await request("/ops/v1/onboarding/settings");
   assert.equal(Number(settings0.body.cohort_anchor_dow), 3);
 
-  // Manual cohort creation no longer exists.
+  // Manual cohort creation exists for off-cycle/backdated intakes: it honours an
+  // explicit start_date (unlike the current-week auto-create).
   const manual = await request("/ops/v1/onboarding/cohorts", {
     method: "POST",
-    headers: { "Idempotency-Key": `no-manual-${unique}` },
-    body: JSON.stringify({ operator_class: "rider", start_date: "2026-06-01" })
+    headers: { "Idempotency-Key": `manual-${unique}` },
+    body: JSON.stringify({ operator_class: "rider", amoeba_id: "amoeba_island", start_date: "2026-06-01" })
   });
-  assert.equal(manual.response.status, 404, "no manual cohort-create route");
+  assert.equal(manual.response.status, 201, "backdated cohort-create route exists");
+  assert.equal(String(manual.body.start_date).slice(0, 10), "2026-06-01");
+  assert.equal(manual.body.operator_class, "rider");
 
   async function activeRider(idx, amoeba, site) {
     const person = await fetch(`${foundationBaseUrl}/identity/v1/people`, {

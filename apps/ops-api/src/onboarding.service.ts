@@ -212,6 +212,22 @@ export class OnboardingService {
     );
   }
 
+  // Create (or reuse) a cohort with an explicit start_date. Auto-creation always
+  // anchors to the current week; this covers off-cycle / backdated intakes — a
+  // cohort that began before it was recorded (and lets a demo seed plant a
+  // mid-ramp rider). System-admin only, via the controller.
+  async createCohort(body: Body, actor: string) {
+    const operatorClass = String(body.operator_class || "rider");
+    if (!["rider", "driver"].includes(operatorClass)) throw new BadRequestException("operator_class must be rider or driver.");
+    const amoebaId = String(body.amoeba_id || "");
+    if (!amoebaId) throw new BadRequestException("amoeba_id is required.");
+    const startDate = this.dateStr(body.start_date, "start_date");
+    const cohortId = await this.findOrCreateCohort(startDate, operatorClass, amoebaId);
+    const cohort = await this.db.one<any>("SELECT * FROM ops_onboarding_cohorts WHERE cohort_id=$1", [cohortId]);
+    await this.audit("onboarding_cohort.created", "onboarding_cohort", cohortId, null, cohort, actor);
+    return cohort;
+  }
+
   /* ---------------- onboarding settings + auto cohorts ---------------- */
 
   // Company-wide onboarding settings (singleton row). cohort_anchor_dow is the

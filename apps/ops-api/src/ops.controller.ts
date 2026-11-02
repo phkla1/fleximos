@@ -823,7 +823,22 @@ export class OpsController {
     return { data: await this.onboarding.listCohorts(), next_cursor: null };
   }
 
-  // Cohorts are auto-created per week from activations; no manual create route.
+  // Cohorts are auto-created per week from activations; this route covers the
+  // off-cycle / backdated case (an intake that began before it was recorded).
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create (or reuse) an onboarding cohort with an explicit start date — for off-cycle/backdated intakes" })
+  @Post("ops/v1/onboarding/cohorts")
+  async createCohort(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.onboarding.createCohort(body, actor.person_id));
+  }
+
   @ApiTags("Onboarding")
   @ApiBearerAuth()
   @Get("ops/v1/onboarding/settings")

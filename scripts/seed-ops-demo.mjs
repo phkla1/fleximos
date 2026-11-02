@@ -268,6 +268,58 @@ for (const amoebaId of [...new Set(operators.map((item) => item.amoeba))]) {
   });
 }
 
+// A deterministic MID-RAMP new-hire so the onboarding ramp is testable today.
+// Cohorts normally anchor to the current week, so a rider created now wouldn't
+// start ramping until this week's anchor day. We create a dedicated rider and
+// move them into a BACKDATED cohort, landing them on ~Day 5 of the 12-day ramp
+// right now — judged against the ramped (lower) target, not the steady state.
+// Ramp counts every non-Sunday day, so step back that many to hit the target day.
+function rampAnchorForDay(todayStr, dayN) {
+  const d = new Date(`${todayStr}T00:00:00Z`);
+  let count = d.getUTCDay() !== 0 ? 1 : 0; // today counts unless it's a Sunday (rest day)
+  while (count < dayN) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    if (d.getUTCDay() !== 0) count++;
+  }
+  return d.toISOString().slice(0, 10);
+}
+const newHire = {
+  name: "Amara Okonkwo", phone: "+2347000000255",
+  amoeba: "amoeba_mainland", site: "site_mainland_1",
+  plate: "NEW001QR", vehicle: "2025 Onboarding Bike", externalId: "newhire-ramp-0001", rampDay: 5
+};
+let nhPerson = people.find((candidate) => candidate.phone === newHire.phone || candidate.display_name.toLowerCase() === newHire.name.toLowerCase());
+if (!nhPerson) {
+  nhPerson = await post(foundationBase, "/identity/v1/people", `realistic-seed-person-${newHire.externalId}`, {
+    display_name: newHire.name, legal_name: newHire.name, phone: newHire.phone, global_status: "active"
+  });
+  people.push(nhPerson);
+}
+let nhVehicle = (await get(opsBase, "/ops/v1/vehicles")).data.find((v) => v.plate === newHire.plate);
+if (!nhVehicle) {
+  nhVehicle = await post(opsBase, "/ops/v1/vehicles", `realistic-seed-vehicle-${newHire.plate}`, {
+    plate: newHire.plate, vehicle_type: "motorbike", amoeba_id: newHire.amoeba, make_model: newHire.vehicle, status: "active"
+  });
+}
+let nhOperator = (await get(opsBase, "/ops/v1/operators")).data.find((o) => o.person_id === nhPerson.person_id);
+if (!nhOperator) {
+  nhOperator = await post(opsBase, "/ops/v1/operators", `realistic-seed-operator-${newHire.externalId}`, {
+    person_id: nhPerson.person_id, operator_type: "rider", operator_class: "rider", operator_status: "active",
+    amoeba_id: newHire.amoeba, site_id: newHire.site, supervisor_person_id: tunde.person_id,
+    vehicle_id: nhVehicle.vehicle_id, daily_revenue_target_ngn: 25000
+  });
+}
+// Backdated cohort → the ramp anchor, then move the new-hire into it (overrides
+// the current-week cohort they auto-joined on creation).
+const rampStart = rampAnchorForDay(anchorDate, newHire.rampDay);
+const nhCohort = await post(opsBase, "/ops/v1/onboarding/cohorts", `realistic-seed-cohort-${newHire.externalId}`, {
+  operator_class: "rider", amoeba_id: newHire.amoeba, start_date: rampStart
+});
+await post(opsBase, `/ops/v1/onboarding/cohorts/${nhCohort.cohort_id}/members`, `realistic-seed-cohort-members-${newHire.externalId}`, {
+  operator_ids: [nhOperator.operator_id]
+});
+console.log(`Seeded a mid-ramp new-hire (${newHire.name}) — cohort started ${rampStart}, ~Day ${newHire.rampDay} of the ramp today.`);
+
 // Deterministic per-operator/per-date variation so re-runs are idempotent
 // and the generated month looks organic rather than repeated.
 function seededHash(text) {
