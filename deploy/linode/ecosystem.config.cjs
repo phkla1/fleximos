@@ -44,6 +44,13 @@ module.exports = {
       interpreter: path.join(REPO, "node_modules/.bin/tsx"),
       env: {
         ...fileEnv,
+        // ops-api is the single owner of the scheduler + worker (one process
+        // drains the job queue, so the DB has one writer). Hardcode it on so a
+        // fresh box can't silently run with no alert-watchdog / no scheduled
+        // ingests. Set after ...fileEnv (like PORT/HOST), so this literal wins
+        // over the env file; to split jobs back into separate worker.ts/
+        // scheduler.ts processes, remove this line (and set it in the env file).
+        FLEXI_EMBED_JOBS: "true",
         PORT: "4030",
         HOST: "127.0.0.1",
         FLEXI_OPS_DB_DIR: `${DATA}/ops-pglite`,
