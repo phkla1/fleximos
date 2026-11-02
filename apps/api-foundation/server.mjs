@@ -252,9 +252,11 @@ async function initDb() {
 
   const seeded = await one("SELECT person_id FROM people WHERE person_id = $1", ["person_founder_wole"]);
   if (!seeded) await seedDb();
-  // Demo amoebas/sites only seed when explicitly enabled (dev/test). A clean
-  // UAT/production install keeps the founder + service account but no demo org.
-  if (SEED_DEMO) await seedSites();
+  // Demo org (amoebas + sites) seeds only when explicitly enabled (dev/test),
+  // idempotently on every boot — so enabling demo mode on an existing install and
+  // restarting adds the missing org, not only a clean DB. Amoebas first (sites
+  // FK to them). A clean UAT/production install keeps no demo org.
+  if (SEED_DEMO) { await seedDemoAmoebas(); await seedSites(); }
 }
 
 async function addHistory(entityType, entityId, actorPersonId, changeType, diff) {
@@ -325,20 +327,28 @@ async function seedDb() {
     ]
   );
 
-  // Demo amoebas are dev/test scaffolding — a clean install lets HR create them.
-  // Distinct created_at per amoeba keeps `ORDER BY created_at ASC` stable
-  // (island, mainland, central) even after an amoeba is later updated — mirroring
-  // production, where amoebas are created at different times.
-  if (SEED_DEMO) for (const [index, amoeba] of [
+}
+
+// Demo amoebas — the fixed IDs the ops demo roster references. Idempotent and
+// run on every boot under SEED_DEMO (see seedDb's caller), so enabling demo mode
+// on an EXISTING install and restarting adds the missing org — not only a clean
+// DB. A real UAT/production install leaves SEED_DEMO off and keeps no demo org.
+async function seedDemoAmoebas() {
+  const timestamp = now();
+  const amoebas = [
     { amoeba_id: "amoeba_island", name: "Island", classification: "operating" },
     { amoeba_id: "amoeba_mainland", name: "Mainland", classification: "operating" },
     { amoeba_id: "amoeba_central", name: "Central", classification: "shared_services" }
-  ].entries()) {
+  ];
+  for (const [index, amoeba] of amoebas.entries()) {
+    if (await one("SELECT amoeba_id FROM amoebas WHERE amoeba_id = $1", [amoeba.amoeba_id])) continue;
     const record = {
       ...amoeba,
       status: "active",
       parent_amoeba_id: null,
       supervisor_person_id: null,
+      // Distinct created_at keeps `ORDER BY created_at ASC` stable (island,
+      // mainland, central), mirroring production where amoebas are made over time.
       created_at: new Date(Date.parse(timestamp) + index).toISOString(),
       updated_at: timestamp
     };
@@ -357,14 +367,11 @@ async function seedDb() {
         record.updated_at
       ]
     );
-    await addHistory("amoeba", record.amoeba_id, ownerPerson.person_id, "seeded", record);
+    await addHistory("amoeba", record.amoeba_id, "person_founder_wole", "seeded", record);
   }
 }
 
 async function seedSites() {
-  const existing = await one("SELECT site_id FROM amoeba_sites LIMIT 1");
-  if (existing) return;
-
   const timestamp = now();
   const sites = [
     {
@@ -408,6 +415,7 @@ async function seedSites() {
   ];
 
   for (const site of sites) {
+    if (await one("SELECT site_id FROM amoeba_sites WHERE site_id = $1", [site.site_id])) continue;
     const record = { address: null, accommodation_capacity: 0, ...site, status: "active", created_at: timestamp, updated_at: timestamp };
     await exec(
       `INSERT INTO amoeba_sites
