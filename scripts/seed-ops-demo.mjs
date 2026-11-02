@@ -211,6 +211,17 @@ if (founderOperator?.operator_status === "active") {
 for (const item of operators) {
   let operator = roster.find((candidate) => candidate.person_id === item.personId);
   if (!operator) {
+    // Re-run safety: if the intended vehicle is already held by another active
+    // operator (left over from earlier testing on this DB), don't collide —
+    // create the operator without the vehicle rather than aborting the whole
+    // seed. The operator still seeds; only the vehicle link is skipped.
+    const vehicleTaken = item.vehicleId && roster.some((candidate) =>
+      candidate.vehicle_id === item.vehicleId
+      && candidate.operator_status === "active"
+      && candidate.person_id !== item.personId);
+    if (vehicleTaken) {
+      console.warn(`  ↳ ${item.name}: vehicle ${item.plate} already assigned — seeding this operator without a vehicle.`);
+    }
     operator = await post(opsBase, "/ops/v1/operators", `realistic-seed-operator-${item.externalId}`, {
       person_id: item.personId,
       operator_type: item.type,
@@ -218,7 +229,7 @@ for (const item of operators) {
       amoeba_id: item.amoeba,
       site_id: item.site,
       supervisor_person_id: tunde.person_id,
-      vehicle_id: item.vehicleId || null,
+      vehicle_id: vehicleTaken ? null : (item.vehicleId || null),
       daily_revenue_target_ngn: item.target
     });
     roster.push({ ...operator, platform_registrations: [] });
