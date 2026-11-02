@@ -27,7 +27,7 @@
     <!-- ============ APP ============ -->
     <section id="appView" hidden>
       <header class="app-header">
-        <div class="brand"><span>F</span><div><strong id="operatorName">Driver</strong><small>My cockpit</small></div></div>
+        <div class="brand"><span>F</span><div><strong id="operatorName">Driver</strong><small>My day</small></div></div>
         <div class="header-side">
           <span id="connectionStatus" class="subtle">Connecting</span>
           <button id="logoutButton" type="button" aria-label="Sign out">⎋</button>
@@ -41,7 +41,7 @@
       <p id="appNotice" class="notice" role="status"></p>
 
       <nav class="dock" aria-label="Driver sections">
-        <a href="#dispatch" data-tab-link="dispatch"><span class="dock-icon">📦</span>Dispatch<span id="dispatchDockBadge" class="dock-badge" hidden></span></a>
+        <a href="#dispatch" data-tab-link="dispatch"><span class="dock-icon">📦</span>Deliver<span id="dispatchDockBadge" class="dock-badge" hidden></span></a>
         <a href="#today" data-tab-link="today" class="active"><span class="dock-icon">◉</span>Today</a>
         <a href="#alerts" data-tab-link="alerts"><span class="dock-icon">⚠</span>Alerts<span id="alertDockBadge" class="dock-badge" hidden></span></a>
         <a href="#rank" data-tab-link="rank"><span class="dock-icon">🏆</span>Rank</a>
@@ -51,7 +51,7 @@
       <main>
         <!-- ============ MY DISPATCH ============ -->
         <section id="dispatch" class="tab-panel" data-tab="dispatch">
-          <div class="section-heading"><h2>My dispatch</h2><span id="dispatchSummary" class="subtle"></span></div>
+          <div class="section-heading"><h2>My deliveries</h2><span id="dispatchSummary" class="subtle"></span></div>
           <div id="dispatchList" class="card-list"></div>
         </section>
 
@@ -60,7 +60,7 @@
           <div id="checkinCard" class="checkin-card"></div>
 
           <figure class="gauge hero-gauge" id="earningsGauge">
-            <svg viewBox="0 0 120 120" role="img" aria-label="Net Earnings against target">
+            <svg viewBox="0 0 120 120" role="img" aria-label="Your earnings against target">
               <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
               <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
             </svg>
@@ -68,7 +68,7 @@
               <strong id="revenueTotal">₦0</strong>
               <span id="paceLabel" class="pace-status">not available</span>
               <small id="paceContext"></small>
-              <small class="gauge-source">Earnings from your Uber/Bolt platform accounts</small>
+              <small class="gauge-source">Your total earnings so far today (rides + deliveries)</small>
             </figcaption>
           </figure>
 
@@ -96,7 +96,7 @@
         <!-- ============ ALERTS ============ -->
         <section id="alerts" class="tab-panel" data-tab="alerts">
           <div class="section-heading"><h2>My alerts</h2><span id="alertCount" class="pill open">0</span></div>
-          <p class="section-intro">Your supervisor sees these too. If something outside your control happened, explain it — your supervisor reviews every reason.</p>
+          <p class="section-intro">Your supervisor sees these too. If something wasn't your fault, tap to explain — your supervisor reads every reason.</p>
           <div id="alertList" class="card-list"></div>
         </section>
 
@@ -110,7 +110,7 @@
               </svg>
               <figcaption><strong id="myRank">—</strong><span>my rank</span><small id="myScore"></small></figcaption>
             </figure>
-            <p class="subtle">Last 7 days across your amoeba. Score blends acceptance, time online and cash discipline.</p>
+            <p class="subtle">Last 7 days across your team. Your score comes from how often you accept jobs, how long you stay online, and handing in cash on time.</p>
           </div>
           <div class="section-heading"><h2>Leaderboard</h2></div>
           <div id="leaderboard" class="card-list"></div>
@@ -119,7 +119,7 @@
         <!-- ============ REPORT ============ -->
         <section id="report" class="tab-panel" data-tab="report">
           <div class="section-heading"><h2>Get support</h2></div>
-          <p class="section-intro">Tell your supervisor immediately when something happens in the field. Add a photo where it helps — the camera opens directly so the picture is time-stamped and credible.</p>
+          <p class="section-intro">Tell your supervisor straight away if something happens while you're out. Add a photo if it helps — it opens the camera so the photo has the time on it.</p>
           <button id="supportButton" type="button" class="sos-button">🆘 Get support now</button>
 
           <div class="section-heading"><h2>Report a vehicle problem</h2></div>

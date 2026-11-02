@@ -36,6 +36,41 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
+/* ---------- plain-language copy ----------
+   Everything a rider reads should sound like a person talking, not a system.
+   Alert/status codes are translated to short everyday sentences here; anything
+   not in a map falls back to the words with underscores removed. */
+const ALERT_COPY = {
+  revenue_pace_at_risk: "You're behind on today's earnings target",
+  not_seen_today: "We haven't seen you working yet today",
+  currently_offline: "Your app looks offline — go back online to get jobs",
+  high_usage_low_earnings: "You've driven a lot but earned little today",
+  fuel_without_activity: "You got fuel but haven't started working",
+  delivery_behind_schedule: "You're running behind on your deliveries",
+  inspection_overdue: "Your bike is due for its safety check"
+};
+const PACE_LABELS = {
+  at_risk: "Behind target",
+  behind: "Slightly behind",
+  on_track: "On track",
+  ahead: "Ahead",
+  not_available: "Not started yet"
+};
+const LIVE_LABELS = {
+  not_seen_today: "Not working yet",
+  offline: "Offline",
+  checked_in: "Working",
+  checked_out: "Finished for today"
+};
+const plainWords = (value) => String(value ?? "").replaceAll("_", " ");
+const alertTitle = (type) => ALERT_COPY[type] || plainWords(type);
+const paceLabel = (status) => PACE_LABELS[status] || plainWords(status);
+const liveLabel = (status) => LIVE_LABELS[status] || plainWords(status);
+const alertWaitLabel = (status) =>
+  status === "acknowledged" || status === "in_progress" || status === "snoozed"
+    ? "Your supervisor has seen this"
+    : "Waiting for your supervisor";
+
 async function api(base, path, options = {}) {
   const response = await fetch(`${base}${path}`, {
     ...options,
@@ -175,7 +210,7 @@ document.addEventListener("change", (event) => {
 function renderTimeline() {
   const events = [];
   for (const alert of currentAlerts) {
-    events.push({ at: alert.fired_at, label: `${String(alert.alert_type).replaceAll("_", " ")} alert`, tone: "red" });
+    events.push({ at: alert.fired_at, label: alertTitle(alert.alert_type), tone: "red" });
     if (alert.deviation_submitted_at) events.push({ at: alert.deviation_submitted_at, label: "You sent an explanation", tone: "yellow" });
     if (alert.resolved_at) events.push({ at: alert.resolved_at, label: "Alert resolved", tone: "green" });
   }
@@ -321,17 +356,21 @@ async function load() {
   currentIncidents = incidentPage.data.filter((incident) => incident.operator_id === operator.operator_id);
   currentFuel = fuelPage.data.filter((issue) => issue.operator_id === operator.operator_id);
   const mileage = mileagePage.data.find((row) => row.operator_id === operator.operator_id);
-  // The target is net earnings, so the gauge shows net earnings against it.
-  const revenue = performance.reduce((sum, row) => sum + Number(row.net_earnings_ngn || 0), 0);
+  const rideEarned = performance.reduce((sum, row) => sum + Number(row.net_earnings_ngn || 0), 0);
   const trips = performance.reduce((sum, row) => sum + Number(row.trips_total || 0), 0);
   const hours = performance.reduce((sum, row) => sum + Number(row.hours_online || 0), 0);
   const acceptanceRows = performance.filter((row) => Number(row.acceptance_pct));
   const acceptance = acceptanceRows.length
     ? acceptanceRows.reduce((sum, row) => sum + Number(row.acceptance_pct), 0) / acceptanceRows.length
     : null;
-  const paceStatus = String(board.pace_status || "not_available");
-  const target = Number(board.range_revenue_target_ngn ?? board.daily_revenue_target_ngn ?? 0);
-  const pacePct = target ? revenue / target * 100 : 0;
+  // The gauge shows COMBINED earnings (rides + scheduled deliveries) against the
+  // day's target — the same pace the alert engine uses — so a rider doing
+  // deliveries is never shown "behind" on ride revenue alone. Falls back to the
+  // ride-only figure only when today's pacing isn't available.
+  const earnedToday = pace ? Number(pace.combined_earned_ngn || 0) : rideEarned;
+  const paceStatus = String(pace?.combined_pace_status || board.pace_status || "not_available");
+  const target = Number(pace?.daily_revenue_target_ngn ?? board.range_revenue_target_ngn ?? board.daily_revenue_target_ngn ?? 0);
+  const pacePct = target ? earnedToday / target * 100 : 0;
 
   el.operatorName.textContent = profile.person?.display_name || "Driver";
   // Onboarding ramp: the gauge target is already the ramped (fair) target; label
@@ -339,10 +378,10 @@ async function load() {
   const onboardingRamp = pace?.onboarding_ramp || board.onboarding_ramp || null;
   const targetLabel = onboardingRamp
     ? `Onboarding Day ${onboardingRamp.day_n}/${onboardingRamp.total_days} · target ${money(target)}`
-    : (target ? `${Math.round(pacePct)}% of ${money(target)} target` : "No target configured");
-  renderGauge("earningsGauge", pacePct, money(revenue), null, targetLabel,
+    : (target ? `${Math.round(pacePct)}% of ${money(target)} target` : "No target set yet");
+  renderGauge("earningsGauge", pacePct, money(earnedToday), null, targetLabel,
     ["ahead", "on_track"].includes(paceStatus) ? "green" : paceStatus === "behind" ? "yellow" : paceStatus === "at_risk" ? "red" : "green");
-  el.paceLabel.textContent = paceStatus.replaceAll("_", " ");
+  el.paceLabel.textContent = paceLabel(paceStatus);
   el.paceLabel.className = `pace-status ${paceStatus}`;
   if (pace && Number(pace.scheduled_assigned || 0) > 0) {
     // Resumption-aware: after scheduled deliveries, show what's left to earn
@@ -353,11 +392,11 @@ async function load() {
   } else {
     el.paceContext.textContent = board.expected_revenue_ngn
       ? `${money(board.expected_revenue_ngn)} expected by now`
-      : "Waiting for platform activity";
+      : "Waiting for you to start work";
   }
 
   const status = String(board.current_status || "not_seen_today");
-  el.liveStatus.textContent = status.replaceAll("_", " ");
+  el.liveStatus.textContent = liveLabel(status);
   el.liveDot.className = `status-dot ${status}`;
   el.lastSeen.textContent = board.last_seen_at ? `Last seen ${timeOf(board.last_seen_at)}` : "";
 
@@ -375,10 +414,10 @@ async function load() {
   el.alertDockBadge.hidden = !currentAlerts.length;
   el.alertDockBadge.textContent = currentAlerts.length;
   el.alertList.innerHTML = currentAlerts.length ? currentAlerts.map((alert) => `
-    <div class="card-row alert-card tier-${escapeHtml(alert.tier)}"><strong>${escapeHtml(alert.alert_type.replaceAll("_", " "))}</strong>
-    <span>${escapeHtml(alert.platform_display_name || "General")} · Tier ${escapeHtml(alert.tier)} · ${escapeHtml(alert.resolution_status.replaceAll("_", " "))}</span>
+    <div class="card-row alert-card tier-${escapeHtml(alert.tier)}"><strong>${escapeHtml(alertTitle(alert.alert_type))}</strong>
+    <span>${escapeHtml(alertWaitLabel(alert.resolution_status))}</span>
     ${alert.deviation_reason_code
-      ? `<span class="explain-status">Reason sent: ${escapeHtml(String(alert.deviation_reason_code).replaceAll("_", " "))} (${escapeHtml(alert.deviation_review_status || "pending")})</span>`
+      ? `<span class="explain-status">You said: ${escapeHtml(plainWords(alert.deviation_reason_code))} — your supervisor is reviewing it.</span>`
       : `<button type="button" class="explain-button" data-explain-alert="${escapeHtml(alert.alert_id)}">Explain what happened</button>`}
     </div>
   `).join("") : `<div class="empty all-clear">No open alerts. Clean sheet. ✅</div>`;
@@ -416,17 +455,18 @@ async function load() {
       <span class="leader-rank">${mine.rank}</span>
       <div><strong>You</strong><span>${line(mine)}</span></div>
       <strong class="leader-score">${Math.round(mine.performance_score)}</strong>
-    </div>` : "") : `<div class="empty">No amoeba activity in the last 7 days.</div>`;
+    </div>` : "") : `<div class="empty">Your team has no activity in the last 7 days.</div>`;
   // Tell the rider honestly when their own score is running on incomplete data.
   if (mine && mine.data_quality && mine.data_quality.confidence !== "ok") {
     el.leaderboard.insertAdjacentHTML("beforeend",
-      `<div class="leader-note">⚠ Part of your score is on incomplete data (${mine.data_quality.issues.map((i) => i.component.replace("_", "-")).join(", ")}). Your supervisor can confirm or enter it.</div>`);
+      `<div class="leader-note">⚠ Some of your score is missing today's data, so it may not be complete. Your supervisor can sort this out.</div>`);
   }
 
+  const distanceKm = mileage && (mileage.official_distance_km ?? mileage.tracker_distance_km);
   el.mileage.innerHTML = mileage ? `
-    <div class="card-row"><strong>${mileage.fuel_quantity === null ? "Fuel not yet confirmed" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} issued`}</strong>
-    <span>Official: ${mileage.official_distance_km === null ? "awaiting data" : `${Number(mileage.official_distance_km)} km`} · Tracker: ${mileage.tracker_distance_km === null ? "unavailable" : `${Number(mileage.tracker_distance_km)} km`}</span></div>
-  ` : `<div class="empty">No mileage record is available.</div>`;
+    <div class="card-row"><strong>${mileage.fuel_quantity === null ? "Fuel not confirmed yet" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} given`}</strong>
+    <span>${distanceKm === null || distanceKm === undefined ? "Distance not in yet" : `${Number(distanceKm)} km so far today`}</span></div>
+  ` : `<div class="empty">Nothing to show here yet.</div>`;
 
   const myDeliveries = deliveryPage.data.filter((assignment) => assignment.operator_id === operator.operator_id);
   currentAssignments = myDeliveries;
@@ -466,7 +506,7 @@ function renderDispatch() {
     sum.failed += Number(item.failed_count); return sum;
   }, { assigned: 0, delivered: 0, failed: 0 });
   el.dispatchSummary.textContent = currentAssignments.length
-    ? `${totals.delivered} of ${totals.assigned} delivered · ${totals.failed} failed · ${Math.max(0, totals.assigned - totals.delivered - totals.failed)} pending`
+    ? `${totals.delivered} of ${totals.assigned} delivered · ${totals.failed} failed · ${Math.max(0, totals.assigned - totals.delivered - totals.failed)} left`
     : "";
 
   el.dispatchList.innerHTML = currentAssignments.length ? currentAssignments.map((assignment) => {
@@ -508,7 +548,7 @@ function renderDispatch() {
         <button type="button" class="explain-button" data-save-progress="${escapeHtml(assignment.assignment_id)}">Save progress</button>
       </div>`}
     </div>`;
-  }).join("") : `<div class="empty">No delivery work assigned for this range. Your supervisor assigns dispatch batches.</div>`;
+  }).join("") : `<div class="empty">No deliveries assigned for these dates. Your supervisor adds them.</div>`;
 }
 
 async function stopStatus(stopId, payload, message) {
@@ -599,7 +639,7 @@ document.addEventListener("click", async (event) => {
   if (deliver) {
     activeStopId = deliver.dataset.stopDeliver;
     const stop = currentStops.find((item) => item.stop_id === activeStopId);
-    el.podContext.textContent = `${stop.customer_name} · ${stop.parcel_count} parcel${stop.parcel_count === 1 ? "" : "s"}. Photo and signature are optional but make the delivery defensible.`;
+    el.podContext.textContent = `${stop.customer_name} · ${stop.parcel_count} parcel${stop.parcel_count === 1 ? "" : "s"}. Photo and signature are optional, but they prove you delivered it.`;
     stagedPhotos.pod = null;
     const status = document.querySelector('[data-photo-status="pod"]');
     if (status) status.textContent = "";
@@ -629,7 +669,7 @@ document.addEventListener("click", async (event) => {
         body: JSON.stringify({ ...payload, status: "out_for_delivery" })
       });
       await load();
-      appMessage("Progress saved — your supervisor confirms at closeout.");
+      appMessage("Saved — your supervisor will confirm at the end of the day.");
     } catch (error) { appMessage(error.message, true); }
   }
 });
@@ -733,7 +773,7 @@ document.addEventListener("click", (event) => {
   if (!button) return;
   explainingAlertId = button.dataset.explainAlert;
   const alert = currentAlerts.find((item) => item.alert_id === explainingAlertId);
-  el.explainContext.textContent = `Your supervisor has been notified about “${String(alert.alert_type).replaceAll("_", " ")}”. Tell them what happened.`;
+  el.explainContext.textContent = `This is about: “${alertTitle(alert.alert_type)}”. Tell your supervisor what happened.`;
   el.explainNote.value = "";
   el.explainDialog.showModal();
 });

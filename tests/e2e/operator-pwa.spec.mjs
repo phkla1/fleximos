@@ -19,7 +19,7 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator("#operatorName")).not.toHaveText("Driver");
     await expect(page.locator("#earningsGauge")).toBeVisible();
     await expect(page.locator("#revenueTotal")).not.toHaveText("₦0");
-    await expect(page.locator(".gauge-source")).toContainText("Uber/Bolt platform accounts");
+    await expect(page.locator(".gauge-source")).toContainText("total earnings so far today");
     await expect(page.locator(".stat-chips span")).toHaveCount(4);
     await expect(page.locator("#assignment .card-row").first()).toBeVisible();
     await expect(page.locator("#timeline li").first()).toBeVisible();
