@@ -135,6 +135,21 @@ for (const accountId of ["platform_uber_cars", "platform_uber_courier"]) {
   await patch(opsBase, `/ops/v1/platform-accounts/${accountId}`, `realistic-seed-activate-${accountId}`, { is_active: true });
 }
 
+// Preflight: the demo roster lives in the fixed demo amoebas/sites, which only
+// Foundation's demo seed creates (with those exact IDs — the create API mints
+// random ones). If Foundation wasn't started in demo mode they won't exist and
+// the run would fail cryptically mid-way, so check up front and say how to fix.
+const existingAmoebas = (await get(foundationBase, "/amoeba/v1/amoebas")).data.map((a) => a.amoeba_id);
+const requiredAmoebas = [...new Set(operators.map((o) => o.amoeba))];
+const missingAmoebas = requiredAmoebas.filter((id) => !existingAmoebas.includes(id));
+if (missingAmoebas.length) {
+  throw new Error(
+    `Foundation is missing the demo org (${missingAmoebas.join(", ")}). `
+    + `These fixed-ID amoebas/sites are only created when Foundation runs in demo mode. `
+    + `Set FLEXI_SEED_DEMO=true for the fleximos-foundation process and restart it, then re-run this seed.`
+  );
+}
+
 const peoplePage = await get(foundationBase, "/identity/v1/people");
 let people = peoplePage.data;
 let tunde = people.find((person) => person.display_name.toLowerCase() === "tunde");
