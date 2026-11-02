@@ -10,7 +10,7 @@ const ids = [
   "grossPnl", "pnlContext", "escalationCount", "escalationContext", "notice", "updatedLabel", "teamPortfolio",
   "escalationSummary", "escalationList", "incidentList", "fleetFollowups",
   "pnlRangeLabel", "pnlTotals", "pnlList", "expenseForm", "expenseList",
-  "leaderboardList", "leaderboardIntro", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
+  "leaderboardList", "leaderboardIntro", "dataQualityPanel", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
   "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList",
   "integrationList", "integrationSummary",
   "attendanceRows", "attendanceSummary"
@@ -332,18 +332,55 @@ function renderLeaderboard() {
   const board = state.leaderboard;
   if (!board) return;
   el.leaderboardIntro.textContent = `Performance Score weights — acceptance ${Math.round(board.weights.acceptance_weight * 100)}%, time online ${Math.round(board.weights.online_weight * 100)}%, cash ${Math.round(board.weights.cash_weight * 100)}%, Net Earnings ${Math.round(board.weights.revenue_weight * 100)}%. Period ${board.period_start} → ${board.period_end}.`;
+  renderDataQuality();
   const medals = { gold: "🥇", silver: "🥈", bronze: "🥉" };
-  // A component that doesn't apply to an operator (e.g. cash for a delivery
-  // rider) is null; show "n/a" rather than a misleading 0 or 100.
-  const comp = (value) => value === null || value === undefined ? "n/a" : value;
-  el.leaderboardList.innerHTML = board.entries.length ? board.entries.map((entry) => `
+  // A component carries a state, not just a score. Show the number when measured
+  // or a real data gap (0); show a labelled marker — never a misleading 0/100 —
+  // when it was held out of the blend (not applicable or unconfirmed).
+  const comp = (value, state) => {
+    if (state === "data_gap") return `${value ?? 0} ⚠`;
+    if (state === "unconfirmed") return "unconfirmed";
+    if (state === "not_applicable" || value === null || value === undefined) return "n/a";
+    return value;
+  };
+  el.leaderboardList.innerHTML = board.entries.length ? board.entries.map((entry) => {
+    const st = entry.component_states || {};
+    const dq = entry.data_quality || { confidence: "ok", issues: [] };
+    const flag = dq.confidence !== "ok"
+      ? `<span class="dq-flag" title="${escapeHtml(dq.issues.map((i) => i.reason).join(" "))}">data incomplete</span>`
+      : "";
+    return `
     <article class="data-row ${entry.rank <= 3 ? "alert" : ""}" style="${entry.rank <= 3 ? "border-left-color: var(--green);" : ""}">
       <div><strong>${entry.badge ? `${medals[entry.badge]} ` : `${entry.rank}. `}${escapeHtml(operatorName(entry.operator_id))}</strong><small>${escapeHtml(amoebaName(entry.amoeba_id))}${entry.vehicle_plate ? ` · ${escapeHtml(entry.vehicle_plate)}` : ""} · ${entry.days_worked} day${entry.days_worked === 1 ? "" : "s"} worked</small></div>
-      <div><span class="row-label">Score</span><strong>${entry.performance_score}</strong><small>acceptance ${comp(entry.components.acceptance_score)} · online ${comp(entry.components.time_online_score)} (${(Number(entry.hours_online) / Math.max(1, entry.days_worked)).toFixed(1)}h/day vs ${Number(board.expected_hours_per_operator || 10)}h expected) · cash ${comp(entry.components.cash_receipt_score)}</small></div>
+      <div><span class="row-label">Score</span><strong>${entry.performance_score}</strong> ${flag}<small>acceptance ${comp(entry.components.acceptance_score, st.acceptance)} · online ${comp(entry.components.time_online_score, st.time_online)} (${(Number(entry.hours_online) / Math.max(1, entry.days_worked)).toFixed(1)}h/day vs ${Number(board.expected_hours_per_operator || 10)}h expected) · cash ${comp(entry.components.cash_receipt_score, st.cash_receipt)}</small></div>
       <div><span class="row-label">Net Earnings</span><strong>${money(entry.net_earnings_ngn)}</strong><small>${entry.trips_completed} trips · ${entry.hours_online}h online</small></div>
       <div><span class="row-label">Cash</span><strong>${money(entry.remitted_ngn)}</strong><small>${Number(entry.cash_shortfall_ngn) > 0 ? `${money(entry.cash_shortfall_ngn)} short` : "No shortfall"}</small></div>
       <div></div>
-    </article>`).join("") : '<div class="empty">No operators had activity in the selected period.</div>';
+    </article>`;
+  }).join("") : '<div class="empty">No operators had activity in the selected period.</div>';
+}
+
+// Fleet-wide data-quality consolidation: how much of the board to trust, and
+// the two actionable buckets — pipeline gaps (chase the feed) and unconfirmed
+// on-demand (supervisor confirms delivery-only or enters the figures).
+function renderDataQuality() {
+  const summary = state.leaderboard?.data_quality_summary;
+  if (!el.dataQualityPanel) return;
+  if (!summary || !summary.total_operators) { el.dataQualityPanel.innerHTML = ""; return; }
+  const complete = summary.completeness_pct >= 100;
+  const bucket = (rows, title, hint) => rows.length ? `
+    <div class="dq-bucket">
+      <h4>${escapeHtml(title)} <span class="dq-count">${rows.length}</span></h4>
+      <p class="dq-hint">${escapeHtml(hint)}</p>
+      <ul>${rows.map((row) => `<li><strong>${escapeHtml(operatorName(row.operator_id))}</strong> <span class="subtle">${escapeHtml(amoebaName(row.amoeba_id))}</span> — ${escapeHtml(row.issues.map((i) => i.reason).join(" "))}</li>`).join("")}</ul>
+    </div>` : "";
+  el.dataQualityPanel.innerHTML = `
+    <div class="dq-head ${complete ? "ok" : "warn"}">
+      <strong>Leaderboard ${summary.completeness_pct}% complete</strong>
+      <span class="subtle">${summary.complete_operators} of ${summary.total_operators} operators scored on full data${complete ? "" : ` · ${summary.total_operators - summary.complete_operators} need attention`}</span>
+    </div>
+    ${bucket(summary.pipeline_gaps, "Pipeline gaps", "Ride activity happened but a figure never imported — chase the feed, or have the supervisor enter it. Counts as 0 in the score until fixed.")}
+    ${bucket(summary.unconfirmed_on_demand, "Unconfirmed on-demand", "No on-demand data flowed. The supervisor must confirm it was delivery-only (then it's excluded) or enter the figures. Held out of the score meanwhile.")}`;
 }
 
 function setupReportForm() {
@@ -671,12 +708,14 @@ document.getElementById("exportPnlCsv").addEventListener("click", () => {
 document.getElementById("exportLeaderboardCsv").addEventListener("click", () => {
   if (!state.leaderboard) return;
   downloadCsv(`fleximotion-leaderboard-${state.leaderboard.period_start}-to-${state.leaderboard.period_end}.csv`, [
-    ["rank", "operator", "amoeba", "vehicle_plate", "days_worked", "performance_score", "acceptance_score",
-      "time_online_score", "cash_receipt_score", "revenue_score", "net_earnings_ngn", "trips_completed",
-      "hours_online", "remitted_ngn", "cash_shortfall_ngn"],
+    ["rank", "operator", "amoeba", "vehicle_plate", "days_worked", "performance_score", "data_confidence",
+      "data_issues", "acceptance_score", "time_online_score", "cash_receipt_score", "revenue_score", "net_earnings_ngn",
+      "trips_completed", "hours_online", "remitted_ngn", "cash_shortfall_ngn"],
     ...state.leaderboard.entries.map((entry) => [
       entry.rank, operatorName(entry.operator_id), amoebaName(entry.amoeba_id), entry.vehicle_plate || "",
-      entry.days_worked, entry.performance_score, entry.components.acceptance_score, entry.components.time_online_score,
+      entry.days_worked, entry.performance_score, entry.data_quality?.confidence ?? "ok",
+      (entry.data_quality?.issues || []).map((i) => i.component).join("; "),
+      entry.components.acceptance_score, entry.components.time_online_score,
       entry.components.cash_receipt_score, entry.components.revenue_score ?? "", entry.net_earnings_ngn,
       entry.trips_completed, entry.hours_online, entry.remitted_ngn, entry.cash_shortfall_ngn
     ])

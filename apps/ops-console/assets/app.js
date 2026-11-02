@@ -21,6 +21,7 @@ const state = {
   deliveryStops: [],
   deliverySummary: null,
   checkins: [],
+  onDemandToConfirm: [],
   vehiclePositions: { positions: [], no_feed: [] },
   integrationStatus: [],
   operatingDate: null,
@@ -35,7 +36,7 @@ const el = Object.fromEntries([
   "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
   "maintenanceForm", "maintenanceList", "alertList", "alertFilter",
   "topActions", "conditionGrid", "carRevenueChip", "bikeRevenueChip",
-  "deliveryList", "deliveryBatchForm", "deliverySummaryLabel", "deliveryFeeds",
+  "deliveryList", "deliveryBatchForm", "deliverySummaryLabel", "deliveryFeeds", "onDemandConfirm",
   "teamCountChip", "closeoutList", "alertDockBadge", "scopeLabel",
   "operatorDialog", "operatorDialogTitle", "operatorDialogBody",
   "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton",
@@ -839,6 +840,26 @@ function renderBoard(analysis) {
       <span class="pill">${escapeHtml(String(record.current_status).replaceAll("_", " "))}</span>
     </article>
   `).join("") : `<div class="empty">No performance records for this range.</div>`;
+  renderOnDemandConfirm();
+}
+
+// Operators with no on-demand (ride-hailing) data for the operating day that the
+// supervisor hasn't yet accounted for. Each can be confirmed as "delivery-only"
+// (which legitimately drops acceptance/cash from their score) — or the figures
+// entered via the normal daily-record path. Clears the leaderboard flag the
+// manager sees.
+function renderOnDemandConfirm() {
+  if (!el.onDemandConfirm) return;
+  const rows = state.onDemandToConfirm || [];
+  if (!rows.length) { el.onDemandConfirm.innerHTML = ""; return; }
+  el.onDemandConfirm.innerHTML = `
+    <div class="odc-head"><strong>On-demand data to confirm</strong>
+      <span class="subtle">${rows.length} operator${rows.length === 1 ? "" : "s"} had no ride-hailing data for ${escapeHtml(state.operatingDate)}. Confirm delivery-only, or enter their figures.</span></div>
+    ${rows.map((row) => `
+      <article class="odc-row">
+        <div><strong>${escapeHtml(personName(row.person_id))}</strong><small>${escapeHtml(row.issues.map((i) => i.reason).join(" "))}</small></div>
+        <button type="button" class="secondary" data-confirm-no-on-demand="${escapeHtml(row.operator_id)}">Confirm: delivery-only</button>
+      </article>`).join("")}`;
 }
 
 const PACE_TONE = { at_risk: "red", behind: "yellow", on_track: "green", ahead: "green", not_available: "grey" };
@@ -1700,7 +1721,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, revenueSources, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins] = await Promise.all([
+  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, revenueSources, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins, leaderboardPage] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/pacing?record_date=${operatingDate}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/alerts?${range}`),
@@ -1721,7 +1742,8 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops(`/ops/v1/delivery-summary?${range}`).catch(() => null),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
-    ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] }))
+    ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/leaderboard?period_start=${operatingDate}&period_end=${operatingDate}`).catch(() => null)
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -1760,6 +1782,11 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     // The cockpit check-in queue is today's check-ins — a "now" action, decoupled
     // from whatever historical day the board happens to be showing.
     checkins: (todayCheckins.data || []).filter((row) => assignedIds.has(row.operator_id) || assignedAmoebas.has(row.amoeba_id)),
+    // Operators whose on-demand (ride-hailing) data didn't flow for the operating
+    // day and who the supervisor hasn't yet confirmed as delivery-only. Scoped to
+    // this supervisor's own operators.
+    onDemandToConfirm: (leaderboardPage?.data_quality_summary?.unconfirmed_on_demand || [])
+      .filter((row) => assignedIds.has(row.operator_id)),
     integrationStatus: (integrationStatus.integrations || []).filter((row) => row.category === "tracker"),
     vehiclePositions: {
       positions: (vehiclePositions.positions || []).filter((row) =>
@@ -2135,6 +2162,18 @@ document.addEventListener("click", async (event) => {
         body: JSON.stringify({})
       });
       await refresh("Rider figures confirmed.");
+    } catch (error) { showError(error); }
+    return;
+  }
+  const confirmNoOnDemand = event.target.closest("[data-confirm-no-on-demand]");
+  if (confirmNoOnDemand) {
+    try {
+      await ops("/ops/v1/on-demand-confirmations", {
+        method: "POST",
+        headers: { "Idempotency-Key": key("odconfirm") },
+        body: JSON.stringify({ operator_id: confirmNoOnDemand.dataset.confirmNoOnDemand, record_date: state.operatingDate })
+      });
+      await refresh("Confirmed: no on-demand work that day.");
     } catch (error) { showError(error); }
     return;
   }

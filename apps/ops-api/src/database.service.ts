@@ -268,6 +268,25 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_ops_record_overrides_lookup
         ON ops_daily_record_overrides(operator_id, record_date DESC);
 
+      -- A supervisor's answer to "this operator had NO on-demand (ride-hailing)
+      -- data for this date — is that real?". Recording one here means "confirmed:
+      -- delivery-only / genuinely no on-demand", which turns the leaderboard's
+      -- "unconfirmed" on-demand flag into a legitimate not-applicable (the
+      -- acceptance/cash components stay out of the blend without a data-problem
+      -- flag). Absence of a row = still unconfirmed = still flagged.
+      CREATE TABLE IF NOT EXISTS ops_on_demand_confirmations (
+        confirmation_id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),
+        record_date DATE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'no_on_demand',
+        note TEXT,
+        confirmed_by TEXT NOT NULL,
+        confirmed_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (operator_id, record_date)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ops_on_demand_confirmations_date
+        ON ops_on_demand_confirmations(record_date DESC);
+
       CREATE TABLE IF NOT EXISTS ops_revenue_pace_profiles (
         pace_profile_id TEXT PRIMARY KEY,
         vehicle_type TEXT NOT NULL,

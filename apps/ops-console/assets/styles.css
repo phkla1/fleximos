@@ -563,3 +563,15 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .feed-chip.ok .feed-tag { color: var(--green); }
 .feed-chip.warn .feed-tag { color: var(--amber); }
 .feed-chip small { display: block; color: var(--muted); font-size: 12px; }
+
+/* ---------- on-demand confirmation (leaderboard data quality) ---------- */
+.on-demand-confirm { display: grid; gap: 8px; margin: 4px 0 14px; }
+.on-demand-confirm:empty { display: none; }
+.odc-head { display: grid; gap: 2px; padding: 10px 13px; border-radius: 10px;
+  background: #fbf4e8; border-left: 4px solid var(--amber, #9a5c0b); }
+.odc-head strong { font-size: 14px; }
+.odc-row { display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  padding: 10px 13px; background: var(--surface, #fff); border: 1px solid var(--line, #d9e2db); border-radius: 10px; }
+.odc-row div { display: grid; gap: 2px; }
+.odc-row small { color: var(--muted, #5d6b64); font-size: 12px; }
+.odc-row button { flex: 0 0 auto; white-space: nowrap; }

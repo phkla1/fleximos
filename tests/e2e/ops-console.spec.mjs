@@ -360,6 +360,30 @@ test.describe("Supervisor Ops console", () => {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     expect(overflow).toBe(false);
   });
+
+  test("confirms an operator had no on-demand work, clearing the data-quality flag", async ({ page }, testInfo) => {
+    // This test mutates shared demo state (confirms the sole unconfirmed
+    // operator), so pin it to one project to avoid racing the other project's
+    // reads of the same flag.
+    test.skip(testInfo.project.name !== "chromium-desktop", "runs once, in the desktop project");
+    await page.goto(`${url}#board`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+
+    // The demo's Konga couriers did delivery only today, so their on-demand data
+    // is absent and awaits the supervisor's confirmation.
+    const panel = page.locator("#onDemandConfirm");
+    await expect(panel).toContainText("On-demand data to confirm");
+    const rowsBefore = await panel.locator(".odc-row").count();
+    expect(rowsBefore).toBeGreaterThan(0);
+
+    const firstRow = panel.locator(".odc-row").first();
+    const operatorName = (await firstRow.locator("strong").textContent())?.trim();
+    await firstRow.getByRole("button", { name: "Confirm: delivery-only" }).click();
+    await expect(page.locator("#notice")).toContainText("no on-demand work");
+
+    // That operator is no longer flagged; the panel either shrinks or clears.
+    await expect(panel.locator(".odc-row").filter({ hasText: operatorName })).toHaveCount(0);
+  });
 });
 
 test.describe("Ops admin console", () => {

@@ -57,6 +57,13 @@ test.describe("role consoles", () => {
 
     await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
     await expect(page.locator("#leaderboardList .data-row")).not.toHaveCount(0);
+
+    // Data-quality consolidation: the manager always sees how much of the board
+    // is on complete data. (The specific "unconfirmed on-demand" bucket content
+    // is covered by the API test and the supervisor confirm-flow e2e, which
+    // mutates shared demo state, so it isn't asserted here.)
+    await expect(page.locator("#dataQualityPanel .dq-head")).toContainText("% complete");
+
     await page.locator("#leaderboardSort").getByRole("button", { name: "Trips" }).click();
     await expect(page.locator("#leaderboardSort").getByRole("button", { name: "Trips" })).toHaveClass(/active/);
 

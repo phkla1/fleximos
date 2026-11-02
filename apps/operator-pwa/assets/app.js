@@ -391,22 +391,37 @@ async function load() {
     mine ? (mine.performance_score >= 75 ? "green" : mine.performance_score >= 50 ? "yellow" : "red") : "green");
   el.myScore.textContent = mine ? `Score ${Math.round(mine.performance_score)}/100` : "";
   const medals = { gold: "🥇", silver: "🥈", bronze: "🥉" };
-  // A component that doesn't apply to this operator (e.g. cash for a delivery
-  // rider) comes back null; show "—" rather than a misleading 0 or 100.
-  const comp = (value) => value === null || value === undefined ? "—" : value;
+  // Each component carries a state. A measured value or a real gap (0) shows its
+  // number; a component held out of the score (not applicable, or on-demand data
+  // not yet confirmed) shows a word, never a misleading 0 or 100.
+  const comp = (value, stateVal) => {
+    if (stateVal === "data_gap") return `${value ?? 0}⚠`;
+    if (stateVal === "unconfirmed") return "pending";
+    if (stateVal === "not_applicable" || value === null || value === undefined) return "—";
+    return value;
+  };
+  const line = (entry) => {
+    const st = entry.component_states || {};
+    return `Acceptance ${comp(entry.components.acceptance_score, st.acceptance)} · Online ${comp(entry.components.time_online_score, st.time_online)} · Cash ${comp(entry.components.cash_receipt_score, st.cash_receipt)}`;
+  };
   el.leaderboard.innerHTML = leaderboard.length ? leaderboard.slice(0, 5).map((entry) => `
     <div class="leader-row ${entry.operator_id === operator.operator_id ? "me" : ""}">
       <span class="leader-rank">${entry.badge ? medals[entry.badge] : entry.rank}</span>
       <div><strong>${entry.operator_id === operator.operator_id ? "You" : `Driver ${entry.rank}`}</strong>
-      <span>Acceptance ${comp(entry.components.acceptance_score)} · Online ${comp(entry.components.time_online_score)} · Cash ${comp(entry.components.cash_receipt_score)}</span></div>
+      <span>${line(entry)}</span></div>
       <strong class="leader-score">${Math.round(entry.performance_score)}</strong>
     </div>
   `).join("") + (mine && mine.rank > 5 ? `
     <div class="leader-row me">
       <span class="leader-rank">${mine.rank}</span>
-      <div><strong>You</strong><span>Acceptance ${comp(mine.components.acceptance_score)} · Online ${comp(mine.components.time_online_score)} · Cash ${comp(mine.components.cash_receipt_score)}</span></div>
+      <div><strong>You</strong><span>${line(mine)}</span></div>
       <strong class="leader-score">${Math.round(mine.performance_score)}</strong>
     </div>` : "") : `<div class="empty">No amoeba activity in the last 7 days.</div>`;
+  // Tell the rider honestly when their own score is running on incomplete data.
+  if (mine && mine.data_quality && mine.data_quality.confidence !== "ok") {
+    el.leaderboard.insertAdjacentHTML("beforeend",
+      `<div class="leader-note">⚠ Part of your score is on incomplete data (${mine.data_quality.issues.map((i) => i.component.replace("_", "-")).join(", ")}). Your supervisor can confirm or enter it.</div>`);
+  }
 
   el.mileage.innerHTML = mileage ? `
     <div class="card-row"><strong>${mileage.fuel_quantity === null ? "Fuel not yet confirmed" : `${Number(mileage.fuel_quantity)} ${escapeHtml(mileage.fuel_unit)} issued`}</strong>

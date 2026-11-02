@@ -490,6 +490,21 @@ export class DepthController {
     return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.depth.updateLeaderboardConfig(body, actor.person_id));
   }
 
+  @ApiTags("Leaderboard")
+  @ApiBearerAuth()
+  @Post("ops/v1/on-demand-confirmations")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Supervisor confirms an operator had no on-demand (ride-hailing) work on a date, clearing the leaderboard's unconfirmed-data flag" })
+  async confirmNoOnDemand(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.depth.confirmNoOnDemand(body, actor.person_id));
+  }
+
   // ------------------------------------------------------------ escalations
 
   @ApiTags("Escalations")

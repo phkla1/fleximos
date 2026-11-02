@@ -339,17 +339,49 @@ test("ranks operators on the leaderboard and validates config weights", async ()
   assert.equal(top.badge, "gold");
   assert.ok(top.performance_score > 0 && top.performance_score <= 100);
   assert.ok(top.components.acceptance_score > 0);
-  // N/A-aware scoring: a component with no applicable data is null (not a
-  // misleading 0 or 100), and the blend renormalises over what applies.
+  // State-aware scoring: every component carries a state, and the rendered score
+  // must match it — never a misleading default 0/100 for a held-out metric.
+  //   measured       → a real number
+  //   data_gap       → 0 (counts against the operator, a visible data problem)
+  //   not_applicable → null (held out, no flag)
+  //   unconfirmed    → null (held out, flagged for a supervisor)
   for (const entry of leaderboard.body.entries) {
-    if (Number(entry.expected_cash_ngn) === 0) {
-      assert.equal(entry.components.cash_receipt_score, null, "no cash expected → cash is N/A, not a default 100");
-    }
-    if (Number(entry.trips_completed) === 0) {
-      assert.equal(entry.components.acceptance_score, null, "no ride-hailing trips → acceptance is N/A, not a 0");
+    const st = entry.component_states;
+    assert.ok(st, "every entry carries component_states");
+    // Cash is only scored when it was actually measured.
+    if (st.cash_receipt === "measured") assert.ok(entry.components.cash_receipt_score !== null);
+    else assert.equal(entry.components.cash_receipt_score, null, "cash is only a number when measured");
+    // Acceptance maps exactly to its state.
+    if (st.acceptance === "measured") assert.ok(entry.components.acceptance_score !== null);
+    if (st.acceptance === "data_gap") assert.equal(entry.components.acceptance_score, 0, "a data gap scores 0, not null");
+    if (st.acceptance === "not_applicable" || st.acceptance === "unconfirmed") {
+      assert.equal(entry.components.acceptance_score, null, "a held-out acceptance is null, not 0/100");
     }
     assert.ok(entry.performance_score >= 0 && entry.performance_score <= 100);
+    assert.ok(entry.data_quality && ["ok", "partial"].includes(entry.data_quality.confidence));
   }
+
+  // Fleet consolidation the manager reads.
+  const dq = leaderboard.body.data_quality_summary;
+  assert.ok(dq, "leaderboard carries a data_quality_summary");
+  assert.equal(dq.total_operators, leaderboard.body.entries.length);
+  assert.ok(dq.completeness_pct >= 0 && dq.completeness_pct <= 100);
+  assert.ok(Array.isArray(dq.pipeline_gaps) && Array.isArray(dq.unconfirmed_on_demand));
+
+  // Supervisor "no on-demand that day" confirmation: validates input and is
+  // idempotent per (operator, date).
+  const noOperator = await post("/ops/v1/on-demand-confirmations", "depth-odc-bad", { record_date: today });
+  assert.equal(noOperator.response.status, 400);
+  const confirm = await post("/ops/v1/on-demand-confirmations", "depth-odc-001", {
+    operator_id: top.operator_id, record_date: today, note: "Delivery-only day."
+  });
+  assert.equal(confirm.response.status, 200);
+  assert.equal(confirm.body.status, "no_on_demand");
+  const confirmAgain = await post("/ops/v1/on-demand-confirmations", "depth-odc-002", {
+    operator_id: top.operator_id, record_date: today
+  });
+  assert.equal(confirmAgain.response.status, 200);
+  assert.equal(confirmAgain.body.confirmation_id, confirm.body.confirmation_id, "same (operator, date) stays one row");
 
   const sorted = await request(`/ops/v1/leaderboard?period_start=${today}&period_end=${today}&sort=trips`);
   assert.equal(sorted.body.sort, "trips");

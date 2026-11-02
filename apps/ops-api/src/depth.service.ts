@@ -66,6 +66,16 @@ export class DepthService {
     return text;
   }
 
+  // Normalise a DB date (Date or string) to a YYYY-MM-DD key, matching how the
+  // deliveries rollup keys its per-day sets so the two can be compared.
+  private dayKey(value: unknown): string {
+    if (value instanceof Date) {
+      const pad = (part: number) => String(part).padStart(2, "0");
+      return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+    }
+    return String(value).slice(0, 10);
+  }
+
   private amount(value: unknown, field: string) {
     const result = Number(value ?? NaN);
     if (!Number.isFinite(result) || result < 0) throw new BadRequestException(`${field} must be a non-negative number.`);
@@ -1035,7 +1045,8 @@ export class DepthService {
               SUM(r.net_earnings_ngn) AS net_earnings_ngn,
               SUM(r.trips_completed) AS trips_completed,
               SUM(r.hours_online) AS hours_online,
-              AVG(NULLIF(r.acceptance_pct, 0)) AS acceptance_pct,
+              AVG(r.acceptance_pct) AS acceptance_pct,
+              COUNT(*) FILTER (WHERE r.acceptance_pct IS NOT NULL) AS acceptance_samples,
               SUM(CASE WHEN r.trips_completed > 0
                     THEN r.ride_revenue_ngn * r.cash_trips / GREATEST(r.trips_completed, 1)
                     ELSE 0 END) AS expected_cash_ngn
@@ -1073,53 +1084,138 @@ export class DepthService {
         ...operator,
         days_worked: delivery.days.size,
         net_earnings_ngn: 0, trips_completed: 0, hours_online: 0,
-        acceptance_pct: 0, expected_cash_ngn: 0
+        acceptance_pct: null, acceptance_samples: 0, expected_cash_ngn: 0,
+        // No platform row in the window: the on-demand (ride-hailing) signal is
+        // absent, not zero. Whether that's legitimate (delivery-only day) or a
+        // dead feed is something only a supervisor can confirm.
+        has_ride_signal: false
       });
+    }
+
+    // Supervisor confirmations of "no on-demand this date" for the window. An
+    // operator whose every worked (delivery) day is confirmed has their absent
+    // ride signal treated as legitimately not-applicable; otherwise it stays
+    // flagged as unconfirmed for the manager and supervisor to resolve.
+    const confirmationRows = await this.db.many<any>(
+      `SELECT operator_id, record_date FROM ops_on_demand_confirmations
+       WHERE record_date BETWEEN $1 AND $2`,
+      [periodStart, periodEnd]
+    );
+    const confirmedDays = new Map<string, Set<string>>();
+    for (const row of confirmationRows) {
+      const key = String(row.operator_id);
+      const set = confirmedDays.get(key) || new Set<string>();
+      set.add(this.dayKey(row.record_date));
+      confirmedDays.set(key, set);
     }
 
     const round1 = (value: number | null) => value === null ? null : Math.round(value * 10) / 10;
     const entries = rows.map((row) => {
       const daysWorked = Number(row.days_worked);
-      // Each component is MEASURED or N/A for this operator; an N/A component is
-      // dropped from the blend (not scored 0 or 100), and the remaining weights
-      // are renormalised. This keeps the score honest for a mixed ride-hailing +
-      // delivery fleet instead of penalising/flattering operators on metrics
-      // that don't apply to them.
-      //
-      // Acceptance is a ride-hailing metric: N/A for an operator with no platform
-      // trips in the window (trips proxy). A recorded 0% on an operator who DID
-      // run trips is a real 0, not "no data".
-      const acceptanceApplicable = Number(row.trips_completed || 0) > 0;
-      const acceptanceScore = acceptanceApplicable ? Math.min(100, Math.max(0, Number(row.acceptance_pct || 0))) : null;
-      const onlineApplicable = daysWorked > 0;
-      const onlineScore = onlineApplicable
+      const delivery = deliveryTotals.get(row.operator_id);
+
+      // Each component carries a STATE, not just a score:
+      //   measured        — real data; scored.
+      //   data_gap        — the metric applies (ride activity happened) but its
+      //                     figure never arrived; scored 0 and left in the blend
+      //                     (a genuine data problem that shouldn't be hidden) and
+      //                     flagged for the feed/supervisor to fix.
+      //   not_applicable  — the metric genuinely doesn't exist for this window
+      //                     (no cash trips, or a supervisor-confirmed delivery-
+      //                     only day); held out of the blend, no flag.
+      //   unconfirmed     — no on-demand data flowed at all and no supervisor has
+      //                     said whether that's real; held out of the blend but
+      //                     flagged, because we can't tell delivery-only from a
+      //                     dead feed without a human.
+      // "No on-demand signal" is NOT a rider type — riders mix on-demand and
+      // scheduled, even in one day — so it is decided per window from the data,
+      // never from a fixed "delivery rider" flag.
+      const hasRideSignal = row.has_ride_signal !== false;
+      const confirmed = confirmedDays.get(String(row.operator_id)) || new Set<string>();
+      const deliveryDayKeys = delivery ? [...delivery.days] : [];
+      const allDeliveryDaysConfirmed = deliveryDayKeys.length > 0
+        && deliveryDayKeys.every((day) => confirmed.has(day));
+      // State shared by the two on-demand-only components (acceptance, cash) when
+      // the ride signal is entirely absent.
+      const absentOnDemandState = allDeliveryDaysConfirmed ? "not_applicable" : "unconfirmed";
+
+      // Acceptance — a ride-hailing metric.
+      const acceptanceSamples = Number(row.acceptance_samples || 0);
+      let acceptanceState: string;
+      let acceptanceScore: number | null;
+      if (!hasRideSignal) {
+        acceptanceState = absentOnDemandState;
+        acceptanceScore = null;
+      } else if (acceptanceSamples === 0) {
+        acceptanceState = "data_gap";
+        acceptanceScore = 0;
+      } else {
+        acceptanceState = "measured";
+        acceptanceScore = Math.min(100, Math.max(0, Number(row.acceptance_pct || 0)));
+      }
+
+      // Time online — applies to anyone who worked; a low value is a real low.
+      const onlineState = daysWorked > 0 ? "measured" : "not_applicable";
+      const onlineScore = onlineState === "measured"
         ? Math.min(100, (Number(row.hours_online || 0) / Math.max(1, expectedHours * daysWorked)) * 100)
         : null;
+
+      // Cash receipting — only exists when cash was actually handled.
       const expectedCash = Number(row.expected_cash_ngn || 0);
       const remitted = Number(remittances.find((item) => item.operator_id === row.operator_id)?.remitted_ngn || 0);
       const shortfall = Math.max(0, expectedCash - remitted);
-      // Cash receipting only applies when cash was actually expected; no cash
-      // trips means there is nothing to account for — N/A, not a perfect 100.
-      const cashApplicable = expectedCash > 0;
-      const cashScore = cashApplicable ? Math.max(0, 100 * (1 - shortfall / expectedCash)) : null;
+      let cashState: string;
+      let cashScore: number | null;
+      if (!hasRideSignal) {
+        cashState = absentOnDemandState;
+        cashScore = null;
+      } else if (expectedCash > 0) {
+        cashState = "measured";
+        cashScore = Math.max(0, 100 * (1 - shortfall / expectedCash));
+      } else {
+        // Ride activity but no cash trips — nothing to receipt; not a data gap.
+        cashState = "not_applicable";
+        cashScore = null;
+      }
+
+      // Revenue vs target — there is always a target (25/28k + any delivery
+      // target), so this component always applies to an operator on the board.
       const dailyTarget = Number(row.daily_revenue_target_ngn || 0);
-      const delivery = deliveryTotals.get(row.operator_id);
       const combinedEarnings = Number(row.net_earnings_ngn || 0) + (delivery?.earned || 0);
       const combinedTarget = dailyTarget * daysWorked + (delivery?.target || 0);
-      const revenueApplicable = combinedTarget > 0;
-      const revenueScore = revenueApplicable ? Math.min(100, (combinedEarnings / combinedTarget) * 100) : null;
+      const revenueState = combinedTarget > 0 ? "measured" : "not_applicable";
+      const revenueScore = revenueState === "measured" ? Math.min(100, (combinedEarnings / combinedTarget) * 100) : null;
 
-      // Blend only the applicable components, renormalising their weights.
+      // Blend measured + data_gap components (data_gap counts its 0 so a real
+      // gap drags the score down); hold out not_applicable and unconfirmed and
+      // renormalise the remaining weights.
+      const scored = (state: string) => state === "measured" || state === "data_gap";
       const parts = [
-        { score: acceptanceScore, weight: Number(config.acceptance_weight) },
-        { score: onlineScore, weight: Number(config.online_weight) },
-        { score: cashScore, weight: Number(config.cash_weight) },
-        { score: revenueScore, weight: Number(config.revenue_weight) }
-      ].filter((part) => part.score !== null && part.weight > 0) as { score: number; weight: number }[];
+        { score: acceptanceScore, state: acceptanceState, weight: Number(config.acceptance_weight) },
+        { score: onlineScore, state: onlineState, weight: Number(config.online_weight) },
+        { score: cashScore, state: cashState, weight: Number(config.cash_weight) },
+        { score: revenueScore, state: revenueState, weight: Number(config.revenue_weight) }
+      ].filter((part) => scored(part.state) && part.weight > 0) as { score: number; weight: number }[];
       const weightSum = parts.reduce((sum, part) => sum + part.weight, 0);
       const performanceScore = weightSum > 0
         ? parts.reduce((sum, part) => sum + part.weight * part.score, 0) / weightSum
         : 0;
+
+      // Consolidate the honest-to-flag issues for this operator.
+      const issues: { component: string; state: string; reason: string }[] = [];
+      if (acceptanceState === "data_gap") {
+        issues.push({ component: "acceptance", state: "missing", reason: "Ran trips but the acceptance % never imported." });
+      }
+      if (absentOnDemandState === "unconfirmed" && !hasRideSignal) {
+        issues.push({
+          component: "on_demand",
+          state: "unconfirmed",
+          reason: deliveryDayKeys.length
+            ? "No on-demand data this period — looks delivery-only; confirm that, or enter the figures."
+            : "No on-demand data this period — confirm it, or enter the figures."
+        });
+      }
+
       return {
         operator_id: row.operator_id,
         person_id: row.person_id,
@@ -1142,6 +1238,17 @@ export class DepthService {
           time_online_score: round1(onlineScore),
           cash_receipt_score: round1(cashScore),
           revenue_score: options.hideRevenueComponent ? null : round1(revenueScore)
+        },
+        component_states: {
+          acceptance: acceptanceState,
+          time_online: onlineState,
+          cash_receipt: cashState,
+          revenue: options.hideRevenueComponent ? null : revenueState
+        },
+        data_quality: {
+          confidence: issues.length ? "partial" : "ok",
+          has_ride_signal: hasRideSignal,
+          issues
         }
       };
     });
@@ -1162,6 +1269,29 @@ export class DepthService {
       entry.badge = index < 3 ? badges[index] : null;
     });
 
+    // Fleet-wide consolidation so a manager sees the data-quality picture in one
+    // place instead of hunting row by row, and knows how much of the board to
+    // trust before reading the ranks.
+    const summaryRow = (entry: any) => ({
+      operator_id: entry.operator_id,
+      person_id: entry.person_id,
+      amoeba_id: entry.amoeba_id,
+      days_worked: entry.days_worked,
+      issues: entry.data_quality.issues
+    });
+    const pipelineGaps = entries.filter((entry: any) =>
+      entry.data_quality.issues.some((issue: any) => issue.state === "missing")).map(summaryRow);
+    const unconfirmedOnDemand = entries.filter((entry: any) =>
+      entry.data_quality.issues.some((issue: any) => issue.state === "unconfirmed")).map(summaryRow);
+    const completeOperators = entries.filter((entry: any) => entry.data_quality.confidence === "ok").length;
+    const dataQualitySummary = {
+      total_operators: entries.length,
+      complete_operators: completeOperators,
+      completeness_pct: entries.length ? Math.round((completeOperators / entries.length) * 100) : 100,
+      pipeline_gaps: pipelineGaps,
+      unconfirmed_on_demand: unconfirmedOnDemand
+    };
+
     return {
       period_start: periodStart,
       period_end: periodEnd,
@@ -1174,8 +1304,43 @@ export class DepthService {
         revenue_weight: Number(config.revenue_weight)
       },
       company_wide_visible: Boolean(config.company_wide_visible),
+      data_quality_summary: dataQualitySummary,
       entries
     };
+  }
+
+  // Supervisor confirms an operator had no on-demand (ride-hailing) work on a
+  // date — i.e. the absent ride signal is legitimate (delivery-only), not a dead
+  // feed. This clears the leaderboard's "unconfirmed" flag for that day. Called
+  // from the ops controller; idempotent per (operator, date).
+  async confirmNoOnDemand(
+    body: { operator_id?: unknown; record_date?: unknown; note?: unknown },
+    actorPersonId: string
+  ) {
+    const operatorId = String(body.operator_id || "");
+    if (!operatorId) throw new BadRequestException("operator_id is required.");
+    const recordDate = this.date(body.record_date, "record_date");
+    const note = body.note == null ? null : String(body.note).slice(0, 500);
+    const timestamp = this.now();
+    const existing = await this.db.one<any>(
+      "SELECT confirmation_id FROM ops_on_demand_confirmations WHERE operator_id = $1 AND record_date = $2",
+      [operatorId, recordDate]
+    );
+    const confirmationId = existing?.confirmation_id || `odc_${randomUUID().replaceAll("-", "").slice(0, 26)}`;
+    await this.db.exec(
+      `INSERT INTO ops_on_demand_confirmations
+         (confirmation_id, operator_id, record_date, status, note, confirmed_by, confirmed_at)
+       VALUES ($1, $2, $3, 'no_on_demand', $4, $5, $6)
+       ON CONFLICT (operator_id, record_date) DO UPDATE
+         SET status = 'no_on_demand', note = EXCLUDED.note,
+             confirmed_by = EXCLUDED.confirmed_by, confirmed_at = EXCLUDED.confirmed_at`,
+      [confirmationId, operatorId, recordDate, note, actorPersonId, timestamp]
+    );
+    await this.ops.audit(
+      "on_demand.confirmed_none", "operator", operatorId,
+      existing || null, { record_date: recordDate, status: "no_on_demand" }, actorPersonId
+    );
+    return { confirmation_id: confirmationId, operator_id: operatorId, record_date: recordDate, status: "no_on_demand", confirmed_by: actorPersonId, confirmed_at: timestamp };
   }
 
   // ------------------------------------------------------------ escalations
