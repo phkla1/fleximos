@@ -19,7 +19,8 @@ const els = Object.fromEntries([
   "peopleRows", "userRows", "roleAssignmentRows", "amoebaRows", "siteRows", "serviceAccountRows",
   "personForm", "userForm", "roleAssignmentForm", "amoebaForm", "siteForm", "serviceAccountForm",
   "confirmDialog", "confirmTitle", "confirmBody", "confirmButton",
-  "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton"
+  "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton",
+  "flexiPointsConfigForm", "flexiPointsConfigSummary", "flexiPointsConn"
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const params = new URLSearchParams(window.location.search);
@@ -27,6 +28,10 @@ els.apiBase.value = params.get("apiBase") || window.flexiServiceBase("foundation
 els.apiToken.value = window.flexiServiceToken();
 
 const apiBase = () => els.apiBase.value.replace(/\/$/, "");
+// The Flexi Points programme config lives in the Ops API (it scores operations
+// revenue), so this console reaches a second base for that one panel. The same
+// bearer token authorises both services.
+const opsApiBase = () => (params.get("opsApiBase") || window.flexiServiceBase("ops", 4030)).replace(/\/$/, "");
 const token = () => els.apiToken.value;
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const idempotencyKey = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -44,6 +49,15 @@ function setConnection(ok, text) {
 
 async function api(path, options = {}) {
   const response = await fetch(`${apiBase()}${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", ...(options.headers || {}) }
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error?.message || body.message || `Request failed: ${response.status}`);
+  return body;
+}
+async function opsApi(path, options = {}) {
+  const response = await fetch(`${opsApiBase()}${path}`, {
     ...options,
     headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", ...(options.headers || {}) }
   });
@@ -334,7 +348,78 @@ async function refresh() {
     setConnection(false, "Connection issue");
     setNotice(error.message, true);
   }
+  // The Flexi Points panel talks to a different service; load it independently
+  // so an Ops API hiccup never blocks the identity/organisation screens.
+  void loadFlexiPoints();
 }
+
+/* ---------- Flexi Points programme (Ops API) ---------- */
+let flexiPointsConfig = null;
+
+function renderFlexiPoints() {
+  const c = flexiPointsConfig;
+  const naira = (v) => `₦${Number(v || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+  els.flexiPointsConfigSummary.innerHTML = c ? `
+    <article class="fp-card"><span>Earn a point</span><strong>${naira(c.standard_threshold_ngn)} standard · ${naira(c.accommodated_threshold_ngn)} accommodated</strong><small>+1 per ${naira(c.accelerator_step_ngn)} above · cap ${c.daily_cap == null ? "none" : c.daily_cap}</small></article>
+    <article class="fp-card"><span>Earn a bike</span><strong>${Number(c.points_target)} points</strong><small>Take home ${Number(c.take_home_points)} · final check ${Number(c.audit_points)} · keep ${Number(c.cadence_points)}/${Number(c.cadence_days)}d · transfer ${Number(c.transfer_window_days)}d</small></article>`
+    : `<p class="subtle">Flexi Points configuration is unavailable.</p>`;
+  if (c) {
+    const form = els.flexiPointsConfigForm;
+    for (const field of [
+      "standard_threshold_ngn", "accommodated_threshold_ngn", "accelerator_step_ngn",
+      "points_target", "take_home_points", "cadence_points", "cadence_days",
+      "audit_points", "transfer_window_days"
+    ]) {
+      if (form.elements[field]) form.elements[field].value = Number(c[field]);
+    }
+    form.elements.daily_cap.value = c.daily_cap == null ? "" : Number(c.daily_cap);
+  }
+}
+
+async function loadFlexiPoints() {
+  els.flexiPointsConn.textContent = "Loading…";
+  try {
+    flexiPointsConfig = await opsApi("/ops/v1/flexi-points/config");
+    els.flexiPointsConn.textContent = "Live from Ops API";
+    els.flexiPointsConn.classList.remove("error");
+  } catch {
+    flexiPointsConfig = null;
+    els.flexiPointsConn.textContent = "Ops API unavailable";
+    els.flexiPointsConn.classList.add("error");
+  }
+  renderFlexiPoints();
+}
+
+els.flexiPointsConfigForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = els.flexiPointsConfigForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  const values = formData(els.flexiPointsConfigForm);
+  const num = (field) => Number(values[field]);
+  const payload = {
+    standard_threshold_ngn: num("standard_threshold_ngn"),
+    accommodated_threshold_ngn: num("accommodated_threshold_ngn"),
+    accelerator_step_ngn: num("accelerator_step_ngn"),
+    points_target: num("points_target"),
+    // Blank cap means "no cap"; send null so the programme runs uncapped.
+    daily_cap: values.daily_cap === "" || values.daily_cap == null ? null : Number(values.daily_cap),
+    take_home_points: num("take_home_points"),
+    cadence_points: num("cadence_points"),
+    cadence_days: num("cadence_days"),
+    audit_points: num("audit_points"),
+    transfer_window_days: num("transfer_window_days")
+  };
+  try {
+    await opsApi("/ops/v1/flexi-points/config", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey("flexi-points-config") },
+      body: JSON.stringify(payload)
+    });
+    await loadFlexiPoints();
+    setNotice("Flexi Points programme saved.");
+  } catch (error) { setNotice(error.message, true); }
+  finally { button.disabled = false; }
+});
 
 /* ---------- create forms ---------- */
 function bindCreate(form, path, prefix, transform, label) {

@@ -24,6 +24,8 @@
           <p class="nav-group">Organisation</p>
           <a href="#amoebas"><span class="nav-ic">🧫</span>Amoebas</a>
           <a href="#sites"><span class="nav-ic">📍</span>Sites</a>
+          <p class="nav-group">Compensation</p>
+          <a href="#flexi-points"><span class="nav-ic">★</span>Flexi Points</a>
           <p class="nav-group">System</p>
           <a href="#service-accounts"><span class="nav-ic">🤖</span>Service accounts</a>
         </nav>
@@ -254,6 +256,31 @@
         </section>
 
         <!-- ============ SERVICE ACCOUNTS ============ -->
+        <section id="flexi-points" class="panel view">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Compensation</p><h2>Flexi Points programme</h2></div>
+            <span id="flexiPointsConn" class="subtle"></span>
+          </div>
+          <p class="panel-intro">Riders earn points from their <strong>verified combined daily revenue</strong> (ride earnings + attributed delivery earnings, confirmed data only). One point at the daily threshold, then one more for every accelerator step above it. Points are a performance record only — Fleximotion owns the bike until the full points target is reached and a transfer is completed. All active riders are enrolled automatically. Every number below is live in the scoring.</p>
+          <div id="flexiPointsConfigSummary" class="fp-summary"></div>
+          <details class="create">
+            <summary>Adjust the programme</summary>
+            <form id="flexiPointsConfigForm" class="create-form fp-form">
+              <label>Standard daily threshold (₦)<input name="standard_threshold_ngn" type="number" min="1" step="any" value="32000" required /></label>
+              <label>Accommodated daily threshold (₦)<input name="accommodated_threshold_ngn" type="number" min="1" step="any" value="35000" required /></label>
+              <label>Accelerator step (₦)<input name="accelerator_step_ngn" type="number" min="1" step="any" value="6000" required /></label>
+              <label>Points to earn a bike<input name="points_target" type="number" min="1" step="1" value="624" required /></label>
+              <label>Daily points cap<input name="daily_cap" type="number" min="1" step="1" placeholder="Blank = no cap" /></label>
+              <label>Take-bike-home milestone (points)<input name="take_home_points" type="number" min="1" step="1" value="120" required /></label>
+              <label>Keep-it cadence (points)<input name="cadence_points" type="number" min="1" step="1" value="9" required /></label>
+              <label>Keep-it cadence (days)<input name="cadence_days" type="number" min="1" step="1" value="14" required /></label>
+              <label>Final-check milestone (points)<input name="audit_points" type="number" min="1" step="1" value="600" required /></label>
+              <label>Transfer window (days)<input name="transfer_window_days" type="number" min="1" step="1" value="14" required /></label>
+              <button type="submit">Save programme</button>
+            </form>
+          </details>
+        </section>
+
         <section id="service-accounts" class="panel view">
           <div class="panel-heading">
             <div><p class="eyebrow">Identity</p><h2>Service accounts</h2></div>

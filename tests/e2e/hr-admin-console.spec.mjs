@@ -20,6 +20,32 @@ test.describe("hr-admin console", () => {
     await expect(page.locator("#apiBase")).not.toBeVisible();
   });
 
+  test("configures the Flexi Points programme from the Ops API", async ({ page }) => {
+    // This panel reaches the Ops API (4530 in e2e), not foundation.
+    await page.goto(`${adminUrl}&opsApiBase=http://127.0.0.1:4530#flexi-points`);
+    await expect(page.locator("#flexiPointsConn")).toHaveText("Live from Ops API");
+    const summary = page.locator("#flexiPointsConfigSummary");
+    await expect(summary).toContainText("Earn a bike");
+    await expect(summary).toContainText("624 points");
+    // The guardrail copy never uses the word "ownership".
+    await expect(page.locator("#flexi-points")).not.toContainText(/ownership/i);
+
+    // Save a change and confirm it round-trips through the Ops API.
+    const form = page.locator("#flexiPointsConfigForm");
+    await page.locator('#flexi-points .create > summary').click();
+    const step = form.locator('input[name="accelerator_step_ngn"]');
+    await step.fill("5000");
+    await form.locator('button[type="submit"]').click();
+    await expect(page.locator("#notice")).toContainText("Flexi Points programme saved");
+    await expect(summary).toContainText("₦5,000");
+
+    // Restore the default so the shared demo DB is left as found.
+    await step.fill("6000");
+    await form.locator('button[type="submit"]').click();
+    await expect(page.locator("#notice")).toContainText("Flexi Points programme saved");
+    await expect(summary).toContainText("₦6,000");
+  });
+
   test("the amoeba Supervisor dropdown lists only Supervisor/Manager people", async ({ page }) => {
     await page.goto(adminUrl);
     await expect(page.locator("#notice")).toContainText("Connected");
