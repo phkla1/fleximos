@@ -354,6 +354,20 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#boardPaceView")).toBeHidden();
   });
 
+  test("shows a rider's Flexi Points ledger from the board", async ({ page }) => {
+    await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    const select = page.locator("#pointsRiderSelect");
+    // The picker is populated with this supervisor's riders.
+    await expect(select.locator("option")).not.toHaveCount(0);
+    const riderCount = await select.locator("option").count();
+    if (riderCount > 1) {
+      await select.selectOption({ index: 1 });
+      await expect(page.locator("#pointsLedger .points-ledger-head")).toBeVisible();
+      await expect(page.locator("#pointsLedger")).toContainText("Balance");
+    }
+  });
+
   test("has no page-level horizontal overflow on mobile", async ({ page }) => {
     await page.goto(url);
     await expect(page.locator("#notice")).toContainText("Connected");

@@ -796,6 +796,40 @@ export class DeliveriesService {
     return totals;
   }
 
+  // Per-operator, per-DAY allocated (attributed) delivery earnings over a
+  // window — the delivery half of each day's verified revenue for Flexi Points.
+  // Same money as operatorAllocatedTotals, but split by day instead of summed,
+  // because points are earned a day at a time. Daily basic (drivers) is added
+  // once per delivery-day.
+  async operatorAllocatedByDay(periodStart: string, periodEnd: string) {
+    const rows = await this.db.many<any>(
+      `SELECT a.operator_id, o.operator_class, b.batch_date, b.delivery_customer_id,
+        SUM(a.delivered_count) AS delivered_count
+       FROM ops_delivery_assignments a
+       JOIN ops_delivery_batches b ON b.batch_id = a.batch_id
+       JOIN ops_operators o ON o.operator_id = a.operator_id
+       WHERE b.batch_date BETWEEN $1 AND $2
+       GROUP BY a.operator_id, o.operator_class, b.batch_date, b.delivery_customer_id`,
+      [periodStart, periodEnd]
+    );
+    const byOperator = new Map<string, Map<string, number>>();
+    const basicApplied = new Set<string>(); // operator_id + date
+    for (const row of rows) {
+      const date = this.dayKey(row.batch_date);
+      const operatorClass = String(row.operator_class || "rider");
+      const { price_ngn: allocated, daily_basic_ngn: basic } =
+        await this.allocatedRateFor(date, operatorClass, row.delivery_customer_id);
+      const days = byOperator.get(row.operator_id) || new Map<string, number>();
+      const basicKey = `${row.operator_id}|${date}`;
+      const firstBatchOfDay = !basicApplied.has(basicKey);
+      const earned = Number(row.delivered_count) * allocated + (firstBatchOfDay ? basic : 0);
+      days.set(date, Math.round(((days.get(date) || 0) + earned) * 100) / 100);
+      basicApplied.add(basicKey);
+      byOperator.set(row.operator_id, days);
+    }
+    return byOperator;
+  }
+
   // Per-operator schedule for a single day — assigned/delivered parcel counts
   // and attributed earnings (daily basic applied once). Feeds the pacing engine
   // (online target, delivery pacing) without the leaderboard's range rollup.

@@ -56,6 +56,20 @@ test.describe("Operator PWA cockpit", () => {
     await expect(page.locator('[data-photo-input="maintenance"]')).toHaveAttribute("capture", "environment");
   });
 
+  test("shows the Flexi Points progress tab", async ({ page }) => {
+    await signIn(page);
+    await page.locator("[data-tab-link='points']").click();
+    await expect(page.locator("#pointsGauge")).toBeVisible();
+    // Balance is a number (0 or more), not a dash.
+    await expect(page.locator("#pointsBalance")).not.toHaveText("—");
+    // Today's card and the three milestones render.
+    await expect(page.locator("#pointsToday")).toBeVisible();
+    await expect(page.locator("#pointsMilestones .points-milestone")).toHaveCount(3);
+    // The anti-ownership guardrail is shown and never uses the word "ownership".
+    await expect(page.locator("#pointsBikeNote")).toContainText(/owns the bike/i);
+    await expect(page.locator("#points")).not.toContainText(/ownership/i);
+  });
+
   test("reports a maintenance issue to the supervisor", async ({ page }) => {
     await signIn(page);
     await page.locator("[data-tab-link='report']").click();

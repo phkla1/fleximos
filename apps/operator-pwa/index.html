@@ -45,6 +45,7 @@
         <a href="#today" data-tab-link="today" class="active"><span class="dock-icon">◉</span>Today</a>
         <a href="#alerts" data-tab-link="alerts"><span class="dock-icon">⚠</span>Alerts<span id="alertDockBadge" class="dock-badge" hidden></span></a>
         <a href="#rank" data-tab-link="rank"><span class="dock-icon">🏆</span>Rank</a>
+        <a href="#points" data-tab-link="points"><span class="dock-icon">★</span>Points</a>
         <a href="#report" data-tab-link="report"><span class="dock-icon">🛠</span>Report</a>
       </nav>
 
@@ -114,6 +115,33 @@
           </div>
           <div class="section-heading"><h2>Leaderboard</h2></div>
           <div id="leaderboard" class="card-list"></div>
+        </section>
+
+        <!-- ============ MY PROGRESS (FLEXI POINTS) ============ -->
+        <section id="points" class="tab-panel" data-tab="points">
+          <div class="section-heading"><h2>My progress</h2><span id="pointsBalanceChip" class="pill"></span></div>
+          <figure class="gauge hero-gauge" id="pointsGauge">
+            <svg viewBox="0 0 120 120" role="img" aria-label="My points toward a bike">
+              <circle class="gauge-track" cx="60" cy="60" r="50"></circle>
+              <circle class="gauge-value" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <figcaption>
+              <strong id="pointsBalance">0</strong>
+              <span>points</span>
+              <small id="pointsRemaining"></small>
+            </figcaption>
+          </figure>
+
+          <div id="pointsToday" class="points-today"></div>
+          <p id="pointsBikeNote" class="points-note"></p>
+
+          <div class="section-heading"><h2>Milestones</h2></div>
+          <div id="pointsMilestones" class="points-milestones"></div>
+
+          <div class="section-heading"><h2>This week</h2></div>
+          <div id="pointsWeek" class="card-list"></div>
+
+          <button id="pointsDispute" type="button" class="points-dispute">Question a day's points</button>
         </section>
 
         <!-- ============ REPORT ============ -->

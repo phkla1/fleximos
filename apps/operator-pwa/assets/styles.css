@@ -82,7 +82,7 @@ small { color: var(--muted); }
 /* ---------- dock ---------- */
 .dock {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: var(--surface); border-top: 1px solid var(--line);
   box-shadow: 0 -6px 18px rgba(18, 54, 47, .08);
   padding-bottom: env(safe-area-inset-bottom);
@@ -300,3 +300,36 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .checkin-card.pending { border-color: #e4c98a; background: #fbf4e2; }
 .checkin-card.rejected { border-color: #e2b3ab; background: #fbeae7; }
 .checkin-card.rejected .checkin-status strong { color: #a53e32; }
+
+/* ---------- my progress (Flexi Points) ---------- */
+.points-today {
+  margin: 4px 0 12px; padding: 14px 16px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-soft);
+}
+.points-today.earned { background: var(--green-bg); border-color: #bcd9cc; }
+.points-today-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.points-today-head strong { font-size: 15px; }
+.points-today-head span { font-size: 13px; font-weight: 850; color: var(--muted); }
+.points-today.earned .points-today-head span { color: var(--green-dark); }
+.points-today p { margin: 0; font-size: 13.5px; color: var(--ink); line-height: 1.45; }
+.points-note {
+  margin: 0 0 14px; padding: 10px 12px; font-size: 12.5px; color: var(--muted);
+  background: var(--canvas); border: 1px dashed var(--line); border-radius: var(--radius); line-height: 1.45;
+}
+.points-milestones { display: grid; gap: 8px; margin-bottom: 4px; }
+.points-milestone {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.points-milestone.reached { background: var(--green-bg); border-color: #bcd9cc; }
+.points-milestone-mark {
+  flex: 0 0 auto; width: 24px; height: 24px; display: grid; place-items: center;
+  border-radius: 999px; border: 2px solid var(--line); color: var(--green-dark); font-weight: 900; font-size: 13px;
+}
+.points-milestone.reached .points-milestone-mark { background: var(--green); border-color: var(--green); color: #fff; }
+.points-milestone strong { display: block; font-size: 14px; }
+.points-milestone span { font-size: 12.5px; color: var(--muted); }
+.points-dispute {
+  width: 100%; margin: 16px 0 4px; padding: 12px; border: 1px solid var(--line);
+  border-radius: 11px; background: #fff; color: var(--green-dark); font: inherit; font-weight: 800; cursor: pointer;
+}

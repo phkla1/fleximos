@@ -787,6 +787,28 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at TIMESTAMPTZ NOT NULL
       );
 
+      -- Flexi Points programme configuration (singleton). Every number the
+      -- programme runs on is editable here from the HR admin console — nothing
+      -- is hard-coded in the scoring. Points are a performance record only; they
+      -- are NOT a share of ownership. Fleximotion owns the bike 100% until the
+      -- full points target is reached and a transfer is completed.
+      CREATE TABLE IF NOT EXISTS ops_flexi_points_config (
+        config_id TEXT PRIMARY KEY,
+        standard_threshold_ngn NUMERIC(12, 2) NOT NULL DEFAULT 32000,
+        accommodated_threshold_ngn NUMERIC(12, 2) NOT NULL DEFAULT 35000,
+        accelerator_step_ngn NUMERIC(12, 2) NOT NULL DEFAULT 6000,
+        points_target INTEGER NOT NULL DEFAULT 624,
+        daily_cap INTEGER,
+        take_home_points INTEGER NOT NULL DEFAULT 120,
+        cadence_points INTEGER NOT NULL DEFAULT 9,
+        cadence_days INTEGER NOT NULL DEFAULT 14,
+        audit_points INTEGER NOT NULL DEFAULT 600,
+        transfer_window_days INTEGER NOT NULL DEFAULT 14,
+        enrollment TEXT NOT NULL DEFAULT 'automatic',
+        updated_by_person_id TEXT,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
       -- Phase-1 go-live: pay class splits riders (bikes) from drivers (Qute
       -- cars, moved off ride-hailing into delivery). Allocated price becomes
       -- class-aware: a class-specific row wins, else the global 'all' row.
@@ -1000,6 +1022,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     await this.seedOnboardingRamp();
     await this.seedScheduledJobs();
     await this.seedLeaderboardConfig();
+    await this.seedFlexiPointsConfig();
     await this.seedFleetPolicy();
     await this.seedAllocatedPrice();
   }
@@ -1240,6 +1263,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
                '2026-01-01', 'person_system', $2, $2)`,
       [dailyTargets, new Date().toISOString()]
     );
+  }
+
+  private async seedFlexiPointsConfig() {
+    const existing = await this.one("SELECT config_id FROM ops_flexi_points_config LIMIT 1");
+    if (!existing) {
+      await this.exec(
+        `INSERT INTO ops_flexi_points_config
+         (config_id, standard_threshold_ngn, accommodated_threshold_ngn, accelerator_step_ngn,
+          points_target, daily_cap, take_home_points, cadence_points, cadence_days,
+          audit_points, transfer_window_days, enrollment, updated_by_person_id, updated_at)
+         VALUES ('flexi_points_default', 32000, 35000, 6000, 624, NULL, 120, 9, 14, 600, 14,
+          'automatic', 'person_system', $1)`,
+        [new Date().toISOString()]
+      );
+    }
   }
 
   private async seedFleetPolicy() {

@@ -419,6 +419,28 @@
             </details>
           </div>
           <div class="control-panel">
+            <h3>Flexi Points programme</h3>
+            <div id="flexiPointsConfigSummary" class="data-list compact-list"></div>
+            <p class="form-hint">Riders earn points from their <strong>verified combined daily revenue</strong> (ride earnings + attributed delivery earnings, confirmed data only). One point at the daily threshold, then one more for every accelerator step above it. Points are a performance record only — Fleximotion owns the bike until the full points target is reached and a transfer is completed. All active riders are enrolled automatically. Every number below is live in the scoring.</p>
+            <details class="management-panel">
+              <summary>Adjust the programme</summary>
+              <form id="flexiPointsConfigForm" class="entry-form compact-form">
+              <label>Standard daily threshold (₦)<input name="standard_threshold_ngn" type="number" min="1" step="100" value="32000" required /></label>
+              <label>Accommodated daily threshold (₦)<input name="accommodated_threshold_ngn" type="number" min="1" step="100" value="35000" required /></label>
+              <label>Accelerator step (₦)<input name="accelerator_step_ngn" type="number" min="1" step="100" value="6000" required /></label>
+              <label>Points to earn a bike<input name="points_target" type="number" min="1" step="1" value="624" required /></label>
+              <label>Daily points cap<input name="daily_cap" type="number" min="1" step="1" placeholder="Blank = no cap" /></label>
+              <label>Take-bike-home milestone (points)<input name="take_home_points" type="number" min="1" step="1" value="120" required /></label>
+              <label>Keep-it cadence (points)<input name="cadence_points" type="number" min="1" step="1" value="9" required /></label>
+              <label>Keep-it cadence (days)<input name="cadence_days" type="number" min="1" step="1" value="14" required /></label>
+              <label>Final-check milestone (points)<input name="audit_points" type="number" min="1" step="1" value="600" required /></label>
+              <label>Transfer window (days)<input name="transfer_window_days" type="number" min="1" step="1" value="14" required /></label>
+              <p class="form-hint">Enrollment is automatic for all active riders in this phase.</p>
+              <button type="submit">Save programme</button>
+              </form>
+            </details>
+          </div>
+          <div class="control-panel">
             <h3>Delivery customers &amp; pricing</h3>
             <p class="form-hint">Moved to its own home: define delivery customers, their integrations and pricing under <a href="#revenue">Revenue sources</a>.</p>
           </div>

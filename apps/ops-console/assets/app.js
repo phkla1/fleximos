@@ -49,7 +49,8 @@ const el = Object.fromEntries([
   "exportVehiclesCsv", "incidentForm", "weeklySummary", "exportWeeklyCsv",
   "dialogCostField", "dialogCost", "checkinApprovals", "importCustomer",
   "attendanceRows", "attendanceSummary",
-  "importDate", "importFile", "importRun", "importResult"
+  "importDate", "importFile", "importRun", "importResult",
+  "pointsRiderSelect", "pointsLedger"
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
@@ -841,7 +842,58 @@ function renderBoard(analysis) {
     </article>
   `).join("") : `<div class="empty">No performance records for this range.</div>`;
   renderOnDemandConfirm();
+  populatePointsRiders();
 }
+
+// Flexi Points ledger (read-only) — the supervisor picks one of their riders
+// and sees that rider's day-by-day points from confirmed combined revenue.
+function populatePointsRiders() {
+  if (!el.pointsRiderSelect) return;
+  const riders = (state.operators || []);
+  const previous = el.pointsRiderSelect.value;
+  el.pointsRiderSelect.innerHTML = `<option value="">Choose a rider…</option>`
+    + riders.map((operator) => `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))}</option>`).join("");
+  if (previous && riders.some((operator) => operator.operator_id === previous)) {
+    el.pointsRiderSelect.value = previous;
+  } else if (previous) {
+    el.pointsLedger.innerHTML = "";
+  }
+}
+
+async function loadPointsLedger(operatorId) {
+  if (!el.pointsLedger) return;
+  if (!operatorId) { el.pointsLedger.innerHTML = `<div class="empty">Choose a rider to see their points.</div>`; return; }
+  el.pointsLedger.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const summary = await ops(`/ops/v1/flexi-points/summary?operator_id=${encodeURIComponent(operatorId)}`);
+    renderPointsLedger(summary);
+  } catch {
+    el.pointsLedger.innerHTML = `<div class="empty">Couldn't load this rider's points.</div>`;
+  }
+}
+
+function renderPointsLedger(summary) {
+  const days = [...(summary.ledger || [])].sort((a, b) => b.record_date.localeCompare(a.record_date));
+  const head = `
+    <div class="points-ledger-head">
+      <div><span>Balance</span><strong>${summary.balance} / ${summary.points_target}</strong></div>
+      <div><span>Remaining</span><strong>${summary.points_remaining}</strong></div>
+      <div><span>Daily threshold</span><strong>${money(summary.threshold_ngn)}${summary.accommodated ? " · accommodated" : ""}</strong></div>
+    </div>`;
+  const table = days.length ? `
+    <div class="table-scroll"><table class="compare-table">
+      <thead><tr><th>Day</th><th>Ride</th><th>Delivery</th><th>Confirmed</th><th>Points</th></tr></thead>
+      <tbody>${days.map((day) => `<tr>
+        <td>${escapeHtml(day.record_date)}</td>
+        <td>${money(day.ride_revenue_ngn)}</td>
+        <td>${money(day.delivery_earned_ngn)}</td>
+        <td>${money(day.verified_revenue_ngn)}</td>
+        <td>${day.points}</td></tr>`).join("")}</tbody>
+    </table></div>` : `<div class="empty">No confirmed earnings yet for this rider.</div>`;
+  el.pointsLedger.innerHTML = head + table;
+}
+
+el.pointsRiderSelect?.addEventListener("change", (event) => loadPointsLedger(event.target.value));
 
 // Operators with no on-demand (ride-hailing) data for the operating day that the
 // supervisor hasn't yet accounted for. Each can be confirmed as "delivery-only"

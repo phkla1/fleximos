@@ -53,6 +53,7 @@ const el = Object.fromEntries(
     "paceProfileForm", "paceProfileList", "efficiencyPolicyForm", "efficiencyPolicyList",
     "economicsPolicyForm", "economicsPolicyList",
     "leaderboardConfigForm", "leaderboardConfigSummary",
+    "flexiPointsConfigForm", "flexiPointsConfigSummary",
     "deliveryCustomerList", "allocatedPriceList", "allocatedPriceForm",
     "revenueSourceList", "revenueSourceForm", "revenueSummary", "revenueFormHint",
     "fleetPolicyForm", "fleetPolicySummary",
@@ -1112,6 +1113,18 @@ function render() {
       <div><strong>Acceptance ${Math.round(config.acceptance_weight * 100)}% · Online ${Math.round(config.online_weight * 100)}% · Cash ${Math.round(config.cash_weight * 100)}% · Earnings ${Math.round(config.revenue_weight * 100)}%</strong><small>${config.company_wide_visible ? "Company-wide board visible to operators" : "Operators see within-amoeba board only"}</small></div>
     </article>` : `<div class="empty">Leaderboard configuration unavailable.</div>`;
 
+  const points = state.flexiPointsConfig;
+  const naira = (value) => `₦${Number(value || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+  el.flexiPointsConfigSummary.innerHTML = points ? `
+    <article class="policy-row">
+      <div><strong>Earn a point</strong><small>then +1 per step above</small></div>
+      <div><strong>${naira(points.standard_threshold_ngn)} standard · ${naira(points.accommodated_threshold_ngn)} accommodated</strong><small>Accelerator step ${naira(points.accelerator_step_ngn)} · cap ${points.daily_cap == null ? "none" : points.daily_cap}</small></div>
+    </article>
+    <article class="policy-row">
+      <div><strong>Earn a bike</strong><small>milestones</small></div>
+      <div><strong>${Number(points.points_target)} points</strong><small>Take home ${Number(points.take_home_points)} · final check ${Number(points.audit_points)} · keep ${Number(points.cadence_points)}/${Number(points.cadence_days)}d · transfer ${Number(points.transfer_window_days)}d</small></div>
+    </article>` : `<div class="empty">Flexi Points configuration unavailable.</div>`;
+
   const compliance = state.inspectionCompliance;
   if (compliance) {
     el.inspectionComplianceSummary.textContent = compliance.compliance_pct === null
@@ -1496,8 +1509,9 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings] = await Promise.all([
+  const [leaderboardConfig, flexiPointsConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
+    ops("/ops/v1/flexi-points/config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
     ops("/ops/v1/delivery-customers").catch(() => ({ data: [] })),
@@ -1564,6 +1578,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     dailyReports: dailyReports.data,
     serviceHealth,
     leaderboardConfig,
+    flexiPointsConfig,
     inspectionCompliance,
     deliveryCustomers: deliveryCustomers.data,
     allocatedPrices: allocatedPrices.data,
@@ -1592,6 +1607,17 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     }
     el.leaderboardConfigForm.elements.default_timeline.value = leaderboardConfig.default_timeline;
     el.leaderboardConfigForm.elements.company_wide_visible.value = String(Boolean(leaderboardConfig.company_wide_visible));
+  }
+  if (flexiPointsConfig) {
+    const form = el.flexiPointsConfigForm;
+    for (const field of [
+      "standard_threshold_ngn", "accommodated_threshold_ngn", "accelerator_step_ngn",
+      "points_target", "take_home_points", "cadence_points", "cadence_days",
+      "audit_points", "transfer_window_days"
+    ]) {
+      if (form.elements[field]) form.elements[field].value = Number(flexiPointsConfig[field]);
+    }
+    form.elements.daily_cap.value = flexiPointsConfig.daily_cap == null ? "" : Number(flexiPointsConfig.daily_cap);
   }
   syncPaceProfileForm();
   syncEfficiencyPolicyForm();
@@ -1846,6 +1872,33 @@ el.leaderboardConfigForm.addEventListener("submit", async (event) => {
       })
     });
     await refresh("Leaderboard weights saved.");
+  } catch (error) { showError(error); }
+});
+
+el.flexiPointsConfigForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.flexiPointsConfigForm));
+  const num = (field) => Number(values[field]);
+  const payload = {
+    standard_threshold_ngn: num("standard_threshold_ngn"),
+    accommodated_threshold_ngn: num("accommodated_threshold_ngn"),
+    accelerator_step_ngn: num("accelerator_step_ngn"),
+    points_target: num("points_target"),
+    // Blank cap means "no cap"; send null so the programme runs uncapped.
+    daily_cap: values.daily_cap === "" || values.daily_cap == null ? null : Number(values.daily_cap),
+    take_home_points: num("take_home_points"),
+    cadence_points: num("cadence_points"),
+    cadence_days: num("cadence_days"),
+    audit_points: num("audit_points"),
+    transfer_window_days: num("transfer_window_days")
+  };
+  try {
+    await ops("/ops/v1/flexi-points/config", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("flexi-points-config") },
+      body: JSON.stringify(payload)
+    });
+    await refresh("Flexi Points programme saved.");
   } catch (error) { showError(error); }
 });
 

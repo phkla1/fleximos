@@ -11,7 +11,9 @@ const ids = [
   "supportDialog", "incidentNote", "explainDialog", "explainContext", "explainReason",
   "explainNote", "alertDockBadge", "deliveryCard", "dispatchList", "dispatchSummary",
   "dispatchDockBadge", "podDialog", "podContext", "podSignature", "podSignatureClear",
-  "failDialog", "failContext", "failReason", "failNote", "checkinCard"
+  "failDialog", "failContext", "failReason", "failNote", "checkinCard",
+  "pointsBalanceChip", "pointsBalance", "pointsRemaining", "pointsToday",
+  "pointsBikeNote", "pointsMilestones", "pointsWeek", "pointsDispute"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 let token = localStorage.getItem(storageKey);
@@ -107,7 +109,7 @@ function showLogin(message = "") {
 
 /* ---------- tabs ---------- */
 
-const TABS = ["dispatch", "today", "alerts", "rank", "report"];
+const TABS = ["dispatch", "today", "alerts", "rank", "points", "report"];
 function activateTab(name) {
   const tab = TABS.includes(name) ? name : "today";
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.tab === tab));
@@ -349,6 +351,7 @@ async function load() {
     api(opsBase, `/ops/v1/delivery-stops?${range}`).catch(() => ({ data: [] })),
     api(opsBase, `/ops/v1/pacing?record_date=${date}`).catch(() => ({ data: [] }))
   ]);
+  const pointsSummary = await api(opsBase, "/ops/v1/flexi-points/me").catch(() => null);
   const board = boardPage.data[0] || {};
   const pace = (pacingPage.data || []).find((row) => row.operator_id === operator.operator_id) || null;
   const performance = performancePage.data;
@@ -486,6 +489,7 @@ async function load() {
     }).join("")}</div>` : "";
 
   renderTimeline();
+  renderPoints(pointsSummary);
 
   el.loginView.hidden = true;
   el.loginNotice.textContent = "";
@@ -493,6 +497,67 @@ async function load() {
   el.connectionStatus.textContent = "Connected";
   appMessage(`Updated ${timeOf(new Date())}`);
 }
+
+/* ---------- MY PROGRESS (Flexi Points) ---------- */
+
+function renderPoints(summary) {
+  if (!summary) {
+    el.pointsBalanceChip.hidden = true;
+    renderGauge("pointsGauge", 0, "—", null, "Points aren't available right now", "green");
+    el.pointsToday.innerHTML = "";
+    el.pointsBikeNote.textContent = "";
+    el.pointsMilestones.innerHTML = `<div class="empty">Check back soon.</div>`;
+    el.pointsWeek.innerHTML = "";
+    return;
+  }
+
+  const balance = Number(summary.balance || 0);
+  const target = Number(summary.points_target || 0);
+  const remaining = Number(summary.points_remaining || 0);
+
+  el.pointsBalanceChip.hidden = false;
+  el.pointsBalanceChip.textContent = `${balance} of ${target}`;
+  renderGauge("pointsGauge", Number(summary.progress_pct || 0), String(balance), null,
+    remaining > 0 ? `${remaining} more to earn a bike` : "You've reached the bike target", "green");
+
+  // Today's points, explained in plain numbers.
+  const today = summary.today || {};
+  const earnedToday = Number(today.points || 0);
+  el.pointsToday.className = `points-today ${earnedToday > 0 ? "earned" : ""}`;
+  el.pointsToday.innerHTML = `
+    <div class="points-today-head"><strong>Today</strong><span>${earnedToday > 0 ? `+${earnedToday} point${earnedToday === 1 ? "" : "s"}` : "0 points"}</span></div>
+    <p>${escapeHtml(today.message || "")}</p>`;
+
+  // The programme's guardrail, shown word for word.
+  el.pointsBikeNote.textContent = summary.bike_note || "";
+
+  // Milestones are standings only for now (display-only in this phase).
+  const milestones = summary.milestones || [];
+  el.pointsMilestones.innerHTML = milestones.length ? milestones.map((m) => `
+    <div class="points-milestone ${m.reached ? "reached" : ""}">
+      <span class="points-milestone-mark">${m.reached ? "✓" : ""}</span>
+      <div><strong>${escapeHtml(m.label)}</strong><span>${Number(m.points)} points</span></div>
+    </div>`).join("") : `<div class="empty">No milestones set.</div>`;
+
+  // This week, most recent day first.
+  const days = [...(summary.this_week?.days || [])].sort((a, b) => b.record_date.localeCompare(a.record_date));
+  el.pointsWeek.innerHTML = days.length ? days.map((day) => `
+    <div class="card-row">
+      <strong>${dayLabel(day.record_date)} · ${day.points} point${day.points === 1 ? "" : "s"}</strong>
+      <span>${money(day.verified_revenue_ngn)} confirmed</span>
+    </div>`).join("") : `<div class="empty">No confirmed earnings yet this week.</div>`;
+}
+
+// Short friendly day label, e.g. "Mon 3 Nov".
+function dayLabel(date) {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-NG", {
+    weekday: "short", day: "numeric", month: "short", timeZone: "UTC"
+  });
+}
+
+el.pointsDispute.addEventListener("click", () => {
+  appMessage("To question a day's points, tell your supervisor for now. You'll be able to do it here soon.");
+});
 
 /* ---------- MY DISPATCH ---------- */
 

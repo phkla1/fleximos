@@ -7,6 +7,8 @@ import { DeliveriesImportService } from "./deliveries-import.service.js";
 import { AttendanceService } from "./attendance.service.js";
 import { DepthController } from "./depth.controller.js";
 import { DepthService } from "./depth.service.js";
+import { FlexiPointsController } from "./flexi-points.controller.js";
+import { FlexiPointsService } from "./flexi-points.service.js";
 import { JobRunnerService } from "./job-runner.service.js";
 import { AccommodationService } from "./accommodation.service.js";
 import { OnboardingService } from "./onboarding.service.js";
@@ -21,7 +23,7 @@ import { IntegrationStatusService } from "./integration-status.service.js";
 import { RevenueSourcesService } from "./revenue-sources.service.js";
 
 @Module({
-  controllers: [OpsController, DepthController, DeliveriesController],
+  controllers: [OpsController, DepthController, DeliveriesController, FlexiPointsController],
   providers: [
     AuthService,
     DatabaseService,
@@ -30,6 +32,7 @@ import { RevenueSourcesService } from "./revenue-sources.service.js";
     OpsService,
     PacingService,
     DepthService,
+    FlexiPointsService,
     DeliveriesService,
     DeliveriesImportService,
     AttendanceService,

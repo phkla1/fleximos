@@ -131,6 +131,15 @@
 
         <div id="onDemandConfirm" class="on-demand-confirm"></div>
 
+        <details class="management-panel" id="pointsLedgerPanel">
+          <summary>Flexi Points ledger — a rider's day-by-day points</summary>
+          <p class="subtle">Points come from each rider's confirmed combined daily revenue. This view is read-only; a day's points can't be changed here.</p>
+          <label class="points-rider-pick">Rider
+            <select id="pointsRiderSelect"></select>
+          </label>
+          <div id="pointsLedger" class="points-ledger"></div>
+        </details>
+
         <details class="management-panel">
           <summary>Platform records for this range</summary>
           <div id="performanceList" class="performance-list"></div>
