@@ -1,10 +1,9 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { OpsDataScope } from "./auth.service.js";
+import { AuthService, type OpsActor, type OpsDataScope } from "./auth.service.js";
 import { DatabaseService } from "./database.service.js";
 import { DeliveriesService } from "./deliveries.service.js";
+import { DocumentStoreService } from "./document-store.js";
 import { OpsService } from "./ops.service.js";
 
 type RecordBody = Record<string, unknown>;
@@ -37,17 +36,32 @@ const incidentTypes: Record<string, string> = {
 
 const maintenanceCategories = ["tyres", "brakes", "engine", "electrical", "body_damage", "other"];
 const expenseCategories = ["fuel", "maintenance", "rent", "salaries", "utilities", "overhead", "other"];
-const mediaContentTypes = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4"]);
+
+// Operational camera captures: images + short video, small, stored on local disk.
+const captureContentTypes = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4"]);
+// Company documents (employment files, vehicle papers, fuel receipts): images or
+// PDF scans, larger, routed to the configured document store. These are only ever
+// read through the scoped /ops/v1/documents routes, never the raw /media route.
+const documentContentTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const captureMaxBytes = 3 * 1024 * 1024;
+const documentMaxBytes = 10 * 1024 * 1024;
+
+// owner_type -> the media kind its attachments carry.
+const documentOwnerKinds: Record<string, string> = {
+  operator: "operator_document",
+  vehicle: "vehicle_document",
+  fuel_issue: "fuel_receipt"
+};
+const documentKinds = new Set(Object.values(documentOwnerKinds));
 
 @Injectable()
 export class DepthService {
-  private readonly mediaDir =
-    process.env.FLEXI_OPS_MEDIA_DIR || `${process.env.FLEXI_OPS_DB_DIR || ".data/ops-pglite"}-media`;
-
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(OpsService) private readonly ops: OpsService,
-    @Inject(DeliveriesService) private readonly deliveries: DeliveriesService
+    @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
+    @Inject(DocumentStoreService) private readonly store: DocumentStoreService,
+    @Inject(AuthService) private readonly identity: AuthService
   ) {}
 
   private id(prefix: string) {
@@ -130,10 +144,20 @@ export class DepthService {
 
   // ---------------------------------------------------------------- media
 
-  async createMedia(body: RecordBody, actorPersonId: string) {
+  // Persist an uploaded file to the right backend and register it in
+  // ops_media_files. Shared by operational camera captures (POST /media) and
+  // company documents (POST /documents); `isDocument` relaxes the camera-only
+  // capture rules (capture-time drift, GPS) that don't apply to a scan.
+  private async persistMedia(
+    body: RecordBody,
+    actorPersonId: string,
+    opts: { isDocument: boolean; storageKey?: string }
+  ) {
+    const kind = String(body.kind || "evidence");
     const contentType = String(body.content_type || "");
-    if (!mediaContentTypes.has(contentType)) {
-      throw new BadRequestException(`content_type must be one of: ${[...mediaContentTypes].join(", ")}.`);
+    const allowed = opts.isDocument ? documentContentTypes : captureContentTypes;
+    if (!allowed.has(contentType)) {
+      throw new BadRequestException(`content_type must be one of: ${[...allowed].join(", ")}.`);
     }
     const base64 = String(body.content_base64 || "");
     if (!base64) throw new BadRequestException("content_base64 is required.");
@@ -144,33 +168,44 @@ export class DepthService {
       throw new BadRequestException("content_base64 is not valid base64.");
     }
     if (!bytes.length) throw new BadRequestException("content_base64 decodes to an empty file.");
-    if (bytes.length > 3 * 1024 * 1024) throw new BadRequestException("Media files are limited to 3MB after compression.");
+    const maxBytes = opts.isDocument ? documentMaxBytes : captureMaxBytes;
+    if (bytes.length > maxBytes) {
+      throw new BadRequestException(`${opts.isDocument ? "Documents" : "Media files"} are limited to ${Math.round(maxBytes / (1024 * 1024))}MB.`);
+    }
 
-    const capturedAt = new Date(String(body.captured_at || ""));
+    // A document scan is uploaded whenever it is scanned, so capture-time and GPS
+    // are optional; a camera capture must carry a valid capture time and may be
+    // held to a drift window / GPS when the strict flags are on.
+    const capturedAt = body.captured_at ? new Date(String(body.captured_at)) : new Date();
     if (Number.isNaN(capturedAt.getTime())) throw new BadRequestException("captured_at must be a valid timestamp.");
-    const toleranceMinutes = Number(process.env.MEDIA_CAPTURE_TOLERANCE_MINUTES || 5);
-    const driftMinutes = Math.abs(Date.now() - capturedAt.getTime()) / 60000;
-    if (process.env.MEDIA_STRICT_CAPTURE === "true" && driftMinutes > toleranceMinutes) {
-      throw new BadRequestException(
-        `captured_at is ${Math.round(driftMinutes)} minutes from server time; camera captures must be uploaded within ${toleranceMinutes} minutes.`
-      );
+    if (!opts.isDocument) {
+      if (!body.captured_at) throw new BadRequestException("captured_at must be a valid timestamp.");
+      const toleranceMinutes = Number(process.env.MEDIA_CAPTURE_TOLERANCE_MINUTES || 5);
+      const driftMinutes = Math.abs(Date.now() - capturedAt.getTime()) / 60000;
+      if (process.env.MEDIA_STRICT_CAPTURE === "true" && driftMinutes > toleranceMinutes) {
+        throw new BadRequestException(
+          `captured_at is ${Math.round(driftMinutes)} minutes from server time; camera captures must be uploaded within ${toleranceMinutes} minutes.`
+        );
+      }
     }
 
     const gpsLat = body.gps_lat === undefined || body.gps_lat === null || body.gps_lat === "" ? null : Number(body.gps_lat);
     const gpsLng = body.gps_lng === undefined || body.gps_lng === null || body.gps_lng === "" ? null : Number(body.gps_lng);
-    if (process.env.MEDIA_REQUIRE_GPS === "true" && (gpsLat === null || gpsLng === null)) {
+    if (!opts.isDocument && process.env.MEDIA_REQUIRE_GPS === "true" && (gpsLat === null || gpsLng === null)) {
       throw new BadRequestException("GPS coordinates are required for camera captures.");
     }
 
     const mediaId = this.id("media");
-    const extension = contentType === "video/mp4" ? "mp4" : contentType.split("/")[1];
-    const storagePath = `${mediaId}.${extension}`;
-    mkdirSync(this.mediaDir, { recursive: true });
-    writeFileSync(join(this.mediaDir, storagePath), bytes);
+    const extension = contentType === "video/mp4" ? "mp4" : contentType === "application/pdf" ? "pdf" : contentType.split("/")[1];
+    const backend = this.store.backendFor(kind);
+    // Local disk stores by bare filename; a remote document store namespaces by a
+    // caller-supplied key so files are browsable by owner. storage_path is opaque.
+    const key = backend === "local" ? `${mediaId}.${extension}` : (opts.storageKey ? `${opts.storageKey}/${mediaId}.${extension}` : `/misc/${mediaId}.${extension}`);
+    const storagePath = await this.store.put(backend, key, bytes, contentType);
 
     const record = {
       media_id: mediaId,
-      kind: String(body.kind || "evidence"),
+      kind,
       content_type: contentType,
       byte_size: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),
@@ -179,13 +214,14 @@ export class DepthService {
       gps_lng: gpsLng,
       storage_path: storagePath,
       uploaded_by_person_id: actorPersonId,
-      created_at: this.now()
+      created_at: this.now(),
+      storage_backend: backend
     };
     await this.db.exec(
       `INSERT INTO ops_media_files
        (media_id, kind, content_type, byte_size, sha256, captured_at, gps_lat, gps_lng,
-        storage_path, uploaded_by_person_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        storage_path, uploaded_by_person_id, created_at, storage_backend)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       Object.values(record)
     );
     await this.ops.audit("media.uploaded", "media", mediaId, null, { ...record, storage_path: undefined }, actorPersonId);
@@ -193,16 +229,35 @@ export class DepthService {
     return visible;
   }
 
-  async getMedia(mediaId: string) {
+  async createMedia(body: RecordBody, actorPersonId: string) {
+    // The raw media route is for operational camera captures only; company
+    // documents must go through the scoped documents route so their access
+    // control is applied.
+    if (documentKinds.has(String(body.kind || ""))) {
+      throw new BadRequestException("Document kinds must be uploaded via POST /ops/v1/documents.");
+    }
+    return this.persistMedia(body, actorPersonId, { isDocument: false });
+  }
+
+  // Internal load — no access control, used by validators and the scoped routes.
+  private async loadMedia(mediaId: string) {
     const media = await this.db.one<any>("SELECT * FROM ops_media_files WHERE media_id = $1", [mediaId]);
     if (!media) throw new NotFoundException("Media file not found.");
+    return media;
+  }
+
+  async getMedia(mediaId: string) {
+    const media = await this.loadMedia(mediaId);
+    if (documentKinds.has(media.kind)) {
+      throw new ForbiddenException("This is a document; read it via GET /ops/v1/documents/:linkId/content.");
+    }
     return media;
   }
 
   async readMediaContent(mediaId: string) {
     const media = await this.getMedia(mediaId);
     try {
-      return { media, bytes: readFileSync(join(this.mediaDir, media.storage_path)) };
+      return { media, bytes: await this.store.get(media.storage_backend || "local", media.storage_path) };
     } catch {
       throw new NotFoundException("Media content is missing from storage.");
     }
@@ -211,8 +266,147 @@ export class DepthService {
   private async mediaIds(value: unknown) {
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value)) throw new BadRequestException("media_ids must be an array of media IDs.");
-    for (const mediaId of value) await this.getMedia(String(mediaId));
+    for (const mediaId of value) await this.loadMedia(String(mediaId));
     return value.map(String);
+  }
+
+  // ------------------------------------------------------------ documents
+
+  // Resolve a document owner to the facts access control needs: does it exist,
+  // which rider owns it (operator), and which amoeba it belongs to.
+  private async resolveDocumentOwner(ownerType: string, ownerId: string) {
+    if (ownerType === "operator") {
+      const row = await this.db.one<any>("SELECT operator_id, person_id, amoeba_id FROM ops_operators WHERE operator_id = $1", [ownerId]);
+      if (!row) throw new NotFoundException("Operator not found.");
+      return { person_id: row.person_id as string | null, amoeba_id: row.amoeba_id as string | null };
+    }
+    if (ownerType === "vehicle") {
+      const row = await this.db.one<any>("SELECT vehicle_id, amoeba_id FROM ops_vehicles WHERE vehicle_id = $1", [ownerId]);
+      if (!row) throw new NotFoundException("Vehicle not found.");
+      return { person_id: null, amoeba_id: row.amoeba_id as string | null };
+    }
+    if (ownerType === "fuel_issue") {
+      const row = await this.db.one<any>(
+        `SELECT f.fuel_issue_id, o.amoeba_id
+           FROM ops_fuel_issues f JOIN ops_operators o ON o.operator_id = f.operator_id
+          WHERE f.fuel_issue_id = $1`,
+        [ownerId]
+      );
+      if (!row) throw new NotFoundException("Fuel issue not found.");
+      return { person_id: null, amoeba_id: row.amoeba_id as string | null };
+    }
+    throw new BadRequestException(`owner_type must be one of: ${Object.keys(documentOwnerKinds).join(", ")}.`);
+  }
+
+  // Is the actor the recorded supervisor of this amoeba? (Supervisors are mirrored
+  // onto the operators of the amoebas they run.)
+  private async actorSupervisesAmoeba(actor: OpsActor, amoebaId: string | null) {
+    if (!amoebaId) return false;
+    const row = await this.db.one<any>(
+      "SELECT 1 AS ok FROM ops_operators WHERE amoeba_id = $1 AND supervisor_person_id = $2 LIMIT 1",
+      [amoebaId, actor.person_id]
+    );
+    return Boolean(row);
+  }
+
+  // Access model (Phase A): HR/admin (system admin) can read and write every
+  // document. An operator's own documents are additionally readable by that rider.
+  // Vehicle papers and fuel receipts are additionally read/writable by the amoeba's
+  // supervisor (operational). Employment/ID docs are never exposed to supervisors.
+  private async documentAccess(actor: OpsActor, ownerType: string, owner: { person_id: string | null; amoeba_id: string | null }) {
+    if (this.identity.isSystemAdmin(actor)) return { read: true, write: true };
+    if (ownerType === "operator") {
+      const isOwner = owner.person_id != null && owner.person_id === actor.person_id;
+      return { read: isOwner, write: false };
+    }
+    const supervises = await this.actorSupervisesAmoeba(actor, owner.amoeba_id);
+    return { read: supervises, write: supervises };
+  }
+
+  async createDocument(body: RecordBody, actor: OpsActor) {
+    const ownerType = String(body.owner_type || "");
+    const ownerId = String(body.owner_id || "");
+    const docType = String(body.doc_type || "").trim();
+    if (!ownerId) throw new BadRequestException("owner_id is required.");
+    if (!docType) throw new BadRequestException("doc_type is required.");
+    const kind = documentOwnerKinds[ownerType];
+    if (!kind) throw new BadRequestException(`owner_type must be one of: ${Object.keys(documentOwnerKinds).join(", ")}.`);
+
+    const owner = await this.resolveDocumentOwner(ownerType, ownerId);
+    const access = await this.documentAccess(actor, ownerType, owner);
+    if (!access.write) throw new ForbiddenException("You are not allowed to attach documents to this record.");
+
+    const media = await this.persistMedia(
+      { ...body, kind },
+      actor.person_id,
+      { isDocument: true, storageKey: `/${ownerType}/${ownerId}/${docType}` }
+    );
+
+    const link = {
+      link_id: this.id("doclink"),
+      owner_type: ownerType,
+      owner_id: ownerId,
+      doc_type: docType,
+      label: body.label ? String(body.label).slice(0, 140) : null,
+      media_id: media.media_id,
+      active: true,
+      created_by_person_id: actor.person_id,
+      created_at: this.now()
+    };
+    await this.db.exec(
+      `INSERT INTO ops_document_links
+       (link_id, owner_type, owner_id, doc_type, label, media_id, active, created_by_person_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      Object.values(link)
+    );
+    await this.ops.audit("document.attached", "document_link", link.link_id, null, link, actor.person_id);
+    return { ...link, media };
+  }
+
+  async listDocuments(ownerType: string, ownerId: string, actor: OpsActor) {
+    const kind = documentOwnerKinds[ownerType];
+    if (!kind) throw new BadRequestException(`owner_type must be one of: ${Object.keys(documentOwnerKinds).join(", ")}.`);
+    const owner = await this.resolveDocumentOwner(ownerType, ownerId);
+    const access = await this.documentAccess(actor, ownerType, owner);
+    if (!access.read) throw new ForbiddenException("You are not allowed to view this record's documents.");
+    const rows = await this.db.many<any>(
+      `SELECT l.link_id, l.owner_type, l.owner_id, l.doc_type, l.label, l.created_at,
+              m.media_id, m.content_type, m.byte_size, m.created_at AS uploaded_at
+         FROM ops_document_links l JOIN ops_media_files m ON m.media_id = l.media_id
+        WHERE l.owner_type = $1 AND l.owner_id = $2 AND l.active
+        ORDER BY l.created_at DESC`,
+      [ownerType, ownerId]
+    );
+    return { data: rows, can_edit: access.write };
+  }
+
+  private async loadLink(linkId: string) {
+    const link = await this.db.one<any>("SELECT * FROM ops_document_links WHERE link_id = $1 AND active", [linkId]);
+    if (!link) throw new NotFoundException("Document not found.");
+    return link;
+  }
+
+  async readDocumentContent(linkId: string, actor: OpsActor) {
+    const link = await this.loadLink(linkId);
+    const owner = await this.resolveDocumentOwner(link.owner_type, link.owner_id);
+    const access = await this.documentAccess(actor, link.owner_type, owner);
+    if (!access.read) throw new ForbiddenException("You are not allowed to view this document.");
+    const media = await this.loadMedia(link.media_id);
+    try {
+      return { media, bytes: await this.store.get(media.storage_backend || "local", media.storage_path) };
+    } catch {
+      throw new NotFoundException("Document content is missing from storage.");
+    }
+  }
+
+  async deleteDocument(linkId: string, actor: OpsActor) {
+    const link = await this.loadLink(linkId);
+    const owner = await this.resolveDocumentOwner(link.owner_type, link.owner_id);
+    const access = await this.documentAccess(actor, link.owner_type, owner);
+    if (!access.write) throw new ForbiddenException("You are not allowed to remove this document.");
+    await this.db.exec("UPDATE ops_document_links SET active = FALSE WHERE link_id = $1", [linkId]);
+    await this.ops.audit("document.removed", "document_link", linkId, link, { ...link, active: false }, actor.person_id);
+    return { link_id: linkId, removed: true };
   }
 
   // ------------------------------------------------- deviation workflows

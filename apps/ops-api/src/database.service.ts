@@ -530,6 +530,30 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         created_at TIMESTAMPTZ NOT NULL
       );
 
+      -- Which store physically holds the bytes: 'local' (disk) for operational
+      -- camera media, or a document store (e.g. 'seafile') for the document
+      -- kinds. storage_path is opaque and interpreted by that backend only.
+      ALTER TABLE ops_media_files
+        ADD COLUMN IF NOT EXISTS storage_backend TEXT NOT NULL DEFAULT 'local';
+
+      -- Generic typed attachment of a media/document file to any owner record
+      -- (operator, vehicle, fuel_issue, ...). Gives named slots + labels and is
+      -- reused across entities, rather than a media_ids column per table.
+      CREATE TABLE IF NOT EXISTS ops_document_links (
+        link_id TEXT PRIMARY KEY,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        doc_type TEXT NOT NULL,
+        label TEXT,
+        media_id TEXT NOT NULL REFERENCES ops_media_files(media_id),
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by_person_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ops_document_links_owner
+        ON ops_document_links(owner_type, owner_id);
+
       CREATE TABLE IF NOT EXISTS ops_incidents (
         incident_id TEXT PRIMARY KEY,
         operator_id TEXT NOT NULL REFERENCES ops_operators(operator_id),

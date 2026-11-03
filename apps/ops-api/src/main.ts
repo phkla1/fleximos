@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module.js";
 import { JobRunnerService } from "./job-runner.service.js";
@@ -8,7 +9,11 @@ import { SchedulerService } from "./scheduler.service.js";
 const port = Number(process.env.PORT || 4030);
 const host = process.env.HOST || "127.0.0.1";
 
-const app = await NestFactory.create(AppModule, { cors: true });
+const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: true });
+// Base64 document uploads (PDF scans up to ~10MB → ~13.4MB encoded) far exceed
+// the framework default body limit, so raise it explicitly. Keep some headroom.
+app.useBodyParser("json", { limit: "16mb" });
+app.useBodyParser("urlencoded", { limit: "16mb", extended: true });
 app.enableCors({
   origin: true,
   allowedHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],

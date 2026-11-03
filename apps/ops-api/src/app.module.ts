@@ -7,6 +7,7 @@ import { DeliveriesImportService } from "./deliveries-import.service.js";
 import { AttendanceService } from "./attendance.service.js";
 import { DepthController } from "./depth.controller.js";
 import { DepthService } from "./depth.service.js";
+import { DocumentStoreService } from "./document-store.js";
 import { FlexiPointsController } from "./flexi-points.controller.js";
 import { FlexiPointsService } from "./flexi-points.service.js";
 import { JobRunnerService } from "./job-runner.service.js";
@@ -32,6 +33,7 @@ import { RevenueSourcesService } from "./revenue-sources.service.js";
     OpsService,
     PacingService,
     DepthService,
+    DocumentStoreService,
     FlexiPointsService,
     DeliveriesService,
     DeliveriesImportService,

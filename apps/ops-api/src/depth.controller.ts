@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -85,6 +86,53 @@ export class DepthController {
     res.setHeader("Content-Type", media.content_type);
     res.setHeader("Content-Length", String(bytes.length));
     res.send(bytes);
+  }
+
+  // ------------------------------------------------------------ documents
+
+  @ApiTags("Documents")
+  @ApiBearerAuth()
+  @Post("ops/v1/documents")
+  @ApiOperation({ summary: "Attach a document (employment file, vehicle paper, fuel receipt) to a record" })
+  async createDocument(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    return this.mutate(this.key(rawKey), HttpStatus.CREATED, () => this.depth.createDocument(body, actor));
+  }
+
+  @ApiTags("Documents")
+  @ApiBearerAuth()
+  @Get("ops/v1/documents")
+  async listDocuments(
+    @Req() req: Request,
+    @Query("owner_type") ownerType: string,
+    @Query("owner_id") ownerId: string
+  ) {
+    const actor = await this.auth(req);
+    return this.depth.listDocuments(String(ownerType || ""), String(ownerId || ""), actor);
+  }
+
+  @ApiTags("Documents")
+  @ApiBearerAuth()
+  @Get("ops/v1/documents/:linkId/content")
+  async documentContent(@Req() req: Request, @Param("linkId") linkId: string, @Res() res: Response) {
+    const actor = await this.auth(req);
+    const { media, bytes } = await this.depth.readDocumentContent(linkId, actor);
+    res.setHeader("Content-Type", media.content_type);
+    res.setHeader("Content-Length", String(bytes.length));
+    res.send(bytes);
+  }
+
+  @ApiTags("Documents")
+  @ApiBearerAuth()
+  @Delete("ops/v1/documents/:linkId")
+  @HttpCode(HttpStatus.OK)
+  async deleteDocument(@Req() req: Request, @Param("linkId") linkId: string) {
+    const actor = await this.auth(req);
+    return this.depth.deleteDocument(linkId, actor);
   }
 
   // ------------------------------------------------- deviation workflows
