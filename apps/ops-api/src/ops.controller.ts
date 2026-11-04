@@ -20,6 +20,7 @@ import { AuthService } from "./auth.service.js";
 import { AccommodationService } from "./accommodation.service.js";
 import { OnboardingService } from "./onboarding.service.js";
 import { OpsService } from "./ops.service.js";
+import { BatchImportService } from "./batch-import.service.js";
 import { PacingService } from "./pacing.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
@@ -35,7 +36,8 @@ export class OpsController {
     @Inject(AttendanceService) private readonly attendance: AttendanceService,
     @Inject(PacingService) private readonly pacing: PacingService,
     @Inject(OnboardingService) private readonly onboarding: OnboardingService,
-    @Inject(AccommodationService) private readonly accommodation: AccommodationService
+    @Inject(AccommodationService) private readonly accommodation: AccommodationService,
+    @Inject(BatchImportService) private readonly batchImport: BatchImportService
   ) {}
 
   private auth(req: Request) {
@@ -156,6 +158,28 @@ export class OpsController {
     this.identity.requireSupervisor(actor);
     return this.mutate(this.key(rawKey), HttpStatus.OK, () =>
       this.ops.resetOperatorPin(operatorId, this.identity.dataScope(actor), actor.person_id));
+  }
+
+  @ApiTags("Imports")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Batch-import operators from a sheet (dry-run by default; set dry_run:false to commit)" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/imports/operators")
+  async importOperators(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.batchImport.importOperators(body, actor.person_id);
+  }
+
+  @ApiTags("Imports")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Batch-import vehicles from a sheet (dry-run by default; set dry_run:false to commit)" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/imports/vehicles")
+  async importVehicles(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.batchImport.importVehicles(body, actor.person_id);
   }
 
   @ApiTags("Cash")

@@ -2544,6 +2544,126 @@ el.docDialog.addEventListener("click", async (event) => {
   }
 });
 
+/* ---------------- Bulk import (operators + vehicles) ---------------- */
+
+// CSV templates: the exact headers the importer maps, plus one illustrative row.
+// Kept in step with batch-import.service.ts OPERATOR_SPEC / VEHICLE_SPEC.
+const IMPORT_TEMPLATES = {
+  operators: {
+    headers: ["full_name", "phone", "nin", "email", "operator_type", "amoeba", "site", "operator_class", "start_date", "daily_revenue_target_ngn", "vehicle_plate", "status"],
+    example: ["Ada Obi", "08030000001", "12345678901", "ada@example.com", "rider", "Island", "Lekki Awudu Ekpegha", "rider", "2026-10-20", "", "", "active"]
+  },
+  vehicles: {
+    headers: ["plate", "vehicle_type", "make_model", "color", "powertrain", "tracker_provider", "vin", "amoeba", "assigned_operator", "status"],
+    example: ["ABC-123-XY", "motorbike", "TankVolt T1", "Black", "ev", "tankvolt", "VIN0000000000001", "Island", "08030000001", "active"]
+  }
+};
+
+const IMPORT_EL = {
+  operators: { file: "operatorImportFile", result: "operatorImportResult", report: "operatorImportReport" },
+  vehicles: { file: "vehicleImportFile", result: "vehicleImportResult", report: "vehicleImportReport" }
+};
+
+function csvCell(value) {
+  const s = String(value ?? "");
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadImportTemplate(kind) {
+  const t = IMPORT_TEMPLATES[kind];
+  const csv = [t.headers.map(csvCell).join(","), t.example.map(csvCell).join(",")].join("\r\n") + "\r\n";
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `fleximos-${kind}-import-template.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderImportReport(report, resultEl, reportEl) {
+  const s = report.summary;
+  resultEl.className = "import-summary " + (s.error ? "warn" : "ok");
+  resultEl.textContent = `${report.dry_run ? "Dry-run" : "Committed"}: ${s.create} to ${report.dry_run ? "create" : "created"}, ${s.skip} skipped, ${s.error} error${s.error === 1 ? "" : "s"} — of ${s.total} row${s.total === 1 ? "" : "s"}.`;
+  if (!report.rows.length) { reportEl.innerHTML = ""; return; }
+  const showsPin = report.rows.some((r) => r.initial_pin);
+  const body = report.rows.map((r) => {
+    const cls = r.status === "error" ? "err" : r.status === "skip" ? "skip" : "ok";
+    const mark = r.status === "error" ? "✕" : r.status === "skip" ? "–" : "✓";
+    const pinCell = showsPin ? `<td class="pin">${escapeHtml(r.initial_pin || "")}</td>` : "";
+    return `<tr class="${cls}"><td>${r.row}</td><td>${escapeHtml(r.label || "")}</td><td>${mark} ${r.status}</td><td>${escapeHtml(r.reason || "")}</td>${pinCell}</tr>`;
+  }).join("");
+  reportEl.innerHTML = `<table class="import-table"><thead><tr><th>Row</th><th>Item</th><th>Result</th><th>Detail</th>${showsPin ? "<th>Sign-in PIN</th>" : ""}</tr></thead><tbody>${body}</tbody></table>`
+    + (showsPin ? `<p class="form-hint">Sign-in PINs are shown once — copy them now to hand out. They can be reset later from the roster.</p>` : "");
+}
+
+async function runImport(kind, mode) {
+  const ids = IMPORT_EL[kind];
+  const fileInput = document.getElementById(ids.file);
+  const resultEl = document.getElementById(ids.result);
+  const reportEl = document.getElementById(ids.report);
+  const panel = fileInput.closest("details");
+  const commitBtn = panel.querySelector('[data-mode="commit"]');
+  const file = fileInput.files[0];
+  if (!file) {
+    resultEl.className = "import-summary err";
+    resultEl.textContent = "Choose a sheet first.";
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    resultEl.className = "import-summary err";
+    resultEl.textContent = "File is larger than 8MB.";
+    return;
+  }
+  const buttons = [...panel.querySelectorAll("button")];
+  buttons.forEach((b) => (b.disabled = true));
+  resultEl.className = "import-summary";
+  resultEl.textContent = mode === "commit" ? "Committing…" : "Previewing…";
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = () => reject(new Error("Could not read the file."));
+      reader.readAsDataURL(file);
+    });
+    const report = await ops(`/ops/v1/imports/${kind}`, {
+      method: "POST",
+      body: JSON.stringify({ file_base64: base64, dry_run: mode !== "commit" })
+    });
+    renderImportReport(report, resultEl, reportEl);
+    if (!report.dry_run) await refresh(`Imported ${report.summary.create} ${kind}.`);
+    // Commit is allowed only straight after a dry-run that found rows to create;
+    // after a commit it is re-locked until the next preview.
+    commitBtn.disabled = !(report.dry_run && report.summary.create > 0);
+  } catch (error) {
+    resultEl.className = "import-summary err";
+    resultEl.textContent = `✕ ${error.message}`;
+  } finally {
+    buttons.forEach((b) => {
+      if (b !== commitBtn) b.disabled = false;
+    });
+  }
+}
+
+document.getElementById("imports").addEventListener("click", (event) => {
+  const tpl = event.target.closest("[data-template]");
+  if (tpl) { downloadImportTemplate(tpl.dataset.template); return; }
+  const run = event.target.closest("[data-import]");
+  if (run) { void runImport(run.dataset.import, run.dataset.mode); }
+});
+
+// A fresh file selection invalidates a prior dry-run, so re-lock Commit.
+["operators", "vehicles"].forEach((kind) => {
+  document.getElementById(IMPORT_EL[kind].file).addEventListener("change", (event) => {
+    const panel = event.target.closest("details");
+    panel.querySelector('[data-mode="commit"]').disabled = true;
+    document.getElementById(IMPORT_EL[kind].result).textContent = "";
+    document.getElementById(IMPORT_EL[kind].report).innerHTML = "";
+  });
+});
+
 el.actionDialog.addEventListener("close", async () => {
   if (el.actionDialog.returnValue !== "default" || !pendingAction) return;
   const { type, alert } = pendingAction;

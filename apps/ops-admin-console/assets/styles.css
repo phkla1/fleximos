@@ -309,6 +309,24 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
 .doc-form { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
 .doc-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
 
+/* Bulk import */
+.import-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+.import-file { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
+.import-actions { display: flex; gap: 8px; margin-left: auto; }
+button.ghost { background: none; border: 1px solid var(--line); color: var(--green-dark); font-weight: 750; }
+.import-summary { margin: 6px 0; min-height: 18px; font-size: 13px; font-weight: 750; }
+.import-summary.ok { color: var(--green-dark); }
+.import-summary.warn { color: var(--amber, #b26a00); }
+.import-summary.err { color: var(--red); }
+.import-report { overflow-x: auto; }
+.import-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.import-table th, .import-table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.import-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.import-table tr.ok td:nth-child(3) { color: var(--green-dark); font-weight: 750; }
+.import-table tr.skip td:nth-child(3) { color: var(--muted); font-weight: 750; }
+.import-table tr.err td:nth-child(3) { color: var(--red); font-weight: 750; }
+.import-table td.pin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 800; letter-spacing: .08em; }
+
 @media (max-width: 950px) {
   .metrics { grid-template-columns: 1fr 1fr; }
   .alert-group { grid-template-columns: 1fr 1fr; }

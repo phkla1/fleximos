@@ -134,17 +134,42 @@ guarantor / id_card / medical (operator); registration / insurance / proof_of_pu
 roadworthiness / inspection_report (vehicle). No backend change.
 e2e: `tests/e2e/ops-admin-documents.spec.mjs` (attach → list → remove, desktop + mobile).
 
-## Phase C — Batch importers · size L
+## Phase C — Batch importers · size L · **SHIPPED**
 
-- **Operators:** person→operator per row; `start_date` seeds ramp maturity via the
-  existing backdated-cohort mechanism; optional PIN issuance; employment files attach
-  post-import via B. Idempotent by phone/NIN.
-- **Vehicles + VIN batches (one importer):** plate, type, make/model, powertrain,
-  `tracker_provider`+VIN; optional operator link (one-active-holder guard); amoeba
-  optional → warehouse. **Batteries never modelled.** Idempotent by plate.
-- **Dry-run + report** (create / skip-dup / error by row number) before commit.
-- Import screens: operators in hr-admin-console, vehicles in ops-admin-console.
-- Open: confirm the column set per sheet (draft templates first).
+**Two importers, both in ops-admin-console** as one **Bulk import** surface (`#imports`,
+Operators + Vehicles panels). The old "operators in hr-admin" line was corrected:
+operators are managed only in ops-admin (hr-admin is foundation-identity-only, no
+operator list), and the importer needs amoeba/site (ops concepts). The import
+endpoints live in ops-api and orchestrate the foundation person+user creation
+server-side via the existing service token — one upload lands across both services.
+
+- **Operators** (`POST /ops/v1/imports/operators`): each row → foundation person →
+  user (`roles:["operator"]`, **PIN issued automatically**, `initial_pin` returned
+  once and shown in the report for HR to hand out) → `createOperator`. Amoeba + site
+  matched **by name** against foundation `/amoeba/v1/amoebas` + `/amoeba/v1/sites`.
+  `start_date` → `createCohort(start_date)` + `addCohortMembers` (lands the rider at
+  the right ramp day; an older date simply yields no ramp window → veteran target).
+  Dedup by phone then NIN, plus the existing operator-record guard → **skip-duplicate**.
+  Optional `vehicle_plate` links a bike (the operator-side one-active-holder guard
+  applies; conflicts become row errors).
+- **Vehicles + VIN (one importer)** (`POST /ops/v1/imports/vehicles`): `createVehicle`
+  (`plate`+`vehicle_type` req). **VIN → `tracker_device_id`** (no `vin` column — VIN is
+  the tracker identity). `amoeba` blank → warehouse. `assigned_operator` (phone/NIN/name)
+  links via the operator side (guard applies). Powertrain words (petrol/electric) mapped
+  to the stored `ice`/`ev`. **Batteries never modelled.** Idempotent by plate.
+- **Dry-run by default** (`dry_run:false` to commit): per-row report (create /
+  skip-duplicate / error with row number + reason). Previewing writes nothing; the UI
+  unlocks **Commit** only after a dry-run that found rows, and re-locks after committing.
+- **Reader:** exported a generic `parseWorkbook()` from `xlsx-lite.ts` (its ZIP+sheet
+  primitives already existed); added `parseDelimited()` so the importer also accepts
+  the CSV template it hands out (no xlsx-writer needed). Speedaf parser untouched.
+- Tests: `tests/api/ops-imports.test.mjs` (6 — dry-run/commit, idempotency, ramp from
+  backdated start_date, CSV upload, VIN→tracker mapping + warehouse + dup-skip,
+  admin-only). e2e `tests/e2e/ops-admin-imports.spec.mjs` (preview→commit, desktop +
+  mobile). Full API suite (89) + OpenAPI green.
+- Note: imported operators default to `operator_status:'active'` (go-live roster is
+  live); a `status` column overrides. Bed/accommodation behaviour on create is
+  unchanged from the single-create roster path.
 
 ## Phase D — Revenue-history importer (≥ last month) · size M
 
@@ -177,8 +202,8 @@ to the amoeba's supervisor(s) when an operator raises "Get support now".
 
 ## Build order
 
-**A → B → C**, then **D**, **E**, **F**, **G** by priority. A→B→C delivers the go-live
-migration capability (papers + bulk data).
+**A → B → C** (all shipped), then **D**, **E**, **F**, **G** by priority. A→B→C delivers
+the go-live migration capability (papers + bulk data).
 
 ## Decisions locked (2026-11-03)
 

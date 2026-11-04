@@ -123,6 +123,50 @@ export type ParsedDeliveryRow = {
   attempts?: string;
 };
 
+// Read the first worksheet of an .xlsx into a raw string grid (every row,
+// header included) — the generic primitive the batch importers map by their own
+// column headers. The Speedaf-specific parseDeliveryExport builds on the same
+// internals; this just exposes the grid before any column mapping.
+export function parseWorkbook(buffer: Buffer): string[][] {
+  const files = readZipEntries(buffer);
+  const shared = parseSharedStrings(files.get("xl/sharedStrings.xml")?.toString("utf8"));
+  const sheetName = [...files.keys()].find((name) => /^xl\/worksheets\/sheet1\.xml$/.test(name))
+    || [...files.keys()].find((name) => /^xl\/worksheets\/.*\.xml$/.test(name));
+  if (!sheetName) throw new Error("No worksheet found in the .xlsx.");
+  return parseSheet(files.get(sheetName)!.toString("utf8"), shared);
+}
+
+// A comma/tab-separated sheet into the same raw grid, so an importer can accept a
+// CSV template (what we hand out) or an .xlsx without a separate code path. RFC
+// 4180 quoting: "" is an escaped quote inside a quoted field.
+export function parseDelimited(text: string): string[][] {
+  const clean = text.replace(/^﻿/, "");       // strip a UTF-8 BOM Excel adds
+  const delimiter = clean.includes("\t") && !clean.includes(",") ? "\t" : ",";
+  const grid: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean[i];
+    if (quoted) {
+      if (char === '"') {
+        if (clean[i + 1] === '"') { field += '"'; i++; }
+        else quoted = false;
+      } else field += char;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === delimiter) { row.push(field); field = ""; }
+    else if (char === "\n" || char === "\r") {
+      if (char === "\r" && clean[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      grid.push(row); row = [];
+    } else field += char;
+  }
+  if (field.length || row.length) { row.push(field); grid.push(row); }
+  return grid;
+}
+
 export function parseDeliveryExport(buffer: Buffer): ParsedDeliveryRow[] {
   const files = readZipEntries(buffer);
   const shared = parseSharedStrings(files.get("xl/sharedStrings.xml")?.toString("utf8"));

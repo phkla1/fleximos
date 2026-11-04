@@ -15,6 +15,7 @@ import { AccommodationService } from "./accommodation.service.js";
 import { OnboardingService } from "./onboarding.service.js";
 import { OpsController } from "./ops.controller.js";
 import { OpsService } from "./ops.service.js";
+import { BatchImportService } from "./batch-import.service.js";
 import { PacingService } from "./pacing.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { SchedulerService } from "./scheduler.service.js";
@@ -31,6 +32,7 @@ import { RevenueSourcesService } from "./revenue-sources.service.js";
     AccommodationService,
     OnboardingService,
     OpsService,
+    BatchImportService,
     PacingService,
     DepthService,
     DocumentStoreService,

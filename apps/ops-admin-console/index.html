@@ -28,6 +28,7 @@
           <p class="nav-group">Manage</p>
           <a href="#operators"><span class="nav-ic">🧑‍✈️</span>Roster</a>
           <a href="#vehicles"><span class="nav-ic">🛵</span>Vehicles</a>
+          <a href="#imports"><span class="nav-ic">📥</span>Bulk import</a>
           <a href="#trackers"><span class="nav-ic">📡</span>Trackers</a>
           <a href="#accommodation"><span class="nav-ic">🏠</span>Accommodation</a>
           <p class="nav-group">Configure</p>
@@ -308,6 +309,43 @@
           </div>
           <p id="vehicleFilterSummary" class="filter-summary"></p>
           <div id="vehicleList" class="data-list"></div>
+        </details>
+      </section>
+
+      <section id="imports" class="workspace-section view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Go-live migration</p><h2>Bulk import</h2></div>
+        </div>
+        <p class="section-intro">Load the existing roster and fleet from a spreadsheet. Download the template, fill it in, then <strong>Preview</strong> to see exactly what each row would do before you <strong>Commit</strong>. Previewing changes nothing; a committed row that already exists is skipped, so a sheet can be re-run safely.</p>
+
+        <details class="management-panel" id="operatorImportPanel" open>
+          <summary>Import operators</summary>
+          <p class="form-hint">Each row creates an Identity person + operator-role login (a sign-in PIN is issued and shown in the result for you to hand out) and an operator record. <strong>Amoeba</strong> and <strong>Site</strong> are matched by name. A <strong>start_date</strong> inside the ramp window places the rider at the correct ramp day; an older date means a steady-state (veteran) target. A row is skipped if the person already has an operator record (matched by phone, then NIN).</p>
+          <div class="import-controls">
+            <button type="button" class="ghost" data-template="operators">↓ Download CSV template</button>
+            <label class="import-file">Choose sheet (.csv or .xlsx)<input type="file" id="operatorImportFile" accept=".csv,.xlsx,text/csv" /></label>
+            <div class="import-actions">
+              <button type="button" data-import="operators" data-mode="preview">Preview (dry-run)</button>
+              <button type="button" data-import="operators" data-mode="commit" disabled>Commit import</button>
+            </div>
+          </div>
+          <p id="operatorImportResult" class="import-summary"></p>
+          <div id="operatorImportReport" class="import-report"></div>
+        </details>
+
+        <details class="management-panel" id="vehicleImportPanel">
+          <summary>Import vehicles</summary>
+          <p class="form-hint">Each row creates a vehicle. <strong>VIN</strong> is stored as the tracker device id (the identity we track and control by). Leave <strong>amoeba</strong> blank to register into the warehouse (unassigned). <strong>assigned_operator</strong> (phone, NIN or name) links a rider — the one-active-holder guard blocks a double assignment, surfaced as a row error. A row is skipped if the plate already exists.</p>
+          <div class="import-controls">
+            <button type="button" class="ghost" data-template="vehicles">↓ Download CSV template</button>
+            <label class="import-file">Choose sheet (.csv or .xlsx)<input type="file" id="vehicleImportFile" accept=".csv,.xlsx,text/csv" /></label>
+            <div class="import-actions">
+              <button type="button" data-import="vehicles" data-mode="preview">Preview (dry-run)</button>
+              <button type="button" data-import="vehicles" data-mode="commit" disabled>Commit import</button>
+            </div>
+          </div>
+          <p id="vehicleImportResult" class="import-summary"></p>
+          <div id="vehicleImportReport" class="import-report"></div>
         </details>
       </section>
 
