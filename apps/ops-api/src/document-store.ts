@@ -69,15 +69,13 @@ export class SeafileStore implements DocumentStore {
   async put(key: string, bytes: Buffer, contentType: string): Promise<string> {
     const storagePath = key.startsWith("/") ? key : `/${key}`;
     const { dir, name } = this.parentOf(storagePath);
-    // Ensure the parent directory exists (idempotent; Seafile 400s if it already does).
-    await fetch(`${this.baseUrl}/api2/repos/${this.repoId}/dir/?p=${encodeURIComponent(dir)}`, {
-      method: "POST",
-      headers: this.headers(),
-      body: new URLSearchParams({ operation: "mkdir" })
-    }).catch(() => undefined);
+    // Upload at the repo root with a relative_path: Seafile creates every
+    // intermediate folder automatically, so a three-deep document path
+    // (/operator/<id>/<doc_type>/) needs no separate mkdir per level.
+    const relativePath = dir === "/" ? "" : dir.replace(/^\//, "");
 
     const linkResponse = await fetch(
-      `${this.baseUrl}/api2/repos/${this.repoId}/upload-link/?p=${encodeURIComponent(dir)}`,
+      `${this.baseUrl}/api2/repos/${this.repoId}/upload-link/?p=/`,
       { headers: this.headers() }
     );
     if (!linkResponse.ok) throw new Error(`Seafile upload-link failed (${linkResponse.status}).`);
@@ -85,7 +83,8 @@ export class SeafileStore implements DocumentStore {
 
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), name);
-    form.append("parent_dir", dir);
+    form.append("parent_dir", "/");
+    if (relativePath) form.append("relative_path", relativePath);
     form.append("replace", "1");
     const upload = await fetch(uploadUrl, { method: "POST", headers: this.headers(), body: form });
     if (!upload.ok) throw new Error(`Seafile upload failed (${upload.status}).`);

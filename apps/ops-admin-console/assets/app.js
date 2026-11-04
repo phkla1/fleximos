@@ -76,7 +76,8 @@ const el = Object.fromEntries(
     "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
     "cohortBoard", "cohortBoardUpdated",
     "accommodationList", "accommodationBedsSummary",
-    "platformDialog", "platformForm", "platformDialogContext", "platformDialogResult"
+    "platformDialog", "platformForm", "platformDialogContext", "platformDialogResult",
+    "docDialog", "docForm", "docList", "docDialogTitle", "docDialogContext", "docDialogResult"
   ].map((id) => [id, document.getElementById(id)])
 );
 
@@ -867,6 +868,7 @@ function render() {
         <label class="row-check" title="${escapeHtml(accommodationHint(operator))}"><input type="checkbox" data-operator-accommodated ${operator.accommodated ? "checked" : ""} ${accommodationDisabled(operator) ? "disabled" : ""} /> Accommodated</label>
         <button type="button" data-save-operator="${escapeHtml(operator.operator_id)}">Save</button>
         <button type="button" class="secondary" data-register-operator="${escapeHtml(operator.operator_id)}">Add platform</button>
+        <button type="button" class="secondary" data-operator-docs="${escapeHtml(operator.operator_id)}">Documents</button>
       </div>
     </article>
   `).join("") : `<div class="empty">${hasOperatorScope ? "No operators match this scope." : "Choose a roster scope to view operators."}</div>`;
@@ -904,7 +906,8 @@ function render() {
           : "";
         return `${head}<span class="pill ${t.cls}">${escapeHtml(t.text)}</span>`;
       })()}</div>
-      <div><span class="pill">${escapeHtml(vehicle.status)}</span></div>
+      <div class="row-actions"><span class="pill">${escapeHtml(vehicle.status)}</span>
+        <button type="button" class="secondary" data-vehicle-docs="${escapeHtml(vehicle.vehicle_id)}">Documents</button></div>
     </article>
   `).join("") : `<div class="empty">${hasVehicleScope ? "No vehicles match this scope." : "Choose a fleet scope to view vehicles."}</div>`;
 
@@ -2191,6 +2194,8 @@ document.addEventListener("click", async (event) => {
   const alertButton = event.target.closest("[data-alert-action]");
   const saveOperator = event.target.closest("[data-save-operator]");
   const registerOperator = event.target.closest("[data-register-operator]");
+  const operatorDocs = event.target.closest("[data-operator-docs]");
+  const vehicleDocs = event.target.closest("[data-vehicle-docs]");
   const replayJob = event.target.closest("[data-replay-job]");
   const openTeam = event.target.closest("[data-open-team]");
   const closeTeam = event.target.closest("[data-close-team]");
@@ -2359,6 +2364,19 @@ document.addEventListener("click", async (event) => {
 
   if (registerOperator) {
     openPlatformDialog(registerOperator.dataset.registerOperator);
+    return;
+  }
+
+  if (operatorDocs) {
+    const operator = state.operators.find((o) => o.operator_id === operatorDocs.dataset.operatorDocs);
+    openDocuments("operator", operatorDocs.dataset.operatorDocs, operator ? nameForPerson(operator.person_id) : operatorDocs.dataset.operatorDocs);
+    return;
+  }
+
+  if (vehicleDocs) {
+    const vehicle = state.vehicles.find((v) => v.vehicle_id === vehicleDocs.dataset.vehicleDocs);
+    openDocuments("vehicle", vehicleDocs.dataset.vehicleDocs, vehicle ? vehicle.plate : vehicleDocs.dataset.vehicleDocs);
+    return;
   }
 });
 
@@ -2409,6 +2427,121 @@ el.platformForm.addEventListener("submit", async (event) => {
 
 el.platformDialog.addEventListener("click", (event) => {
   if (event.target.closest("[data-close-platform]")) el.platformDialog.close();
+});
+
+// ------------------------------------------------------------- documents
+// Attach/list/view/remove an operator's or vehicle's documents (employment
+// files, vehicle papers) through the scoped /ops/v1/documents routes.
+const DOC_TYPES = {
+  operator: ["drivers_license", "employment_contract", "guarantor_form", "id_card", "medical", "other"],
+  vehicle: ["registration", "insurance", "proof_of_purchase", "roadworthiness", "inspection_report", "other"]
+};
+
+function openDocuments(ownerType, ownerId, name) {
+  el.docDialog.dataset.ownerType = ownerType;
+  el.docDialog.dataset.ownerId = ownerId;
+  el.docDialogTitle.textContent = ownerType === "vehicle" ? "Vehicle papers" : "Operator documents";
+  el.docDialogContext.textContent = `${name} — ${ownerId}`;
+  el.docForm.elements.doc_type.innerHTML = DOC_TYPES[ownerType]
+    .map((type) => `<option value="${type}">${escapeHtml(humanize(type))}</option>`).join("");
+  el.docForm.elements.label.value = "";
+  el.docForm.elements.file.value = "";
+  el.docDialogResult.textContent = "";
+  el.docDialogResult.className = "dialog-note";
+  el.docList.innerHTML = `<div class="empty">Loading…</div>`;
+  el.docDialog.showModal();
+  void loadDocList();
+}
+
+async function loadDocList() {
+  const { ownerType, ownerId } = el.docDialog.dataset;
+  try {
+    const result = await ops(`/ops/v1/documents?owner_type=${encodeURIComponent(ownerType)}&owner_id=${encodeURIComponent(ownerId)}`);
+    const rows = result.data || [];
+    el.docForm.hidden = !result.can_edit;
+    el.docList.innerHTML = rows.length ? rows.map((row) => `
+      <article class="data-row doc-row">
+        <div><strong>${escapeHtml(humanize(row.doc_type))}</strong><small>${escapeHtml(row.label || "")}</small></div>
+        <div><span class="row-label">File</span><small>${escapeHtml(row.content_type)} · ${(Number(row.byte_size) / 1024).toFixed(0)} KB</small></div>
+        <div class="row-actions">
+          <button type="button" class="secondary" data-view-doc="${escapeHtml(row.link_id)}">View</button>
+          ${result.can_edit ? `<button type="button" class="secondary" data-del-doc="${escapeHtml(row.link_id)}">Remove</button>` : ""}
+        </div>
+      </article>
+    `).join("") : `<div class="empty">No documents yet.</div>`;
+  } catch (error) {
+    el.docList.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function viewDocument(linkId) {
+  try {
+    const response = await fetch(`${el.opsApiBase.value.replace(/\/$/, "")}/ops/v1/documents/${linkId}/content`, {
+      headers: { Authorization: `Bearer ${el.apiToken.value}` }
+    });
+    if (!response.ok) throw new Error("Could not load the document.");
+    const objectUrl = URL.createObjectURL(await response.blob());
+    window.open(objectUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) { showError(error); }
+}
+
+el.docForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const { ownerType, ownerId } = el.docDialog.dataset;
+  const file = el.docForm.elements.file.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    el.docDialogResult.textContent = "✕ File is larger than 10MB.";
+    el.docDialogResult.className = "dialog-note err";
+    return;
+  }
+  const submitButton = el.docForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = () => reject(new Error("Could not read the file."));
+      reader.readAsDataURL(file);
+    });
+    await ops("/ops/v1/documents", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("document") },
+      body: JSON.stringify({
+        owner_type: ownerType,
+        owner_id: ownerId,
+        doc_type: el.docForm.elements.doc_type.value,
+        label: el.docForm.elements.label.value.trim() || undefined,
+        content_type: file.type,
+        content_base64: base64
+      })
+    });
+    el.docDialogResult.textContent = "✓ Uploaded.";
+    el.docDialogResult.className = "dialog-note ok";
+    el.docForm.elements.label.value = "";
+    el.docForm.elements.file.value = "";
+    await loadDocList();
+  } catch (error) {
+    el.docDialogResult.textContent = `✕ ${error.message}`;
+    el.docDialogResult.className = "dialog-note err";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+el.docDialog.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-close-doc]")) { el.docDialog.close(); return; }
+  const view = event.target.closest("[data-view-doc]");
+  if (view) { void viewDocument(view.dataset.viewDoc); return; }
+  const del = event.target.closest("[data-del-doc]");
+  if (del) {
+    if (!window.confirm("Remove this document? The file is kept but it will no longer be listed.")) return;
+    try {
+      await ops(`/ops/v1/documents/${del.dataset.delDoc}`, { method: "DELETE", headers: { "Idempotency-Key": key("document-del") } });
+      await loadDocList();
+    } catch (error) { showError(error); }
+  }
 });
 
 el.actionDialog.addEventListener("close", async () => {

@@ -681,6 +681,25 @@
       </form>
     </dialog>
 
+    <dialog id="docDialog" class="team-dialog">
+      <div class="dialog-body">
+        <div class="dialog-heading"><div><p class="eyebrow">Documents</p><h2 id="docDialogTitle">Documents</h2></div><button type="button" data-close-doc aria-label="Close">×</button></div>
+        <p id="docDialogContext" class="subtle"></p>
+        <div id="docList" class="doc-list"></div>
+        <form id="docForm" class="doc-form">
+          <p class="eyebrow">Add a document</p>
+          <label>Type<select name="doc_type" required></select></label>
+          <label>Label (optional)<input name="label" maxlength="140" placeholder="e.g. Signed 2026 contract" /></label>
+          <label>File (PDF or image, up to 10MB)<input name="file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" required /></label>
+          <p id="docDialogResult" class="dialog-note" role="status" aria-live="polite"></p>
+          <div class="dialog-actions">
+            <button type="button" class="secondary" data-close-doc>Done</button>
+            <button type="submit">Upload</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
     <script src="../role-console-assets/flexi-env.js"></script>
     <script src="../role-console-assets/admin-kit.js"></script>
     <script src="./assets/app.js"></script>

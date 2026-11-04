@@ -124,12 +124,15 @@ Until then it runs on `local` automatically.
 
 Still to do for Phase A's surface: Phase B is the UI (no further backend needed).
 
-## Phase B — Operator & vehicle papers UI · size S
+## Phase B — Operator & vehicle papers UI · size S · **SHIPPED**
 
-Document panels on the operator record (hr-admin-console) and vehicle record
-(ops-admin-console "Manage fleet assets"), reusing the file-picker→base64 pattern.
-Typed slots: licence / contract / guarantor (operator); registration / insurance /
-proof-of-purchase (vehicle). No backend work.
+A "Documents" button on each operator and vehicle row in **ops-admin-console**
+(both entities are managed there; hr-admin is foundation-only and has no operator
+list) opens a dialog that lists, uploads (file-picker → base64 → `/ops/v1/documents`),
+views (authenticated blob), and removes documents. Typed slots: licence / contract /
+guarantor / id_card / medical (operator); registration / insurance / proof_of_purchase /
+roadworthiness / inspection_report (vehicle). No backend change.
+e2e: `tests/e2e/ops-admin-documents.spec.mjs` (attach → list → remove, desktop + mobile).
 
 ## Phase C — Batch importers · size L
 

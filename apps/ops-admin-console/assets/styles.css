@@ -304,6 +304,10 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
 .dialog-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .dialog-heading button { width: 44px; padding: 0; background: transparent; color: var(--ink); font-size: 25px; }
 .dialog-actions { display: flex; justify-content: end; gap: 8px; margin-top: 18px; }
+.doc-list { display: grid; gap: 7px; margin: 14px 0 18px; }
+.doc-row { display: grid; grid-template-columns: minmax(160px, 1.4fr) 1fr auto; gap: 12px; align-items: center; }
+.doc-form { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
+.doc-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
 
 @media (max-width: 950px) {
   .metrics { grid-template-columns: 1fr 1fr; }
