@@ -171,13 +171,40 @@ server-side via the existing service token — one upload lands across both serv
   live); a `status` column overrides. Bed/accommodation behaviour on create is
   unchanged from the single-create roster path.
 
-## Phase D — Revenue-history importer (≥ last month) · size M
+## Phase D — Revenue-history backfill + inDrive connector · size L · **SHIPPED**
 
-Lands per operator per day in `ops_platform_daily_records` / delivery equivalent.
-- **Speedaf:** reuse the waybill parser; import past-dated batches + courier→rider map.
-- **Bolt:** map export rows → ingestion endpoint (`source:'migration'`,
-  `data_quality:'authoritative'`).
-- Open (blocks Bolt half only): Bolt export mechanism (API vs CSV statement).
+Rides the existing pull→ingest pipeline (no new data model): the connectors already
+fetch a day and `ingestDailyRecords` already upserts by (operator, account, date) and
+accepts `source:'migration'`. New ops-admin **Data health → Backfill** panel covers the
+platform-registration sources (Bolt `driver_uuid`, inDrive `driver_id`).
+
+- **Unmapped-ID resolver** — `POST /ops/v1/backfill/discover` dry-pulls a day (api) or
+  parses the file (inDrive) and lists every platform id flagged mapped/unmapped; the admin
+  maps the unmapped ones via the existing `platform-registrations` endpoint before
+  committing (an unmapped id is rejected on ingest).
+- **Bolt range backfill** — `POST /ops/v1/backfill/platform` loops the connector per day
+  over a date range (cap **31 days/run**), ingests `source:'migration'`, dry-run-first.
+  Synchronous on purpose (the async worker only runs when `FLEXI_EMBED_JOBS` is set).
+- **inDrive file connector** — `POST /ops/v1/backfill/indrive`. inDrive is registered as a
+  `file`-mode platform (operators earn `income_courier`). Its export is **weekly** (driver ×
+  week, money only at week level) but always ships the order rows, so daily deliveries +
+  distance are read **exactly** from order timestamps and the week's gmv/income is
+  **allocated** across its order-days by done-share (`data_quality:'estimated'`;
+  `income = gmv × 0.87`). `reward_ngn` is a weekly tier bonus → kept in provenance only,
+  **never** folded into revenue/Flexi Points (comp decision, per Wole 2026-11-05).
+- **Speedaf is NOT here** — no historical API (its live pull is today-only); past-dated
+  upload + courier→rider mapping + unmapped surface already exist in the Deliver tab.
+- **Deferred:** the daily **delta** money path (today's week-to-date − yesterday's) is exact
+  but untestable until inDrive sends consecutive daily files live; allocation is
+  self-correcting (re-ingesting the growing week each day converges). Build it when the live
+  feed exists.
+- Files: `backfill.service.ts`, `xlsx-lite.parseWorkbookSheets`/`excelSerialToISODate`, 3
+  controller routes (all `requireSystemAdmin`), ops-admin Backfill panel. Tests:
+  `tests/api/ops-backfill.test.mjs` (7, incl. exact allocation math) + e2e
+  `ops-admin-backfill.spec.mjs`; fixture `tests/fixtures/indrive-sample.xlsx`.
+- inDrive format confirmed (Wole 2026-11-05): sent **daily**, order tab **always** provided;
+  driver match on `driver_id`; weekly-only metrics (bids/accepts/cancellations/supply_hours)
+  not daily-ised (kept in provenance, like Uber's null acceptance).
 
 ## Phase E — Fuel/charge receipts · size S
 
@@ -202,8 +229,9 @@ to the amoeba's supervisor(s) when an operator raises "Get support now".
 
 ## Build order
 
-**A → B → C** (all shipped), then **D**, **E**, **F**, **G** by priority. A→B→C delivers
-the go-live migration capability (papers + bulk data).
+**A → B → C → D** (all shipped), then **E**, **F**, **G** by priority. A→B→C delivers
+the go-live migration capability (papers + bulk data); D adds revenue-history backfill
+(Bolt range + inDrive file) and the operator↔platform-id resolver.
 
 ## Decisions locked (2026-11-03)
 

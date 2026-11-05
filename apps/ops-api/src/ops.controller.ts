@@ -21,6 +21,7 @@ import { AccommodationService } from "./accommodation.service.js";
 import { OnboardingService } from "./onboarding.service.js";
 import { OpsService } from "./ops.service.js";
 import { BatchImportService } from "./batch-import.service.js";
+import { BackfillService } from "./backfill.service.js";
 import { PacingService } from "./pacing.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
@@ -37,7 +38,8 @@ export class OpsController {
     @Inject(PacingService) private readonly pacing: PacingService,
     @Inject(OnboardingService) private readonly onboarding: OnboardingService,
     @Inject(AccommodationService) private readonly accommodation: AccommodationService,
-    @Inject(BatchImportService) private readonly batchImport: BatchImportService
+    @Inject(BatchImportService) private readonly batchImport: BatchImportService,
+    @Inject(BackfillService) private readonly backfill: BackfillService
   ) {}
 
   private auth(req: Request) {
@@ -180,6 +182,39 @@ export class OpsController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return this.batchImport.importVehicles(body, actor.person_id);
+  }
+
+  @ApiTags("Backfill")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List the platform ids a source reports for a day/file, flagged mapped vs unmapped" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/backfill/discover")
+  async backfillDiscover(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.backfill.discover(body);
+  }
+
+  @ApiTags("Backfill")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Backfill a ride-platform's daily records over a date range (dry-run by default; set dry_run:false to commit)" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/backfill/platform")
+  async backfillPlatform(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.backfill.backfillPlatform(body, actor.person_id);
+  }
+
+  @ApiTags("Backfill")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Import an inDrive weekly workbook into daily records (dry-run by default; set dry_run:false to commit)" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/backfill/indrive")
+  async backfillInDrive(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.backfill.importInDrive(body, actor.person_id);
   }
 
   @ApiTags("Cash")

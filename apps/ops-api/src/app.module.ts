@@ -16,6 +16,7 @@ import { OnboardingService } from "./onboarding.service.js";
 import { OpsController } from "./ops.controller.js";
 import { OpsService } from "./ops.service.js";
 import { BatchImportService } from "./batch-import.service.js";
+import { BackfillService } from "./backfill.service.js";
 import { PacingService } from "./pacing.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { SchedulerService } from "./scheduler.service.js";
@@ -33,6 +34,7 @@ import { RevenueSourcesService } from "./revenue-sources.service.js";
     OnboardingService,
     OpsService,
     BatchImportService,
+    BackfillService,
     PacingService,
     DepthService,
     DocumentStoreService,

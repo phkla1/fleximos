@@ -759,6 +759,7 @@ function render() {
   el.operatorSummaryCount.textContent = state.operators.filter((item) => item.operator_status === "active").length;
   el.vehicleSummaryCount.textContent = state.vehicles.filter((item) => item.status === "active").length;
   renderOptions();
+  populateBackfillSources();
   el.boardUpdated.textContent = `Updated ${new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}`;
 
   const teams = [...state.teamBoard.reduce((groups, item) => {
@@ -2663,6 +2664,195 @@ document.getElementById("imports").addEventListener("click", (event) => {
     document.getElementById(IMPORT_EL[kind].report).innerHTML = "";
   });
 });
+
+/* ----------------------------- Revenue backfill ---------------------------- */
+// Phase D — load past daily records for a ride platform. Bolt pulls a date range
+// from its API; inDrive reads its weekly workbook and splits each week into days.
+// Discover lists the platform ids and lets an admin map the unmapped ones (so
+// their rows land), then Preview/Commit runs the backfill (migration source).
+const bf = {
+  source: () => document.getElementById("backfillSource"),
+  discoverDate: () => document.getElementById("backfillDiscoverDate"),
+  from: () => document.getElementById("backfillFrom"),
+  to: () => document.getElementById("backfillTo"),
+  file: () => document.getElementById("backfillFile"),
+  apiInputs: () => document.getElementById("backfillApiInputs"),
+  fileInputs: () => document.getElementById("backfillFileInputs"),
+  commit: () => document.querySelector('#backfillPanel [data-backfill="commit"]'),
+  result: () => document.getElementById("backfillResult"),
+  ids: () => document.getElementById("backfillIds"),
+  report: () => document.getElementById("backfillReport")
+};
+
+function backfillMode() {
+  const opt = bf.source().selectedOptions[0];
+  return opt ? opt.dataset.mode : "";
+}
+
+// Ride-platform sources only (api = Bolt, file = inDrive). Speedaf and manual
+// sources are excluded — Speedaf history loads from the Deliver tab.
+function populateBackfillSources() {
+  const select = bf.source();
+  if (!select) return;
+  const sources = state.platformAccounts.filter((a) => a.is_active && ["api", "file"].includes(a.integration_mode || "api"));
+  const prev = select.value;
+  select.innerHTML = sources.length
+    ? sources.map((a) => `<option value="${escapeHtml(a.platform_account_id)}" data-mode="${escapeHtml(a.integration_mode || "api")}">${escapeHtml(a.display_name)} · ${escapeHtml(a.platform)} · ${escapeHtml(a.integration_mode || "api")}</option>`).join("")
+    : `<option value="">No ride-platform sources configured</option>`;
+  if (prev && sources.some((a) => a.platform_account_id === prev)) select.value = prev;
+  syncBackfillInputs();
+}
+
+function syncBackfillInputs() {
+  const mode = backfillMode();
+  // Toggle via inline display, not the `hidden` attribute: these wrappers carry a
+  // flex display class that would otherwise override [hidden].
+  bf.apiInputs().style.display = mode === "api" ? "" : "none";
+  bf.fileInputs().style.display = mode === "file" ? "" : "none";
+  if (!bf.discoverDate().value) bf.discoverDate().value = lagosToday();
+  if (!bf.to().value) bf.to().value = lagosToday();
+  if (!bf.from().value) { const d = new Date(`${lagosToday()}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 6); bf.from().value = d.toISOString().slice(0, 10); }
+  resetBackfillRun();
+}
+
+function resetBackfillRun() {
+  bf.commit().disabled = true;
+  bf.result().textContent = "";
+  bf.report().innerHTML = "";
+}
+
+async function backfillFileBase64() {
+  const file = bf.file().files[0];
+  if (!file) throw new Error("Choose the inDrive workbook first.");
+  if (file.size > 16 * 1024 * 1024) throw new Error("File is larger than 16MB.");
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function operatorPerson(operatorId) {
+  return state.operators.find((o) => o.operator_id === operatorId)?.person_id || operatorId;
+}
+
+async function discoverBackfill() {
+  const platformAccountId = bf.source().value;
+  if (!platformAccountId) return;
+  const result = bf.result();
+  result.className = "import-summary";
+  result.textContent = "Discovering…";
+  bf.ids().innerHTML = "";
+  try {
+    const body = { platform_account_id: platformAccountId };
+    if (backfillMode() === "file") body.file_base64 = await backfillFileBase64();
+    else body.record_date = bf.discoverDate().value;
+    const data = await ops("/ops/v1/backfill/discover", { method: "POST", body: JSON.stringify(body) });
+    renderBackfillIds(data, platformAccountId);
+    result.className = "import-summary " + (data.unmapped_count ? "warn" : "ok");
+    result.textContent = `${data.ids.length} id${data.ids.length === 1 ? "" : "s"} found · ${data.unmapped_count} unmapped${data.record_date ? ` (for ${data.record_date})` : ""}.`;
+  } catch (error) {
+    result.className = "import-summary err";
+    result.textContent = `✕ ${error.message}`;
+  }
+}
+
+function renderBackfillIds(data, platformAccountId) {
+  if (!data.ids.length) { bf.ids().innerHTML = `<p class="form-hint">No platform ids were returned.</p>`; return; }
+  const riders = state.operators.filter((o) => o.operator_status === "active");
+  const rows = data.ids.map((r) => {
+    if (r.mapped) {
+      return `<tr class="ok"><td>✓</td><td>${escapeHtml(r.platform_operator_id)}</td><td>${escapeHtml(r.activity)}</td><td>${escapeHtml(nameForPerson(operatorPerson(r.operator_id)))}</td></tr>`;
+    }
+    const options = `<option value="">— map to rider —</option>` + riders.map((o) => `<option value="${escapeHtml(o.operator_id)}">${escapeHtml(nameForPerson(o.person_id))}</option>`).join("");
+    return `<tr class="skip"><td>–</td><td>${escapeHtml(r.platform_operator_id)}</td><td>${escapeHtml(r.activity)}</td><td><select data-map-id="${escapeHtml(r.platform_operator_id)}">${options}</select> <button type="button" class="ghost" data-map-btn="${escapeHtml(r.platform_operator_id)}" data-account="${escapeHtml(platformAccountId)}">Map</button></td></tr>`;
+  }).join("");
+  bf.ids().innerHTML = `<table class="import-table"><thead><tr><th></th><th>Platform id</th><th>Activity</th><th>Mapped rider</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function mapBackfillId(platformOperatorId, platformAccountId, selectEl, buttonEl) {
+  if (!selectEl || !selectEl.value) return;
+  const operatorId = selectEl.value;
+  buttonEl.disabled = true;
+  try {
+    await ops(`/ops/v1/operators/${operatorId}/platform-registrations`, {
+      method: "POST",
+      headers: { "Idempotency-Key": key("backfill-map") },
+      body: JSON.stringify({ platform_account_id: platformAccountId, platform_operator_id: platformOperatorId })
+    });
+    const row = buttonEl.closest("tr");
+    row.className = "ok";
+    row.innerHTML = `<td>✓</td><td>${escapeHtml(platformOperatorId)}</td><td>mapped</td><td>${escapeHtml(nameForPerson(operatorPerson(operatorId)))}</td>`;
+  } catch (error) {
+    buttonEl.disabled = false;
+    bf.result().className = "import-summary err";
+    bf.result().textContent = `✕ ${error.message}`;
+  }
+}
+
+async function runBackfill(mode) {
+  const platformAccountId = bf.source().value;
+  if (!platformAccountId) return;
+  const srcMode = backfillMode();
+  const result = bf.result();
+  const panel = document.getElementById("backfillPanel");
+  const buttons = [...panel.querySelectorAll(".import-actions button")];
+  buttons.forEach((b) => (b.disabled = true));
+  result.className = "import-summary";
+  result.textContent = mode === "commit" ? "Committing…" : "Previewing…";
+  try {
+    let report;
+    if (srcMode === "file") {
+      const file_base64 = await backfillFileBase64();
+      report = await ops("/ops/v1/backfill/indrive", { method: "POST", body: JSON.stringify({ platform_account_id: platformAccountId, file_base64, dry_run: mode !== "commit" }) });
+    } else {
+      report = await ops("/ops/v1/backfill/platform", { method: "POST", body: JSON.stringify({ platform_account_id: platformAccountId, date_from: bf.from().value, date_to: bf.to().value, dry_run: mode !== "commit" }) });
+    }
+    renderBackfillReport(report, srcMode);
+    if (!report.dry_run) await refresh(`Backfilled ${report.summary.upserted} daily record${report.summary.upserted === 1 ? "" : "s"}.`);
+    // Dry-run never upserts; enable Commit only after a dry-run that found mapped
+    // rows to land, and re-lock it after the commit.
+    bf.commit().disabled = !(report.dry_run && report.summary.mapped > 0);
+  } catch (error) {
+    result.className = "import-summary err";
+    result.textContent = `✕ ${error.message}`;
+  } finally {
+    buttons.forEach((b) => { if (b !== bf.commit()) b.disabled = false; });
+  }
+}
+
+function renderBackfillReport(report, srcMode) {
+  const s = report.summary;
+  const result = bf.result();
+  result.className = "import-summary " + (s.rejected || s.unmapped || s.unmapped_drivers ? "warn" : "ok");
+  const head = report.dry_run ? "Dry-run" : "Committed";
+  const landed = report.dry_run ? `would land ${s.mapped}` : `${s.upserted} landed, ${s.rejected} rejected`;
+  if (srcMode === "file") {
+    result.textContent = `${head}: ${s.records} daily record${s.records === 1 ? "" : "s"} across ${s.dates} day${s.dates === 1 ? "" : "s"} · ${s.drivers} driver${s.drivers === 1 ? "" : "s"} (${s.unmapped_drivers} unmapped) · ${landed}.`;
+    const rows = report.dates.map((d) => `<tr class="${d.error ? "err" : d.unmapped ? "skip" : "ok"}"><td>${escapeHtml(d.record_date)}</td><td>${d.records}</td><td>${d.mapped}</td><td>${d.unmapped}</td><td>${report.dry_run ? "—" : d.upserted}</td><td>${escapeHtml(d.error || "")}</td></tr>`).join("");
+    bf.report().innerHTML = `<table class="import-table"><thead><tr><th>Date</th><th>Records</th><th>Mapped</th><th>Unmapped</th><th>Landed</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else {
+    result.textContent = `${head}: ${s.received} row${s.received === 1 ? "" : "s"} across ${s.days} day${s.days === 1 ? "" : "s"} · ${s.unmapped} unmapped · ${landed}.`;
+    const rows = report.days.map((d) => `<tr class="${d.error ? "err" : d.unmapped ? "skip" : "ok"}"><td>${escapeHtml(d.record_date)}</td><td>${d.received}</td><td>${d.mapped}</td><td>${d.unmapped}</td><td>${report.dry_run ? "—" : d.upserted}</td><td>${escapeHtml(d.error || "")}</td></tr>`).join("");
+    bf.report().innerHTML = `<table class="import-table"><thead><tr><th>Date</th><th>Received</th><th>Mapped</th><th>Unmapped</th><th>Landed</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+}
+
+if (bf.source()) {
+  bf.source().addEventListener("change", syncBackfillInputs);
+  document.getElementById("backfillDiscoverBtn").addEventListener("click", () => void discoverBackfill());
+  document.getElementById("backfillPanel").addEventListener("click", (event) => {
+    const run = event.target.closest("[data-backfill]");
+    if (run) { void runBackfill(run.dataset.backfill); return; }
+    const mapBtn = event.target.closest("[data-map-btn]");
+    if (mapBtn) {
+      const sel = bf.ids().querySelector(`[data-map-id="${CSS.escape(mapBtn.dataset.mapBtn)}"]`);
+      void mapBackfillId(mapBtn.dataset.mapBtn, mapBtn.dataset.account, sel, mapBtn);
+    }
+  });
+  [bf.from(), bf.to(), bf.file(), bf.discoverDate()].forEach((input) => input && input.addEventListener("change", resetBackfillRun));
+}
 
 el.actionDialog.addEventListener("close", async () => {
   if (el.actionDialog.returnValue !== "default" || !pendingAction) return;

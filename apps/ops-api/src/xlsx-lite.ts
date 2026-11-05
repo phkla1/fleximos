@@ -136,6 +136,51 @@ export function parseWorkbook(buffer: Buffer): string[][] {
   return parseSheet(files.get(sheetName)!.toString("utf8"), shared);
 }
 
+// Every worksheet of an .xlsx as { name, grid }, with the tab names resolved
+// through workbook.xml + its rels (the physical sheetN.xml order does NOT match
+// tab order). Needed when a workbook carries several tabs and the one we want is
+// identified by its contents, not its position — e.g. the inDrive export, whose
+// populated tabs sit behind a template tab at sheet1. Reuses the same ZIP/shared-
+// string/sheet primitives as parseWorkbook.
+export function parseWorkbookSheets(buffer: Buffer): Array<{ name: string; grid: string[][] }> {
+  const files = readZipEntries(buffer);
+  const shared = parseSharedStrings(files.get("xl/sharedStrings.xml")?.toString("utf8"));
+  const workbook = files.get("xl/workbook.xml")?.toString("utf8") || "";
+  const rels = files.get("xl/_rels/workbook.xml.rels")?.toString("utf8") || "";
+  // rId -> worksheet file path (targets are relative to the xl/ folder).
+  const targetById = new Map<string, string>();
+  for (const rel of rels.match(/<Relationship\b[^>]*\/>/g) || []) {
+    const id = rel.match(/\bId="([^"]+)"/)?.[1];
+    const target = rel.match(/\bTarget="([^"]+)"/)?.[1];
+    if (id && target && /worksheet/i.test(rel)) {
+      targetById.set(id, `xl/${target.replace(/^\/?xl\//, "").replace(/^\.\//, "")}`);
+    }
+  }
+  const sheets: Array<{ name: string; grid: string[][] }> = [];
+  for (const tag of workbook.match(/<sheet\b[^>]*\/>/g) || []) {
+    const name = decodeXmlEntities(tag.match(/\bname="([^"]*)"/)?.[1] || "");
+    const rid = tag.match(/r:id="([^"]+)"/)?.[1] || "";
+    const path = targetById.get(rid);
+    const xml = path ? files.get(path)?.toString("utf8") : undefined;
+    sheets.push({ name, grid: xml ? parseSheet(xml, shared) : [] });
+  }
+  return sheets;
+}
+
+// An Excel/Google-Sheets date serial to an ISO calendar date (YYYY-MM-DD). The
+// 1900 date system with offset 25569 (days from 1899-12-30 to the Unix epoch);
+// the fractional part (time of day) is dropped to the day it falls on. Dates in
+// an .xlsx are stored as these serials, and this reader has no number-format
+// layer, so callers convert the columns they know to be dates themselves.
+export function excelSerialToISODate(serial: number | string): string | null {
+  const value = typeof serial === "number" ? serial : Number(String(serial).trim());
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const ms = Math.floor(value - 25569) * 86400000;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
 // A comma/tab-separated sheet into the same raw grid, so an importer can accept a
 // CSV template (what we hand out) or an .xlsx without a separate code path. RFC
 // 4180 quoting: "" is an escaped quote inside a quoted field.

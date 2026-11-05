@@ -195,6 +195,27 @@
           <span id="jobHealthSummary" class="subtle"></span>
         </div>
         <div id="jobHealthMetrics" class="metrics health-metrics"></div>
+        <details class="management-panel" id="backfillPanel">
+          <summary>Backfill revenue history</summary>
+          <p class="panel-intro">Load past daily records for a ride platform. <strong>Bolt</strong> pulls a date range straight from its API; <strong>inDrive</strong> reads its weekly Excel and splits each week into days from the order rows (money is allocated, so it lands flagged <em>estimated</em>). First <strong>Discover</strong> the platform ids and map any unmapped rider — an unmapped id is dropped on import. Then <strong>Preview</strong> (writes nothing) and <strong>Commit</strong>. One run covers up to 31 days; rows are tagged <code>migration</code>. Speedaf history is loaded from the Deliver tab, not here.</p>
+          <div class="import-controls">
+            <label class="import-file">Revenue source<select id="backfillSource"></select></label>
+            <span id="backfillApiInputs" class="import-controls" hidden>
+              <label class="import-file">Discover day<input type="date" id="backfillDiscoverDate" /></label>
+              <label class="import-file">From<input type="date" id="backfillFrom" /></label>
+              <label class="import-file">To<input type="date" id="backfillTo" /></label>
+            </span>
+            <label class="import-file" id="backfillFileInputs" hidden>inDrive workbook (.xlsx)<input type="file" id="backfillFile" accept=".xlsx" /></label>
+          </div>
+          <div class="import-actions">
+            <button type="button" id="backfillDiscoverBtn" class="ghost">Discover ids</button>
+            <button type="button" data-backfill="preview">Preview (dry-run)</button>
+            <button type="button" data-backfill="commit" disabled>Commit backfill</button>
+          </div>
+          <p id="backfillResult" class="import-summary"></p>
+          <div id="backfillIds" class="import-report"></div>
+          <div id="backfillReport" class="import-report"></div>
+        </details>
         <details class="management-panel" id="jobsPanel">
           <summary>View scheduled jobs</summary>
           <p id="jobFilterSummary" class="filter-summary"></p>
