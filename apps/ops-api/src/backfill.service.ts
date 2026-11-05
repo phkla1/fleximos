@@ -2,7 +2,9 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "./database.service.js";
 import { OpsService } from "./ops.service.js";
 import { PlatformConnectorsService, NormalizedDailyRecord } from "./platform-connectors.service.js";
+import { NotificationService } from "./notification.service.js";
 import { parseWorkbookSheets, excelSerialToISODate } from "./xlsx-lite.js";
+import { INDRIVE_CONTRACT, validateSource, summariseFindings, GuardResult, Fingerprint, Observed } from "./schema-guard.js";
 
 // Phase D — revenue-history backfill for the ride-platform-shaped sources
 // (operators earn on them), plus the inDrive file connector. It rides the
@@ -35,7 +37,8 @@ export class BackfillService {
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(OpsService) private readonly ops: OpsService,
-    @Inject(PlatformConnectorsService) private readonly connectors: PlatformConnectorsService
+    @Inject(PlatformConnectorsService) private readonly connectors: PlatformConnectorsService,
+    @Inject(NotificationService) private readonly notifications: NotificationService
   ) {}
 
   /* --------------------------------- shared --------------------------------- */
@@ -88,16 +91,19 @@ export class BackfillService {
   // registrations. The admin maps the unmapped ones (via the existing
   // platform-registrations endpoint) before committing a backfill, or their rows
   // are rejected on ingest.
-  async discover(body: Body): Promise<{ platform: string; mode: string; record_date: string | null; ids: DiscoverId[]; unmapped_count: number }> {
+  async discover(body: Body): Promise<{ platform: string; mode: string; record_date: string | null; ids: DiscoverId[]; unmapped_count: number; schema?: ReturnType<BackfillService["serialiseGuard"]> }> {
     const account = await this.account(String(body.platform_account_id || ""));
     const mode = String(account.integration_mode || "api");
     const mapped = await this.registrations(account.platform_account_id);
 
     let ids: Array<{ platform_operator_id: string; activity: string }> = [];
     let recordDate: string | null = null;
+    let schema: ReturnType<BackfillService["serialiseGuard"]> | undefined;
 
     if (mode === "file") {
-      const parsed = this.parseInDrive(body);
+      const parsed = this.parseInDrive(body, account.schema_fingerprint || null);
+      schema = this.serialiseGuard(parsed.guard);
+      if (parsed.guard.findings.some((f) => f.severity !== "notice")) await this.notifyFormatDrift(account, parsed.guard);
       const byDriver = new Map<string, number>();
       for (const row of parsed.weekly) byDriver.set(row.driver_id, (byDriver.get(row.driver_id) || 0) + row.dones);
       ids = [...byDriver.entries()].map(([id, dones]) => ({ platform_operator_id: id, activity: `${dones} deliveries in file` }));
@@ -126,7 +132,8 @@ export class BackfillService {
       mode,
       record_date: recordDate,
       ids: list,
-      unmapped_count: list.filter((r) => !r.mapped).length
+      unmapped_count: list.filter((r) => !r.mapped).length,
+      ...(schema ? { schema } : {})
     };
   }
 
@@ -226,7 +233,23 @@ export class BackfillService {
       throw new BadRequestException("inDrive import expects a file-mode platform account (integration_mode 'file').");
     }
     const dryRun = body.dry_run !== false;
-    const parsed = this.parseInDrive(body);
+    const parsed = this.parseInDrive(body, account.schema_fingerprint || null);
+    const guard = parsed.guard;
+    const schema = this.serialiseGuard(guard);
+
+    // The schema guard runs BEFORE any row is built. A BLOCK holds the import
+    // (nothing written, commit refused) and raises a descriptive admin alert; a
+    // WARN is allowed but flagged. Alerts are deduped by fingerprint.
+    if (guard.findings.some((f) => f.severity !== "notice")) await this.notifyFormatDrift(account, guard);
+    if (guard.blocked) {
+      return {
+        dry_run: dryRun, blocked: true, schema,
+        platform: account.platform, platform_account_id: account.platform_account_id,
+        summary: { drivers: 0, unmapped_drivers: 0, dates: 0, date_from: null, date_to: null, records: 0, mapped: 0, upserted: 0, rejected: 0 },
+        unmapped_driver_ids: [], dates: []
+      };
+    }
+
     const mapped = await this.registrations(account.platform_account_id);
 
     // Exact per-(driver, date) deliveries + distance from the order rows.
@@ -323,9 +346,20 @@ export class BackfillService {
       }
     }
 
+    // A clean commit (no BLOCK) sets this file's fingerprint as the new
+    // last-known-good, so the next import is compared against it.
+    if (!dryRun) {
+      await this.db.exec(
+        "UPDATE ops_platform_accounts SET schema_fingerprint = $2, updated_at = NOW() WHERE platform_account_id = $1",
+        [account.platform_account_id, { ...guard.fingerprint, updated_at: new Date().toISOString() }]
+      );
+    }
+
     const sum = (k: string) => perDate.reduce((n, d) => n + Number((d as any)[k] || 0), 0);
     return {
       dry_run: dryRun,
+      blocked: false,
+      schema,
       platform: account.platform,
       platform_account_id: account.platform_account_id,
       summary: {
@@ -346,7 +380,11 @@ export class BackfillService {
 
   /* ------------------------------ inDrive parse ----------------------------- */
 
-  private parseInDrive(body: Body): { weekly: WeeklyRow[]; orders: OrderRow[] } {
+  // Parse + validate against the inDrive contract. Does NOT throw on a missing
+  // sheet/column — those become structured guard findings so the caller can hold
+  // the import and raise a descriptive alert instead of a bare 400. Only a file
+  // that is not a readable .xlsx at all throws.
+  private parseInDrive(body: Body, lastGood?: Fingerprint | null): { weekly: WeeklyRow[]; orders: OrderRow[]; guard: GuardResult } {
     if (body.file_base64 === undefined) throw new BadRequestException("Provide the inDrive workbook as file_base64 (.xlsx).");
     const buffer = Buffer.from(String(body.file_base64), "base64");
     if (!(buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b)) {
@@ -373,13 +411,70 @@ export class BackfillService {
     }
     const weeklyPick = weeklyCandidates.sort((a, b) => b.rows.length - a.rows.length)[0];
     const orderPick = orderCandidates.sort((a, b) => b.rows.length - a.rows.length)[0];
-    if (!weeklyPick) throw new BadRequestException("No inDrive report sheet found (needs driver_id, gmv, dones columns).");
-    if (!orderPick) throw new BadRequestException("No inDrive orders sheet found (needs driver_id, order_timestamp columns) — the order rows are required for daily attribution.");
 
-    const weekly = this.readWeekly(weeklyPick.header, weeklyPick.rows);
-    const orders = this.readOrders(orderPick.header, orderPick.rows);
-    if (!weekly.length) throw new BadRequestException("The inDrive report sheet has no data rows.");
-    return { weekly, orders };
+    const weekly = weeklyPick ? this.readWeekly(weeklyPick.header, weeklyPick.rows) : [];
+    const orders = orderPick ? this.readOrders(orderPick.header, orderPick.rows) : [];
+
+    // The guard sees the classified sheets' header keys + a sample of RAW cell
+    // values (not the parsed rows), so a date column that stopped being a serial,
+    // or a commission that drifted, is caught on the original values.
+    const weeklySpec = INDRIVE_CONTRACT.sheets.find((s) => s.role === "weekly")!;
+    const orderSpec = INDRIVE_CONTRACT.sheets.find((s) => s.role === "orders")!;
+    const observed: Observed = {
+      file: body.file_name ? String(body.file_name) : "inDrive export",
+      sheets: {
+        ...(weeklyPick ? { weekly: { headerKeys: [...weeklyPick.header.keys()] } } : {}),
+        ...(orderPick ? { orders: { headerKeys: [...orderPick.header.keys()] } } : {})
+      },
+      rows: {
+        weekly: weeklyPick ? this.rawSample(weeklySpec, weeklyPick.header, weeklyPick.rows) : [],
+        orders: orderPick ? this.rawSample(orderSpec, orderPick.header, orderPick.rows) : []
+      }
+    };
+    const guard = validateSource(INDRIVE_CONTRACT, observed, lastGood);
+    return { weekly, orders, guard };
+  }
+
+  // A sample of raw cells per contract column (keyed by canonical field) for the
+  // guard's type checks + invariants — raw, so a broken date or shifted unit shows.
+  private rawSample(spec: { columns: Array<{ field: string; aliases: string[] }> }, header: Map<string, number>, rows: string[][]): Array<Record<string, unknown>> {
+    const idx: Record<string, number> = {};
+    for (const c of spec.columns) idx[c.field] = this.col(header, this.norm(c.field), ...c.aliases.map((a) => this.norm(a)));
+    return rows.slice(0, 50).map((cells) => {
+      const rec: Record<string, unknown> = {};
+      for (const c of spec.columns) { const i = idx[c.field]; if (i >= 0 && cells[i] !== undefined) rec[c.field] = cells[i]; }
+      return rec;
+    });
+  }
+
+  private serialiseGuard(guard: GuardResult) {
+    return {
+      blocked: guard.blocked,
+      banner: summariseFindings(guard),
+      received_version: guard.fingerprint.version,
+      last_good_version: guard.last_good_version,
+      findings: guard.findings.map((f) => ({ severity: f.severity, code: f.code, sheet: f.sheet, column: f.column, expected: f.expected, found: f.found, consequence: f.consequence, action: f.action, message: f.message }))
+    };
+  }
+
+  // Persisted, descriptive admin notification on any format drift (reuses the
+  // notification path — the drift is about a source, not an operator, so it does
+  // not fit the operator-scoped alert table). Deduped by fingerprint so one
+  // notification per new format, not per import attempt.
+  private async notifyFormatDrift(account: any, guard: GuardResult) {
+    if (!guard.findings.some((f) => f.severity !== "notice")) return;
+    const recipients = await this.ops.managementRecipients();
+    const payload = {
+      type: "import_format_changed",
+      platform_account_id: account.platform_account_id,
+      source: guard.source,
+      severity: guard.blocked ? "block" : "warn",
+      banner: summariseFindings(guard),
+      findings: guard.findings
+    };
+    for (const person of recipients) {
+      await this.notifications.queue(person, "in_app", payload, `schema-drift:${account.platform_account_id}:${guard.fingerprint.hash}:${person}`);
+    }
   }
 
   // Find the header row (the export puts a SQL blob in row 1 of some tabs) and

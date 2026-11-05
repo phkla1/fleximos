@@ -32,6 +32,7 @@ writeFileSync(boltFixturePath, JSON.stringify({
 }));
 
 const indriveB64 = readFileSync(path.join(repoRoot, "tests/fixtures/indrive-sample.xlsx")).toString("base64");
+const b64 = (name) => readFileSync(path.join(repoRoot, "tests/fixtures", name)).toString("base64");
 
 let server, foundationServer;
 
@@ -187,6 +188,38 @@ test("backfill range is capped to one month per run", async () => {
   const tooWide = await post("/ops/v1/backfill/platform", { platform_account_id: ctx.bolt, date_from: "2026-02-01", date_to: "2026-06-01" });
   assert.equal(tooWide.response.status, 400);
   assert.match(tooWide.body.message, /at most 31 days/);
+});
+
+test("schema guard: a clean file matches the last-known-good after a committed import", async () => {
+  // The earlier commit stored inDrive's fingerprint; a fresh parse of the same
+  // file recognises it (last_good set) and is not blocked.
+  const dry = await post("/ops/v1/backfill/indrive", { platform_account_id: ctx.indrive, file_base64: indriveB64, file_name: "clean.xlsx" });
+  assert.equal(dry.body.blocked, false);
+  assert.ok(dry.body.schema, "the report carries a schema section");
+  assert.ok(dry.body.schema.last_good_version >= 1, "the committed fingerprint is the last-known-good");
+});
+
+test("schema guard: a missing required sheet BLOCKS the import (nothing written)", async () => {
+  const commit = await post("/ops/v1/backfill/indrive", { platform_account_id: ctx.indrive, file_base64: b64("indrive-missing-orders.xlsx"), file_name: "no-orders.xlsx", dry_run: false });
+  assert.equal(commit.body.blocked, true, "a BLOCK holds the import");
+  assert.equal(commit.body.summary.upserted, 0, "nothing is written when blocked");
+  assert.ok(commit.body.schema.findings.some((f) => f.code === "sheet_missing" && f.severity === "block"));
+});
+
+test("schema guard: a renamed required column BLOCKS with a closest-header hint", async () => {
+  const dry = await post("/ops/v1/backfill/indrive", { platform_account_id: ctx.indrive, file_base64: b64("indrive-renamed-income.xlsx"), file_name: "renamed.xlsx" });
+  assert.equal(dry.body.blocked, true);
+  const finding = dry.body.schema.findings.find((f) => f.code === "column_missing" && f.column === "income_courier");
+  assert.ok(finding, "the missing earnings column is named");
+  assert.match(finding.found, /courier.income/i, "the closest present header is suggested");
+});
+
+test("schema guard: commission drift WARNs but still imports", async () => {
+  const dry = await post("/ops/v1/backfill/indrive", { platform_account_id: ctx.indrive, file_base64: b64("indrive-commission-drift.xlsx"), file_name: "drift.xlsx" });
+  assert.equal(dry.body.blocked, false, "a drift warns, it does not block");
+  const finding = dry.body.schema.findings.find((f) => f.code === "commission_drift");
+  assert.ok(finding && finding.severity === "warn");
+  assert.match(finding.message, /85\.0% of gmv/);
 });
 
 test("backfill requires a system admin", async () => {

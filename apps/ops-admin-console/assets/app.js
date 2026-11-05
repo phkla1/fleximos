@@ -2737,6 +2737,17 @@ function operatorPerson(operatorId) {
   return state.operators.find((o) => o.operator_id === operatorId)?.person_id || operatorId;
 }
 
+// A descriptive list of schema-guard findings (format drift / missing columns).
+function schemaFindingsHtml(schema) {
+  if (!schema || !schema.findings || !schema.findings.length) return "";
+  const icon = (sev) => (sev === "block" ? "⛔" : sev === "warn" ? "⚠️" : "ℹ️");
+  const items = schema.findings.map((f) =>
+    `<li class="${escapeHtml(f.severity)}"><strong>${icon(f.severity)} ${escapeHtml(f.message)}</strong><br><span class="subtle">${escapeHtml([f.consequence, f.action].filter(Boolean).join(" "))}</span></li>`
+  ).join("");
+  const versions = schema.last_good_version ? ` (last good v${schema.last_good_version} → received v${schema.received_version})` : "";
+  return `<div class="schema-findings"><p class="import-summary ${schema.blocked ? "err" : "warn"}">${escapeHtml(schema.banner)}${versions}</p><ul>${items}</ul></div>`;
+}
+
 async function discoverBackfill() {
   const platformAccountId = bf.source().value;
   if (!platformAccountId) return;
@@ -2744,14 +2755,21 @@ async function discoverBackfill() {
   result.className = "import-summary";
   result.textContent = "Discovering…";
   bf.ids().innerHTML = "";
+  bf.report().innerHTML = "";
   try {
     const body = { platform_account_id: platformAccountId };
-    if (backfillMode() === "file") body.file_base64 = await backfillFileBase64();
+    if (backfillMode() === "file") { body.file_base64 = await backfillFileBase64(); body.file_name = bf.file().files[0]?.name; }
     else body.record_date = bf.discoverDate().value;
     const data = await ops("/ops/v1/backfill/discover", { method: "POST", body: JSON.stringify(body) });
     renderBackfillIds(data, platformAccountId);
-    result.className = "import-summary " + (data.unmapped_count ? "warn" : "ok");
-    result.textContent = `${data.ids.length} id${data.ids.length === 1 ? "" : "s"} found · ${data.unmapped_count} unmapped${data.record_date ? ` (for ${data.record_date})` : ""}.`;
+    bf.report().innerHTML = schemaFindingsHtml(data.schema);
+    if (data.schema && data.schema.blocked) {
+      result.className = "import-summary err";
+      result.textContent = data.schema.banner;
+    } else {
+      result.className = "import-summary " + (data.unmapped_count || (data.schema && data.schema.findings.length) ? "warn" : "ok");
+      result.textContent = `${data.ids.length} id${data.ids.length === 1 ? "" : "s"} found · ${data.unmapped_count} unmapped${data.record_date ? ` (for ${data.record_date})` : ""}.`;
+    }
   } catch (error) {
     result.className = "import-summary err";
     result.textContent = `✕ ${error.message}`;
@@ -2805,15 +2823,15 @@ async function runBackfill(mode) {
     let report;
     if (srcMode === "file") {
       const file_base64 = await backfillFileBase64();
-      report = await ops("/ops/v1/backfill/indrive", { method: "POST", body: JSON.stringify({ platform_account_id: platformAccountId, file_base64, dry_run: mode !== "commit" }) });
+      report = await ops("/ops/v1/backfill/indrive", { method: "POST", body: JSON.stringify({ platform_account_id: platformAccountId, file_base64, file_name: bf.file().files[0]?.name, dry_run: mode !== "commit" }) });
     } else {
       report = await ops("/ops/v1/backfill/platform", { method: "POST", body: JSON.stringify({ platform_account_id: platformAccountId, date_from: bf.from().value, date_to: bf.to().value, dry_run: mode !== "commit" }) });
     }
     renderBackfillReport(report, srcMode);
-    if (!report.dry_run) await refresh(`Backfilled ${report.summary.upserted} daily record${report.summary.upserted === 1 ? "" : "s"}.`);
+    if (!report.dry_run && !report.blocked) await refresh(`Backfilled ${report.summary.upserted} daily record${report.summary.upserted === 1 ? "" : "s"}.`);
     // Dry-run never upserts; enable Commit only after a dry-run that found mapped
-    // rows to land, and re-lock it after the commit.
-    bf.commit().disabled = !(report.dry_run && report.summary.mapped > 0);
+    // rows to land AND the schema guard did not block. Re-lock after commit.
+    bf.commit().disabled = !(report.dry_run && report.summary.mapped > 0 && !report.blocked);
   } catch (error) {
     result.className = "import-summary err";
     result.textContent = `✕ ${error.message}`;
@@ -2825,13 +2843,21 @@ async function runBackfill(mode) {
 function renderBackfillReport(report, srcMode) {
   const s = report.summary;
   const result = bf.result();
-  result.className = "import-summary " + (s.rejected || s.unmapped || s.unmapped_drivers ? "warn" : "ok");
+  const schemaHtml = schemaFindingsHtml(report.schema);
+  // A blocked import wrote nothing — show the guard's findings, no per-date table.
+  if (report.blocked) {
+    result.className = "import-summary err";
+    result.textContent = (report.schema && report.schema.banner) || "Import held — the file format changed.";
+    bf.report().innerHTML = schemaHtml;
+    return;
+  }
+  result.className = "import-summary " + (s.rejected || s.unmapped || s.unmapped_drivers || schemaHtml ? "warn" : "ok");
   const head = report.dry_run ? "Dry-run" : "Committed";
   const landed = report.dry_run ? `would land ${s.mapped}` : `${s.upserted} landed, ${s.rejected} rejected`;
   if (srcMode === "file") {
     result.textContent = `${head}: ${s.records} daily record${s.records === 1 ? "" : "s"} across ${s.dates} day${s.dates === 1 ? "" : "s"} · ${s.drivers} driver${s.drivers === 1 ? "" : "s"} (${s.unmapped_drivers} unmapped) · ${landed}.`;
     const rows = report.dates.map((d) => `<tr class="${d.error ? "err" : d.unmapped ? "skip" : "ok"}"><td>${escapeHtml(d.record_date)}</td><td>${d.records}</td><td>${d.mapped}</td><td>${d.unmapped}</td><td>${report.dry_run ? "—" : d.upserted}</td><td>${escapeHtml(d.error || "")}</td></tr>`).join("");
-    bf.report().innerHTML = `<table class="import-table"><thead><tr><th>Date</th><th>Records</th><th>Mapped</th><th>Unmapped</th><th>Landed</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+    bf.report().innerHTML = schemaHtml + `<table class="import-table"><thead><tr><th>Date</th><th>Records</th><th>Mapped</th><th>Unmapped</th><th>Landed</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
   } else {
     result.textContent = `${head}: ${s.received} row${s.received === 1 ? "" : "s"} across ${s.days} day${s.days === 1 ? "" : "s"} · ${s.unmapped} unmapped · ${landed}.`;
     const rows = report.days.map((d) => `<tr class="${d.error ? "err" : d.unmapped ? "skip" : "ok"}"><td>${escapeHtml(d.record_date)}</td><td>${d.received}</td><td>${d.mapped}</td><td>${d.unmapped}</td><td>${report.dry_run ? "—" : d.upserted}</td><td>${escapeHtml(d.error || "")}</td></tr>`).join("");

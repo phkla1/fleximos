@@ -198,10 +198,25 @@ platform-registration sources (Bolt `driver_uuid`, inDrive `driver_id`).
   but untestable until inDrive sends consecutive daily files live; allocation is
   self-correcting (re-ingesting the growing week each day converges). Build it when the live
   feed exists.
-- Files: `backfill.service.ts`, `xlsx-lite.parseWorkbookSheets`/`excelSerialToISODate`, 3
-  controller routes (all `requireSystemAdmin`), ops-admin Backfill panel. Tests:
-  `tests/api/ops-backfill.test.mjs` (7, incl. exact allocation math) + e2e
-  `ops-admin-backfill.spec.mjs`; fixture `tests/fixtures/indrive-sample.xlsx`.
+- **Import schema-guard** (Wole 5 Nov, reusable): `schema-guard.ts` validates a parsed
+  file against a declared contract BEFORE any row is ingested — so an unannounced
+  format change by inDrive (or any partner export) can't silently corrupt data.
+  `INDRIVE_CONTRACT` declares required sheets/columns (by header signature) + types +
+  invariants (income≈gmv×0.87, 7-day span, sane distance, numeric id, non-negative money).
+  **BLOCK** (missing sheet/column, a date column that stopped parsing) holds the import
+  (commit refused, nothing written) with a closest-header hint; **WARN** (commission drift,
+  out-of-range) allows but flags + tags `estimated`. A format **fingerprint** (last-good on
+  `ops_platform_accounts.schema_fingerprint`, set on a clean commit) raises a "format
+  changed" WARN for anything no rule caught. Findings are descriptive (sheet/column,
+  expected-vs-found, consequence, action), surfaced in the dry-run banner (commit disabled
+  while a BLOCK stands) and as a deduped system-admin notification. Retrofit onto Speedaf
+  later. Runs on discover + dry-run + commit.
+- Files: `backfill.service.ts`, `schema-guard.ts`, `xlsx-lite.parseWorkbookSheets`/`excelSerialToISODate`,
+  `ops_platform_accounts.schema_fingerprint`, 3 controller routes (all `requireSystemAdmin`),
+  ops-admin Backfill panel. Tests:
+  `tests/api/ops-backfill.test.mjs` (11, incl. exact allocation math + guard
+  block/warn/fingerprint) + e2e `ops-admin-backfill.spec.mjs` (incl. a blocked file);
+  fixtures `tests/fixtures/indrive-sample.xlsx` + guard variants.
 - inDrive format confirmed (Wole 2026-11-05): sent **daily**, order tab **always** provided;
   driver match on `driver_id`; weekly-only metrics (bids/accepts/cancellations/supply_hours)
   not daily-ised (kept in provenance, like Uber's null acceptance).

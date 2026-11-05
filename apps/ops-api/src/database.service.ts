@@ -247,6 +247,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_platform_daily_records
         ADD COLUMN IF NOT EXISTS official_distance_km NUMERIC(10, 2);
 
+      -- Last-known-good import format fingerprint per file source (Phase D schema
+      -- guard). JSON: { version, hash, columns, updated_at }. Null until a clean
+      -- import stores one.
+      ALTER TABLE ops_platform_accounts
+        ADD COLUMN IF NOT EXISTS schema_fingerprint JSONB;
+
       -- Before-image of a daily record that a manual correction overwrote, so
       -- every override is recoverable and explainable. Automated 'live' syncs
       -- never write here.

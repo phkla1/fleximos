@@ -5,6 +5,7 @@ const url = "/apps/ops-admin-console/?opsApiBase=http://127.0.0.1:4530&foundatio
 const opsBase = "http://127.0.0.1:4530";
 const token = "flexi-dev-service-token";
 const fixture = readFileSync(new URL("../fixtures/indrive-sample.xlsx", import.meta.url));
+const missingOrders = readFileSync(new URL("../fixtures/indrive-missing-orders.xlsx", import.meta.url));
 
 // Ensure a file-mode inDrive platform exists (idempotent against the persistent
 // e2e DB), so the Backfill panel has a file source to drive.
@@ -46,5 +47,21 @@ test.describe("ops-admin revenue backfill", () => {
     // Commit unlocks only if the dry-run found a mapped driver to land; with none
     // mapped in this fresh run it stays locked, which is the correct guard.
     await expect(commit).toBeDisabled();
+  });
+
+  test("schema guard holds a format-changed file and shows why", async ({ page }) => {
+    await page.goto(`${url}#data-health`);
+    await expect(page.locator("#notice")).toContainText("Connected to Fleximotion Ops.");
+    await page.locator("#backfillPanel > summary").click();
+    const value = await page.locator('#backfillSource option[data-mode="file"]').first().getAttribute("value");
+    await page.locator("#backfillSource").selectOption(value);
+    await page.locator("#backfillFile").setInputFiles({ name: "no-orders.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: missingOrders });
+
+    await page.locator('#backfillPanel [data-backfill="preview"]').click();
+    // The missing orders sheet is a BLOCK: import held, descriptive finding shown,
+    // commit stays disabled.
+    await expect(page.locator("#backfillResult")).toContainText("import held");
+    await expect(page.locator("#backfillReport")).toContainText("orders_list");
+    await expect(page.locator('#backfillPanel [data-backfill="commit"]')).toBeDisabled();
   });
 });
