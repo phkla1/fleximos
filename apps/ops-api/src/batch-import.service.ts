@@ -22,6 +22,7 @@ type RowReport = {
   person_id?: string;
   operator_id?: string;
   vehicle_id?: string;
+  hospital_id?: string;
   initial_pin?: string;
   label?: string;
 };
@@ -384,6 +385,70 @@ export class BatchImportService {
     if (["ev", "electric", "battery", "bev"].includes(n)) return "ev";
     if (["ice", "petrol", "fuel", "gasoline", "diesel", "combustion"].includes(n)) return "ice";
     return n; // pass through anything else; createVehicle validates
+  }
+
+  /* ------------------------------- hospitals -------------------------------- */
+
+  // Accepts both the enriched geocoded sheet (with lat/lng/coords_quality) and
+  // the raw HR sheet (Provider / Provider's Address / Provider Type / State /
+  // City). Without coordinates a facility still imports — it just won't plot
+  // until geocoded or hand-corrected. Upserts by name+LGA, so a refreshed sheet
+  // updates in place.
+  // Order matters: toRecords assigns the FIRST field whose needle matches, and
+  // the broad "provider" needle for the name would otherwise swallow the
+  // "Provider Type" and "Provider's Address" columns. So the specific columns are
+  // listed first and the catch-all name is last.
+  private static readonly HOSPITAL_SPEC: Record<string, string[]> = {
+    provider_type: ["provider type", "facility type", "type", "category"],
+    address: ["address"],
+    state: ["state"],
+    lga: ["city", "lga", "local government", "area"],
+    phone: ["phone", "telephone", "mobile", "contact"],
+    lat: ["latitude", "lat"],
+    lng: ["longitude", "lng", "lon", "long"],
+    coords_quality: ["coords quality", "coord quality", "geocode quality", "quality"],
+    hmo_coverage: ["coverage", "hmo", "plan"],
+    name: ["provider", "facility", "hospital", "name"]
+  };
+
+  async importHospitals(body: Body, actorPersonId: string): Promise<ImportReport> {
+    const dryRun = body.dry_run !== false;
+    const parsed = this.readGrid(body);
+    const records: Body[] = "records" in parsed
+      ? parsed.records.map((r, i) => ({ _row: i + 2, ...r }))
+      : this.toRecords(parsed.header, parsed.rows, BatchImportService.HOSPITAL_SPEC);
+
+    const rows: RowReport[] = [];
+    for (const rec of records) {
+      const rowNo = Number(rec._row);
+      const name = String(rec.name || "").trim();
+      const label = name || "—";
+      if (!name) { rows.push({ row: rowNo, status: "error", reason: "missing facility name", label }); continue; }
+
+      const hasCoords = rec.lat !== undefined && rec.lat !== "" && rec.lng !== undefined && rec.lng !== "";
+      if (dryRun) {
+        rows.push({
+          row: rowNo,
+          status: "create",
+          reason: hasCoords ? undefined : "no coordinates — will not plot until geocoded",
+          label
+        });
+        continue;
+      }
+      try {
+        const result = await this.ops.upsertHospital(rec);
+        rows.push({
+          row: rowNo,
+          status: result.verdict === "create" ? "create" : "skip",
+          reason: result.verdict === "update" ? "updated existing" : (hasCoords ? undefined : "imported without coordinates"),
+          label,
+          hospital_id: result.hospital_id
+        });
+      } catch (error: any) {
+        rows.push({ row: rowNo, status: "error", reason: String(error?.message || error).slice(0, 200), label });
+      }
+    }
+    return this.report(dryRun, rows);
   }
 
   private report(dryRun: boolean, rows: RowReport[]): ImportReport {

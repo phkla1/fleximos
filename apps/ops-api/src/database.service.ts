@@ -389,6 +389,32 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ALTER TABLE ops_fuel_issues ADD COLUMN IF NOT EXISTS price_per_unit_ngn NUMERIC(10, 2);
       ALTER TABLE ops_fuel_issues ADD COLUMN IF NOT EXISTS total_cost_ngn NUMERIC(12, 2);
 
+      -- HMO (Flexicare) facilities shown as a reference layer on the fleet maps
+      -- (Phase F). The source sheet carries no coordinates, so lat/lng are
+      -- geocoded offline before import and tagged by precision in coords_quality
+      -- ('street' | 'lga_centroid' | 'failed'). A facility with no coordinates is
+      -- stored but never plotted until its location is corrected. Upserted by a
+      -- stable natural key (lower(name)+lower(lga)) so re-importing a refreshed
+      -- monthly sheet updates in place.
+      CREATE TABLE IF NOT EXISTS ops_hospitals (
+        hospital_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        provider_type TEXT,
+        address TEXT,
+        state TEXT,
+        lga TEXT,
+        phone TEXT,
+        lat NUMERIC(9, 6),
+        lng NUMERIC(9, 6),
+        coords_quality TEXT NOT NULL DEFAULT 'failed',
+        hmo_coverage TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        notes TEXT,
+        natural_key TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS ops_tracker_daily_records (
         tracker_record_id TEXT PRIMARY KEY,
         vehicle_id TEXT NOT NULL REFERENCES ops_vehicles(vehicle_id),

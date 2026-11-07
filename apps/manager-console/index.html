@@ -43,6 +43,11 @@
       <section id="escalations" class="workspace-section">
         <div class="section-heading"><div><p class="eyebrow">Live fleet</p><h2>Fleet map</h2></div><span id="fleetMapStatus" class="subtle"></span></div>
         <div id="fleetMap" class="vehicle-map"></div>
+        <div class="hospital-controls">
+          <label class="hospital-toggle"><input type="checkbox" id="hospitalToggle" /> Show HMO facilities</label>
+          <select id="hospitalTypeFilter" aria-label="Filter facilities by type" hidden><option value="">All types</option></select>
+          <span id="hospitalMapStatus" class="subtle"></span>
+        </div>
         <details class="management-panel">
           <summary>Vehicles without a position feed / recent remote power commands</summary>
           <div id="fleetNoFeed" class="data-list"></div>

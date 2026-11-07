@@ -3,6 +3,7 @@ const state = {
   escalations: null, pnl: null, expenses: [], leaderboard: null, leaderboardSort: "score",
   vehiclePositions: { positions: [], no_feed: [] }, controlActions: [], integrationStatus: [],
   checkins: [], dateFrom: null, dateTo: null,
+  hospitals: null,
   operatingDate: null
 };
 const ids = [
@@ -12,6 +13,7 @@ const ids = [
   "pnlRangeLabel", "pnlTotals", "pnlList", "fuelOverspendList", "expenseForm", "expenseList",
   "leaderboardList", "leaderboardIntro", "dataQualityPanel", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
   "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList",
+  "hospitalToggle", "hospitalTypeFilter", "hospitalMapStatus",
   "integrationList", "integrationSummary",
   "attendanceRows", "attendanceSummary"
 ];
@@ -161,6 +163,7 @@ function renderFleetMap() {
     fleetMapInstance = window.flexiMap.mount("fleetMap");
   }
   if (fleetMapInstance) {
+    renderHospitalLayer(); // re-apply the HMO reference layer after each refresh
     fleetMapInstance.update(positions, (row) => `
       <strong>${escapeHtml(row.plate)}</strong> · ${row.person_id ? escapeHtml(personName(row.person_id)) : "Unassigned"}<br />
       ${escapeHtml(String(row.movement))} · ${row.speed_kmh === null ? "—" : `${row.speed_kmh} km/h`}${row.battery_state ? ` · battery ${escapeHtml(row.battery_state)}` : ""}<br />
@@ -182,6 +185,50 @@ function renderFleetMap() {
       <span class="pill ${action.succeeded ? "resolved" : "open"}">${action.succeeded ? "succeeded" : escapeHtml(action.result_detail || "failed")}</span>
     </article>`).join("") : '<div class="empty">No remote power commands have been issued.</div>';
 }
+
+// HMO (Flexicare) facility reference layer (Phase F) — mirrors the ops-console
+// board map. Coloured by provider type; LGA-level pins drawn dimmed.
+const HOSPITAL_COLORS = {
+  "Hospital": "#c0392b", "Optical / Ophthalmology": "#8e44ad", "Pharmacy": "#16a085",
+  "Dentist": "#2980b9", "Diagnostic Centres": "#d35400", "Mental Wellbeing": "#2c3e50",
+  "Physiotherapist": "#7f8c8d", "Gym/Fitness Centres": "#27ae60"
+};
+const hospitalColor = (h) => HOSPITAL_COLORS[h.provider_type] || "#c0392b";
+function hospitalPopup(h) {
+  const approx = h.coords_quality && h.coords_quality !== "street" && h.coords_quality !== "authoritative"
+    ? `<br /><small>⚠ approximate (${escapeHtml(h.coords_quality === "lga_centroid" ? "LGA area" : h.coords_quality)})</small>` : "";
+  return `<strong>${escapeHtml(h.name)}</strong><br />
+    <small>${escapeHtml(h.provider_type || "Facility")}${h.lga ? " · " + escapeHtml(h.lga) : ""}</small><br />
+    ${h.address ? escapeHtml(h.address) + "<br />" : ""}${h.phone ? "☎ " + escapeHtml(h.phone) : ""}${approx}`;
+}
+async function ensureHospitals() {
+  if (state.hospitals) return;
+  try {
+    const res = await ops("/ops/v1/hospitals?active=true");
+    state.hospitals = res.data || [];
+    const types = [...new Set(state.hospitals.map((h) => h.provider_type).filter(Boolean))].sort();
+    el.hospitalTypeFilter.innerHTML = '<option value="">All types</option>'
+      + types.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
+  } catch { state.hospitals = []; }
+}
+function renderHospitalLayer() {
+  const on = el.hospitalToggle.checked;
+  el.hospitalTypeFilter.hidden = !on;
+  if (!fleetMapInstance) {
+    el.hospitalMapStatus.textContent = on && !window.flexiMap?.available() ? "Map library unavailable." : "";
+    return;
+  }
+  if (!on) { fleetMapInstance.showReference(false); el.hospitalMapStatus.textContent = ""; return; }
+  const all = state.hospitals || [];
+  const type = el.hospitalTypeFilter.value;
+  const filtered = type ? all.filter((h) => h.provider_type === type) : all;
+  const plotted = fleetMapInstance.setReference(filtered, hospitalPopup, { color: hospitalColor });
+  fleetMapInstance.showReference(true);
+  const approx = filtered.filter((h) => h.coords_quality !== "street" && h.coords_quality !== "authoritative").length;
+  el.hospitalMapStatus.textContent = `${plotted} facilit${plotted === 1 ? "y" : "ies"} shown${approx ? ` · ${approx} at LGA level` : ""}.`;
+}
+el.hospitalToggle?.addEventListener("change", async () => { await ensureHospitals(); renderHospitalLayer(); });
+el.hospitalTypeFilter?.addEventListener("change", renderHospitalLayer);
 
 function renderEscalations() {
   const queue = state.escalations;

@@ -6,6 +6,7 @@ const state = {
   pacing: [],
   dailyPerformance: [],
   fuelIssues: [],
+  hospitals: null,
   mileageReconciliations: [],
   incidents: [],
   inspections: [],
@@ -45,6 +46,7 @@ const el = Object.fromEntries([
   "boardListToggle", "boardMapToggle", "boardPaceToggle", "boardMapView",
   "boardPaceView", "paceBoard", "vehicleMap", "boardListExtras",
   "mapStatus", "mapPositionList", "mapNoFeed", "trackerSources", "controlDialog",
+  "hospitalToggle", "hospitalTypeFilter", "hospitalMapStatus",
   "controlDialogTitle", "controlDialogContext", "controlReason",
   "controlOverrideField", "controlOverride", "confirmControlButton",
   "kpiStrip", "driverTable", "vehicleTable", "exportDriversCsv",
@@ -624,6 +626,58 @@ function positionPopup(row) {
       <button type="button" data-battery-control="1" data-control-vehicle="${escapeHtml(row.vehicle_id)}" data-control-plate="${escapeHtml(row.plate)}" data-control-moving="0">▶ Power on</button>` : ""}`;
 }
 
+// HMO (Flexicare) facility reference layer (Phase F). Coloured by provider type;
+// facilities geocoded only to LGA level are drawn dimmed and labelled approximate.
+const HOSPITAL_COLORS = {
+  "Hospital": "#c0392b",
+  "Optical / Ophthalmology": "#8e44ad",
+  "Pharmacy": "#16a085",
+  "Dentist": "#2980b9",
+  "Diagnostic Centres": "#d35400",
+  "Mental Wellbeing": "#2c3e50",
+  "Physiotherapist": "#7f8c8d",
+  "Gym/Fitness Centres": "#27ae60"
+};
+const hospitalColor = (h) => HOSPITAL_COLORS[h.provider_type] || "#c0392b";
+function hospitalPopup(h) {
+  const approx = h.coords_quality && h.coords_quality !== "street" && h.coords_quality !== "authoritative"
+    ? `<br /><small>⚠ approximate (${escapeHtml(h.coords_quality === "lga_centroid" ? "LGA area" : h.coords_quality)})</small>` : "";
+  return `<strong>${escapeHtml(h.name)}</strong><br />
+    <small>${escapeHtml(h.provider_type || "Facility")}${h.lga ? " · " + escapeHtml(h.lga) : ""}</small><br />
+    ${h.address ? escapeHtml(h.address) + "<br />" : ""}${h.phone ? "☎ " + escapeHtml(h.phone) : ""}${approx}`;
+}
+
+// Load the facility list once (lazily, on first use). Populates the type filter.
+async function ensureHospitals() {
+  if (state.hospitals) return;
+  try {
+    const res = await ops("/ops/v1/hospitals?active=true");
+    state.hospitals = res.data || [];
+    const types = [...new Set(state.hospitals.map((h) => h.provider_type).filter(Boolean))].sort();
+    el.hospitalTypeFilter.innerHTML = '<option value="">All types</option>'
+      + types.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
+  } catch { state.hospitals = []; }
+}
+
+function renderHospitalLayer() {
+  const on = el.hospitalToggle.checked;
+  el.hospitalTypeFilter.hidden = !on;
+  if (!boardMapInstance) {
+    // No live map (Leaflet unavailable): the control still reflects state, but
+    // there is nothing to plot onto.
+    el.hospitalMapStatus.textContent = on && !window.flexiMap?.available() ? "Map library unavailable." : "";
+    return;
+  }
+  if (!on) { boardMapInstance.showReference(false); el.hospitalMapStatus.textContent = ""; return; }
+  const all = state.hospitals || [];
+  const type = el.hospitalTypeFilter.value;
+  const filtered = type ? all.filter((h) => h.provider_type === type) : all;
+  const plotted = boardMapInstance.setReference(filtered, hospitalPopup, { color: hospitalColor });
+  boardMapInstance.showReference(true);
+  const approx = filtered.filter((h) => h.coords_quality !== "street" && h.coords_quality !== "authoritative").length;
+  el.hospitalMapStatus.textContent = `${plotted} facilit${plotted === 1 ? "y" : "ies"} shown${approx ? ` · ${approx} at LGA level` : ""}.`;
+}
+
 function positionRow(row) {
   const driver = row.person_id ? personName(row.person_id) : "Unassigned";
   return `
@@ -650,6 +704,7 @@ function renderVehicleMap() {
   if (boardMapInstance) {
     boardMapInstance.update(positions, positionPopup);
     boardMapInstance.invalidate();
+    renderHospitalLayer(); // re-apply the reference layer after each map refresh
   }
   const dot = { ok: "🟢", degraded: "🟡", down: "🔴", not_configured: "⚪" };
   el.trackerSources.innerHTML = state.integrationStatus.length ? state.integrationStatus.map((row) => {
@@ -1627,6 +1682,9 @@ async function mapCourier(courier, operatorId, customerId) {
     showError(error);
   }
 }
+
+el.hospitalToggle?.addEventListener("change", async () => { await ensureHospitals(); renderHospitalLayer(); });
+el.hospitalTypeFilter?.addEventListener("change", renderHospitalLayer);
 
 if (el.importRun) el.importRun.addEventListener("click", runImport);
 if (el.importResult) el.importResult.addEventListener("click", (event) => {

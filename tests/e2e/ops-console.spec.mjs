@@ -332,6 +332,31 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#teamBoard")).toBeVisible();
   });
 
+  test("toggles the HMO facility reference layer on the map", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    // Seed one mapped facility (service token acts as system admin).
+    await request.post(`${opsBase}/ops/v1/imports/hospitals`, {
+      headers: { Authorization: "Bearer flexi-dev-service-token", "Content-Type": "application/json", "Idempotency-Key": `e2e-hosp-${Date.now()}` },
+      data: { dry_run: false, rows: [{ name: "E2E Map Hospital", provider_type: "Hospital", address: "1 Map Road", state: "Lagos", lga: "Ikeja", lat: "6.6018", lng: "3.3515", coords_quality: "street" }] }
+    });
+
+    await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.locator("#boardMapToggle").click();
+    await expect(page.locator("#boardMapView")).toBeVisible();
+
+    // The type filter is hidden until the layer is switched on.
+    await expect(page.locator("#hospitalTypeFilter")).toBeHidden();
+    await page.locator("#hospitalToggle").check();
+    // Switching on loads the facilities and reveals a populated type filter.
+    await expect(page.locator("#hospitalTypeFilter")).toBeVisible();
+    await expect(page.locator("#hospitalTypeFilter option", { hasText: "Hospital" })).toHaveCount(1);
+
+    // Switching off hides the filter again.
+    await page.locator("#hospitalToggle").uncheck();
+    await expect(page.locator("#hospitalTypeFilter")).toBeHidden();
+  });
+
   test("shows the live pace timeline and scopes the list extras to List mode", async ({ page }) => {
     await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
     await expect(page.locator("#notice")).toContainText("Connected");

@@ -23,7 +23,8 @@
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
-      const layer = L.layerGroup().addTo(map);
+      const layer = L.layerGroup().addTo(map);       // live vehicles
+      const refLayer = L.layerGroup();                // static reference (hospitals) — added on demand
       return {
         map,
         update(positions, popupHtml) {
@@ -42,7 +43,35 @@
             marker.addTo(layer);
             bounds.push([row.lat, row.lng]);
           }
+          // The view follows the live fleet only; static reference points never
+          // steal the bounds (there can be hundreds, all over Lagos).
           if (bounds.length) this.map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+        },
+        // Plot a static reference layer (HMO facilities). A distinct cross-pin,
+        // coloured by caller. Points without finite coords are skipped silently
+        // (they are reported in the admin UI, not hidden here).
+        setReference(points, popupHtml, opts) {
+          const options = opts || {};
+          refLayer.clearLayers();
+          for (const p of points) {
+            if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
+            const color = options.color ? options.color(p) : "#c0392b";
+            const dim = p.coords_quality && p.coords_quality !== "street" && p.coords_quality !== "authoritative";
+            const icon = L.divIcon({
+              className: "flexi-hosp-pin",
+              html: `<span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;`
+                + `border-radius:4px;background:${color};color:#fff;font:700 12px/1 system-ui;`
+                + `border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);${dim ? "opacity:.6;" : ""}">+</span>`,
+              iconSize: [20, 20],
+              iconAnchor: [10, 10]
+            });
+            L.marker([p.lat, p.lng], { icon }).bindPopup(popupHtml(p), { maxWidth: 260 }).addTo(refLayer);
+          }
+          return refLayer.getLayers().length;
+        },
+        showReference(on) {
+          if (on) refLayer.addTo(this.map);
+          else this.map.removeLayer(refLayer);
         },
         invalidate() { setTimeout(() => this.map.invalidateSize(), 60); }
       };

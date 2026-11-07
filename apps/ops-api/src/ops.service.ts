@@ -1515,6 +1515,117 @@ export class OpsService {
     return { ...updated, price_comparison: comparison };
   }
 
+  /* ------------------------------- hospitals -------------------------------- */
+
+  // Stable natural key for upsert: name + LGA, normalised. Lets a refreshed
+  // monthly sheet update a facility in place rather than duplicating it.
+  private hospitalKey(name: string, lga: string): string {
+    const n = (s: string) => String(s || "").toLowerCase().replace(/[\s_]+/g, " ").trim();
+    return `${n(name)}|${n(lga)}`;
+  }
+
+  async listHospitals(filters: { active?: string; provider_type?: string; mapped_only?: string } = {}) {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters.active !== undefined && filters.active !== "") {
+      params.push(String(filters.active) === "true");
+      clauses.push(`active = $${params.length}`);
+    }
+    if (filters.provider_type) {
+      params.push(String(filters.provider_type));
+      clauses.push(`provider_type = $${params.length}`);
+    }
+    if (String(filters.mapped_only) === "true") {
+      clauses.push("lat IS NOT NULL AND lng IS NOT NULL");
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return this.db.many(
+      `SELECT hospital_id, name, provider_type, address, state, lga, phone,
+              lat, lng, coords_quality, hmo_coverage, active, notes
+       FROM ops_hospitals ${where}
+       ORDER BY provider_type NULLS LAST, name`,
+      params
+    );
+  }
+
+  // Upsert one facility by its natural key. Coordinates are supplied already
+  // geocoded (offline); a row with no lat/lng is kept but flagged 'failed' and
+  // excluded from the map until corrected. Returns "create" | "update".
+  async upsertHospital(record: RecordBody): Promise<{ verdict: "create" | "update"; hospital_id: string }> {
+    const name = String(record.name || "").trim();
+    if (!name) throw new BadRequestException("A facility name is required.");
+    const lga = String(record.lga || "").trim();
+    const key = this.hospitalKey(name, lga);
+    const lat = record.lat === undefined || record.lat === null || record.lat === "" ? null : Number(record.lat);
+    const lng = record.lng === undefined || record.lng === null || record.lng === "" ? null : Number(record.lng);
+    const quality = record.coords_quality
+      ? String(record.coords_quality)
+      : lat !== null && lng !== null ? "street" : "failed";
+    const timestamp = this.now();
+    const existing = await this.db.one<any>("SELECT hospital_id FROM ops_hospitals WHERE natural_key = $1", [key]);
+    const fields = {
+      name,
+      provider_type: record.provider_type ? String(record.provider_type).trim() : null,
+      address: record.address ? String(record.address).trim() : null,
+      state: record.state ? String(record.state).trim() : "Lagos",
+      lga: lga || null,
+      phone: record.phone ? String(record.phone).trim() : null,
+      lat,
+      lng,
+      coords_quality: quality,
+      hmo_coverage: record.hmo_coverage ? String(record.hmo_coverage).trim() : null
+    };
+    if (existing) {
+      await this.db.exec(
+        `UPDATE ops_hospitals SET name=$2, provider_type=$3, address=$4, state=$5, lga=$6,
+           phone=$7, lat=$8, lng=$9, coords_quality=$10, hmo_coverage=$11, updated_at=$12
+         WHERE hospital_id=$1`,
+        [existing.hospital_id, fields.name, fields.provider_type, fields.address, fields.state,
+         fields.lga, fields.phone, fields.lat, fields.lng, fields.coords_quality, fields.hmo_coverage, timestamp]
+      );
+      return { verdict: "update", hospital_id: existing.hospital_id };
+    }
+    const hospitalId = this.id("hospital");
+    await this.db.exec(
+      `INSERT INTO ops_hospitals
+        (hospital_id, name, provider_type, address, state, lga, phone, lat, lng,
+         coords_quality, hmo_coverage, active, natural_key, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,$12,$13,$13)`,
+      [hospitalId, fields.name, fields.provider_type, fields.address, fields.state, fields.lga,
+       fields.phone, fields.lat, fields.lng, fields.coords_quality, fields.hmo_coverage, key, timestamp]
+    );
+    return { verdict: "create", hospital_id: hospitalId };
+  }
+
+  async updateHospital(hospitalId: string, body: RecordBody, actorPersonId: string) {
+    const existing = await this.db.one<any>("SELECT * FROM ops_hospitals WHERE hospital_id = $1", [hospitalId]);
+    if (!existing) throw new NotFoundException("Hospital not found.");
+    const allowed = ["name", "provider_type", "address", "state", "lga", "phone", "hmo_coverage", "active", "notes", "lat", "lng", "coords_quality"];
+    const sets: string[] = [];
+    const params: unknown[] = [hospitalId];
+    for (const field of allowed) {
+      if (!(field in body)) continue;
+      let value: unknown = body[field];
+      if (field === "active") value = Boolean(value);
+      if ((field === "lat" || field === "lng") && value !== null) value = value === "" ? null : Number(value);
+      params.push(value);
+      sets.push(`${field} = $${params.length}`);
+    }
+    // A hand-entered coordinate fix is an authoritative correction, unless the
+    // caller set coords_quality explicitly in the same call.
+    if (("lat" in body || "lng" in body) && !("coords_quality" in body)) {
+      params.push("authoritative");
+      sets.push(`coords_quality = $${params.length}`);
+    }
+    if (!sets.length) return existing;
+    params.push(this.now());
+    sets.push(`updated_at = $${params.length}`);
+    await this.db.exec(`UPDATE ops_hospitals SET ${sets.join(", ")} WHERE hospital_id = $1`, params);
+    const updated = await this.db.one<any>("SELECT * FROM ops_hospitals WHERE hospital_id = $1", [hospitalId]);
+    await this.audit("hospital.updated", "hospital", hospitalId, existing, updated, actorPersonId);
+    return updated;
+  }
+
   async mileageReconciliationsRange(
     filters: { record_date?: string; date_from?: string; date_to?: string },
     scope: OpsDataScope = {}

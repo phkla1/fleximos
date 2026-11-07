@@ -400,6 +400,9 @@ dialog::backdrop { background: rgba(7, 22, 17, .55); backdrop-filter: blur(3px);
 
 /* ---------- fleet map (shared) ---------- */
 .vehicle-map { height: 420px; border-radius: 14px; border: 1px solid var(--line, #d8e2dd); background: #e8efec; margin-bottom: 12px; }
+.hospital-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 12px; }
+.hospital-controls .hospital-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.hospital-controls select { font-size: 13px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line, #d8e2dd); background: #fff; }
 
 /* ---------- integration status rows ---------- */
 .integration-row.status-down { border-left: 4px solid var(--red, #b3392b); }

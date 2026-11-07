@@ -184,6 +184,46 @@ export class OpsController {
     return this.batchImport.importVehicles(body, actor.person_id);
   }
 
+  @ApiTags("Imports")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Batch-import HMO facilities from a sheet (dry-run by default; set dry_run:false to commit)" })
+  @HttpCode(HttpStatus.OK)
+  @Post("ops/v1/imports/hospitals")
+  async importHospitals(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.batchImport.importHospitals(body, actor.person_id);
+  }
+
+  @ApiTags("Hospitals")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List HMO facilities for the map reference layer (filter active/provider_type/mapped_only)" })
+  @Get("ops/v1/hospitals")
+  async listHospitals(
+    @Req() req: Request,
+    @Query("active") active?: string,
+    @Query("provider_type") providerType?: string,
+    @Query("mapped_only") mappedOnly?: string
+  ) {
+    await this.auth(req);
+    return { data: await this.ops.listHospitals({ active, provider_type: providerType, mapped_only: mappedOnly }) };
+  }
+
+  @ApiTags("Hospitals")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update an HMO facility (toggle active, correct a coordinate, edit details)" })
+  @Patch("ops/v1/hospitals/:hospitalId")
+  async updateHospital(
+    @Req() req: Request,
+    @Param("hospitalId") hospitalId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.ops.updateHospital(hospitalId, body, actor.person_id));
+  }
+
   @ApiTags("Backfill")
   @ApiBearerAuth()
   @ApiOperation({ summary: "List the platform ids a source reports for a day/file, flagged mapped vs unmapped" })
