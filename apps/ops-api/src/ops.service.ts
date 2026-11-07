@@ -1289,12 +1289,15 @@ export class OpsService {
         price_per_unit_ngn: body.price_per_unit_ngn === undefined || body.price_per_unit_ngn === null || body.price_per_unit_ngn === ""
           ? null
           : this.number(body.price_per_unit_ngn, "price_per_unit_ngn"),
+        fuel_price_variance_pct: body.fuel_price_variance_pct === undefined || body.fuel_price_variance_pct === null || body.fuel_price_variance_pct === ""
+          ? (existing.fuel_price_variance_pct ?? null)
+          : this.number(body.fuel_price_variance_pct, "fuel_price_variance_pct"),
         effective_to: body.effective_to ? this.date(body.effective_to) : null
       };
       await this.db.exec(
         `UPDATE ops_vehicle_efficiency_policies SET fuel_type=$2,
           standard_daily_fuel_quantity=$3, fuel_unit=$4, expected_distance_km=$5,
-          allowed_variance_pct=$6, price_per_unit_ngn=$7, effective_to=$8, updated_at=$9
+          allowed_variance_pct=$6, price_per_unit_ngn=$7, fuel_price_variance_pct=$8, effective_to=$9, updated_at=$10
          WHERE efficiency_policy_id=$1`,
         [existing.efficiency_policy_id, ...Object.values(updated), timestamp]
       );
@@ -1317,6 +1320,9 @@ export class OpsService {
       price_per_unit_ngn: body.price_per_unit_ngn === undefined || body.price_per_unit_ngn === null || body.price_per_unit_ngn === ""
         ? null
         : this.number(body.price_per_unit_ngn, "price_per_unit_ngn"),
+      fuel_price_variance_pct: body.fuel_price_variance_pct === undefined || body.fuel_price_variance_pct === null || body.fuel_price_variance_pct === ""
+        ? null
+        : this.number(body.fuel_price_variance_pct, "fuel_price_variance_pct"),
       effective_from: this.date(body.effective_from || this.lagosDate()),
       effective_to: body.effective_to ? this.date(body.effective_to) : null,
       created_by_person_id: actorPersonId,
@@ -1328,9 +1334,9 @@ export class OpsService {
       `INSERT INTO ops_vehicle_efficiency_policies
        (efficiency_policy_id, vehicle_type, make_model, fuel_type,
         standard_daily_fuel_quantity, fuel_unit, expected_distance_km,
-        allowed_variance_pct, price_per_unit_ngn, effective_from, effective_to,
+        allowed_variance_pct, price_per_unit_ngn, fuel_price_variance_pct, effective_from, effective_to,
         created_by_person_id, created_at, updated_at, powertrain)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       Object.values(policy)
     );
     await this.audit("vehicle_efficiency_policy.created", "vehicle_efficiency_policy", policy.efficiency_policy_id, null, policy, actorPersonId);
@@ -1350,14 +1356,95 @@ export class OpsService {
     } else if (filters.operating_date) { params.push(this.date(filters.operating_date)); clauses.push(`f.operating_date = $${params.length}`); }
     if (filters.operator_id) { params.push(filters.operator_id); clauses.push(`f.operator_id = $${params.length}`); }
     this.addScope(clauses, params, scope);
-    return this.db.many(
-      `SELECT f.*, o.person_id, v.plate, v.vehicle_type
+    const rows = await this.db.many<any>(
+      `SELECT f.*, o.person_id, v.plate, v.vehicle_type,
+        p.price_per_unit_ngn AS policy_price_per_unit_ngn, p.fuel_price_variance_pct
        FROM ops_fuel_issues f JOIN ops_operators o ON o.operator_id=f.operator_id
        JOIN ops_vehicles v ON v.vehicle_id=f.vehicle_id
+       LEFT JOIN LATERAL (
+         SELECT price_per_unit_ngn, fuel_price_variance_pct FROM ops_vehicle_efficiency_policies p
+         WHERE p.vehicle_type=v.vehicle_type AND (p.make_model IS NULL OR p.make_model=v.make_model)
+           AND (p.powertrain IS NULL OR p.powertrain=v.powertrain)
+           AND p.effective_from <= f.operating_date AND (p.effective_to IS NULL OR p.effective_to >= f.operating_date)
+         ORDER BY (p.powertrain IS NOT NULL) DESC, (p.make_model IS NOT NULL) DESC, p.effective_from DESC LIMIT 1
+       ) p ON TRUE
        ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
        ORDER BY f.operating_date DESC, f.issued_at DESC`,
       params
     );
+    // Attach the display-only actual-vs-policy comparison to each row.
+    return rows.map((row) => {
+      const actual = row.price_per_unit_ngn === null || row.price_per_unit_ngn === undefined ? null : Number(row.price_per_unit_ngn);
+      return { ...row, price_comparison: this.fuelPriceComparison(actual, row) };
+    });
+  }
+
+  // Either the per-unit price or the total is entered; derive the other from the
+  // dispensed quantity. Both null stays null (a fuel issue may precede its receipt).
+  private fuelCostFromBody(quantity: number, body: RecordBody): { price_per_unit_ngn: number | null; total_cost_ngn: number | null } {
+    // this.number already rejects negatives; nullable passthrough keeps "unset".
+    const parse = (value: unknown, field: string) => this.number(value, field, true);
+    let ppu = parse(body.price_per_unit_ngn, "price_per_unit_ngn");
+    let total = parse(body.total_cost_ngn, "total_cost_ngn");
+    if (ppu === null && total !== null && quantity > 0) ppu = Math.round((total / quantity) * 100) / 100;
+    if (total === null && ppu !== null && quantity > 0) total = Math.round(ppu * quantity * 100) / 100;
+    return { price_per_unit_ngn: ppu, total_cost_ngn: total };
+  }
+
+  // The applicable efficiency policy's expected price + overspend threshold for a
+  // vehicle on a date (powertrain/make/effective-window aware, like the recon).
+  private async fuelPolicyFor(vehicleId: string, operatingDate: string) {
+    return this.db.one<any>(
+      `SELECT p.price_per_unit_ngn, p.fuel_price_variance_pct
+       FROM ops_vehicles v
+       LEFT JOIN LATERAL (
+         SELECT price_per_unit_ngn, fuel_price_variance_pct FROM ops_vehicle_efficiency_policies p
+         WHERE p.vehicle_type=v.vehicle_type AND (p.make_model IS NULL OR p.make_model=v.make_model)
+           AND (p.powertrain IS NULL OR p.powertrain=v.powertrain)
+           AND p.effective_from <= $2 AND (p.effective_to IS NULL OR p.effective_to >= $2)
+         ORDER BY (p.powertrain IS NOT NULL) DESC, (p.make_model IS NOT NULL) DESC, p.effective_from DESC LIMIT 1
+       ) p ON TRUE
+       WHERE v.vehicle_id=$1`,
+      [vehicleId, operatingDate]
+    );
+  }
+
+  // Display-only: actual ₦/unit vs the policy's expected ₦/unit. status is over /
+  // under / within the policy's overspend threshold (default 15%), or unknown when
+  // either price is missing.
+  private fuelPriceComparison(actualPpu: number | null, policy: any) {
+    const policyPpu = policy?.policy_price_per_unit_ngn ?? policy?.price_per_unit_ngn;
+    const expected = policyPpu === null || policyPpu === undefined ? null : Number(policyPpu);
+    const threshold = policy?.fuel_price_variance_pct === null || policy?.fuel_price_variance_pct === undefined ? 15 : Number(policy.fuel_price_variance_pct);
+    if (actualPpu === null || expected === null || expected <= 0) {
+      return { policy_price_per_unit_ngn: expected, variance_pct: null, status: "unknown" as const, threshold_pct: threshold };
+    }
+    const variance = Math.round(((actualPpu - expected) / expected) * 1000) / 10;
+    const status = variance > threshold ? "over" : variance < -threshold ? "under" : "within";
+    return { policy_price_per_unit_ngn: expected, variance_pct: variance, status, threshold_pct: threshold };
+  }
+
+  // A fuel price over the policy threshold raises a SOFT (tier 0) alert — a visible
+  // indicator that does not block anything. ensureAlert notifies the supervisor.
+  private async flagFuelOverspend(issue: any, comparison: ReturnType<OpsService["fuelPriceComparison"]>) {
+    if (comparison.status !== "over") return;
+    const operatingDate = String(issue.operating_date).slice(0, 10);
+    await this.ensureAlert({
+      operator_id: issue.operator_id,
+      platform_account_id: null,
+      alert_type: "fuel_price_overspend",
+      alert_date: operatingDate,
+      tier: 0,
+      episode_key: `${operatingDate}:fuel_price`,
+      metadata: {
+        generated_by: "fuel_receipt",
+        fuel_issue_id: issue.fuel_issue_id,
+        price_per_unit_ngn: issue.price_per_unit_ngn,
+        policy_price_per_unit_ngn: comparison.policy_price_per_unit_ngn,
+        variance_pct: comparison.variance_pct,
+        threshold_pct: comparison.threshold_pct
+      }
+    });
   }
 
   async createFuelIssue(body: RecordBody, actorPersonId: string) {
@@ -1365,16 +1452,20 @@ export class OpsService {
       if (body[field] === undefined || body[field] === "") throw new BadRequestException(`${field} is required.`);
     }
     const timestamp = this.now();
+    const quantity = this.number(body.quantity, "quantity") as number;
+    const cost = this.fuelCostFromBody(quantity, body);
     const issue = {
       fuel_issue_id: this.id("fuel"),
       operator_id: body.operator_id,
       vehicle_id: body.vehicle_id,
       operating_date: this.date(body.operating_date),
-      quantity: this.number(body.quantity, "quantity"),
+      quantity,
       unit: body.unit,
       issued_at: body.issued_at || timestamp,
       confirmed_by_person_id: actorPersonId,
       notes: body.notes || null,
+      price_per_unit_ngn: cost.price_per_unit_ngn,
+      total_cost_ngn: cost.total_cost_ngn,
       created_at: timestamp,
       updated_at: timestamp
     };
@@ -1382,15 +1473,46 @@ export class OpsService {
       await this.db.exec(
         `INSERT INTO ops_fuel_issues
          (fuel_issue_id, operator_id, vehicle_id, operating_date, quantity, unit,
-          issued_at, confirmed_by_person_id, notes, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          issued_at, confirmed_by_person_id, notes, price_per_unit_ngn, total_cost_ngn, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         Object.values(issue)
       );
     } catch {
       throw new ConflictException("Fuel has already been confirmed for this operator, vehicle, and date.");
     }
     await this.audit("fuel_issue.created", "fuel_issue", issue.fuel_issue_id, null, issue, actorPersonId);
+    if (cost.price_per_unit_ngn !== null) {
+      const policy = await this.fuelPolicyFor(String(issue.vehicle_id), issue.operating_date);
+      await this.flagFuelOverspend(issue, this.fuelPriceComparison(cost.price_per_unit_ngn, policy));
+    }
     return issue;
+  }
+
+  // Record (or revise) the actual cost a receipt substantiates. Scoped to the
+  // operator's supervisor; recomputes the derived field and re-evaluates overspend.
+  async updateFuelIssue(fuelIssueId: string, body: RecordBody, scope: OpsDataScope, actorPersonId: string) {
+    const params: unknown[] = [fuelIssueId];
+    const clauses = ["f.fuel_issue_id = $1"];
+    this.addScope(clauses, params, scope);
+    const issue = await this.db.one<any>(
+      `SELECT f.fuel_issue_id, f.operator_id, f.vehicle_id, f.quantity, f.operating_date::text AS operating_date
+       FROM ops_fuel_issues f JOIN ops_operators o ON o.operator_id=f.operator_id
+       WHERE ${clauses.join(" AND ")}`,
+      params
+    );
+    if (!issue) throw new NotFoundException("Fuel issue not found.");
+    const cost = this.fuelCostFromBody(Number(issue.quantity), body);
+    const timestamp = this.now();
+    await this.db.exec(
+      "UPDATE ops_fuel_issues SET price_per_unit_ngn=$2, total_cost_ngn=$3, updated_at=$4 WHERE fuel_issue_id=$1",
+      [fuelIssueId, cost.price_per_unit_ngn, cost.total_cost_ngn, timestamp]
+    );
+    const updated = { ...issue, ...cost, updated_at: timestamp };
+    await this.audit("fuel_issue.cost_updated", "fuel_issue", fuelIssueId, issue, updated, actorPersonId);
+    const policy = await this.fuelPolicyFor(String(issue.vehicle_id), String(issue.operating_date).slice(0, 10));
+    const comparison = this.fuelPriceComparison(cost.price_per_unit_ngn, policy);
+    await this.flagFuelOverspend(updated, comparison);
+    return { ...updated, price_comparison: comparison };
   }
 
   async mileageReconciliationsRange(

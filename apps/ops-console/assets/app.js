@@ -32,7 +32,9 @@ const state = {
 const el = Object.fromEntries([
   "notice", "connectionText", "teamBoard", "boardUpdated", "performanceList",
   "dateFrom", "dateTo", "actionDialog", "dialogTitle", "dialogContext",
-  "dialogNotes", "confirmActionButton", "fuelIssueForm", "mileageList",
+  "dialogNotes", "confirmActionButton", "fuelIssueForm", "mileageList", "fuelIssueList",
+  "fuelReceiptDialog", "fuelReceiptContext", "fuelReceiptExisting", "fuelReceiptFile",
+  "fuelReceiptPpu", "fuelReceiptTotal", "fuelReceiptResult", "fuelReceiptSave",
   "incidentList", "inspectionForm", "inspectionList", "inspectionComplianceLabel",
   "maintenanceForm", "maintenanceList", "alertList", "alertFilter",
   "topActions", "conditionGrid", "carRevenueChip", "bikeRevenueChip",
@@ -1156,6 +1158,7 @@ function renderFuel() {
   el.fuelIssueForm.elements.operator_id.innerHTML = fuelOperators.map((operator) =>
     `<option value="${escapeHtml(operator.operator_id)}">${escapeHtml(personName(operator.person_id))} · ${escapeHtml(operator.vehicle_plate)}</option>`
   ).join("");
+  renderFuelIssueList();
   el.mileageList.innerHTML = state.mileageReconciliations.length ? state.mileageReconciliations.map((record) => `
     <article class="mileage-row">
       <div><strong>${escapeHtml(personName(record.person_id))}</strong><small>${escapeHtml(record.plate)} · ${escapeHtml(record.vehicle_type)}${state.dateFrom !== state.dateTo ? ` · ${escapeHtml(record.operating_date)}` : ""}</small></div>
@@ -1993,12 +1996,95 @@ el.fuelIssueForm.addEventListener("submit", async (event) => {
         operating_date: state.operatingDate,
         quantity: Number(values.quantity),
         unit: values.unit || "litres",
+        total_cost_ngn: values.total_cost_ngn ? Number(values.total_cost_ngn) : null,
         notes: values.notes || null
       })
     });
     el.fuelIssueForm.reset();
     await refresh("Fuel issue confirmed.");
   } catch (error) { showError(error); }
+});
+
+// --- Recent fuel issues + receipt / actual-cost capture (Phase E) ---
+function fuelComparisonPill(cmp) {
+  if (!cmp || cmp.status === "unknown") return `<span class="pill">no policy price</span>`;
+  const sign = cmp.variance_pct > 0 ? "+" : "";
+  const tone = cmp.status === "over" ? "red" : cmp.status === "under" ? "yellow" : "green";
+  return `<span class="pill ${tone}">${money(cmp.policy_price_per_unit_ngn)}/u policy · ${sign}${cmp.variance_pct}%${cmp.status === "over" ? " ⚠" : ""}</span>`;
+}
+
+function renderFuelIssueList() {
+  const issues = state.fuelIssues || [];
+  el.fuelIssueList.innerHTML = issues.length ? issues.map((issue) => {
+    const cmp = issue.price_comparison;
+    const ppu = issue.price_per_unit_ngn === null || issue.price_per_unit_ngn === undefined ? null : Number(issue.price_per_unit_ngn);
+    const priced = ppu !== null
+      ? `<span>${money(ppu)}/${escapeHtml(issue.unit)} · ${money(issue.total_cost_ngn)}</span> ${fuelComparisonPill(cmp)}`
+      : `<span class="subtle">No receipt / price yet</span>`;
+    return `<article class="fuel-issue-row">
+      <div><strong>${escapeHtml(personName(issue.person_id))}</strong><small>${escapeHtml(issue.plate || "")} · ${escapeHtml(String(issue.operating_date).slice(0, 10))} · ${Number(issue.quantity)} ${escapeHtml(issue.unit)}</small></div>
+      <div class="fuel-issue-cost">${priced}</div>
+      <button type="button" class="secondary" data-fuel-receipt="${escapeHtml(issue.fuel_issue_id)}">${ppu !== null ? "Receipt / edit" : "Add receipt"}</button>
+    </article>`;
+  }).join("") : `<div class="empty">No fuel issues in this range.</div>`;
+}
+
+let fuelReceiptIssueId = null;
+async function openFuelReceiptDialog(fuelIssueId) {
+  const issue = (state.fuelIssues || []).find((i) => i.fuel_issue_id === fuelIssueId);
+  if (!issue) return;
+  fuelReceiptIssueId = fuelIssueId;
+  el.fuelReceiptContext.textContent = `${personName(issue.person_id)} · ${issue.plate || ""} · ${String(issue.operating_date).slice(0, 10)} · ${Number(issue.quantity)} ${issue.unit}`;
+  el.fuelReceiptPpu.value = issue.price_per_unit_ngn ?? "";
+  el.fuelReceiptTotal.value = issue.total_cost_ngn ?? "";
+  el.fuelReceiptFile.value = "";
+  el.fuelReceiptResult.textContent = "";
+  el.fuelReceiptExisting.innerHTML = `<span class="subtle">Loading receipts…</span>`;
+  el.fuelReceiptDialog.showModal();
+  try {
+    const docs = (await ops(`/ops/v1/documents?owner_type=fuel_issue&owner_id=${encodeURIComponent(fuelIssueId)}`)).data || [];
+    el.fuelReceiptExisting.innerHTML = docs.length
+      ? `<p class="subtle">Attached:</p>` + docs.map((d) => `<div class="receipt-chip">📎 ${escapeHtml(d.label || d.doc_type)} · ${escapeHtml(String(d.created_at).slice(0, 10))}</div>`).join("")
+      : `<span class="subtle">No receipt attached yet.</span>`;
+  } catch { el.fuelReceiptExisting.innerHTML = ""; }
+}
+
+el.fuelReceiptDialog.addEventListener("close", async () => {
+  if (el.fuelReceiptDialog.returnValue !== "default" || !fuelReceiptIssueId) return;
+  const id = fuelReceiptIssueId;
+  fuelReceiptIssueId = null;
+  const file = el.fuelReceiptFile.files[0];
+  const ppu = el.fuelReceiptPpu.value ? Number(el.fuelReceiptPpu.value) : null;
+  const total = el.fuelReceiptTotal.value ? Number(el.fuelReceiptTotal.value) : null;
+  try {
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) throw new Error("Receipt file is larger than 10MB.");
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = () => reject(new Error("Could not read the file."));
+        reader.readAsDataURL(file);
+      });
+      await ops("/ops/v1/documents", {
+        method: "POST",
+        headers: { "Idempotency-Key": key("fuel-receipt-doc") },
+        body: JSON.stringify({ owner_type: "fuel_issue", owner_id: id, doc_type: "fuel_receipt", label: "Fuel receipt", content_type: file.type || "application/octet-stream", content_base64: base64 })
+      });
+    }
+    if (ppu !== null || total !== null) {
+      await ops(`/ops/v1/fuel-issues/${id}`, {
+        method: "PATCH",
+        headers: { "Idempotency-Key": key("fuel-receipt-cost") },
+        body: JSON.stringify({ price_per_unit_ngn: ppu, total_cost_ngn: total })
+      });
+    }
+    await refresh("Fuel receipt saved.");
+  } catch (error) { showError(error); }
+});
+
+el.fuelIssueList.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-fuel-receipt]");
+  if (btn) void openFuelReceiptDialog(btn.dataset.fuelReceipt);
 });
 
 el.deliveryBatchForm.addEventListener("submit", async (event) => {

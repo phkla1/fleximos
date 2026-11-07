@@ -221,10 +221,29 @@ platform-registration sources (Bolt `driver_uuid`, inDrive `driver_id`).
   driver match on `driver_id`; weekly-only metrics (bids/accepts/cancellations/supply_hours)
   not daily-ised (kept in provenance, like Uber's null acceptance).
 
-## Phase E — Fuel/charge receipts · size S
+## Phase E — Fuel/charge receipts · size S · **SHIPPED**
 
-Attach a receipt to a fuel-issue via the link table (`owner_type='fuel_issue'`) to
-validate `price_per_unit_ngn`; optional display-only comparison vs policy price.
+The receipt **attachment** already existed (Phase A wired `owner_type='fuel_issue' →
+fuel_receipt`, supervisor-scoped). Phase E adds the **actual cost** the receipt proves
+and the policy comparison, in the ops-console **Fuel tab** (supervisor).
+
+- `ops_fuel_issues` gains `price_per_unit_ngn` + `total_cost_ngn` (`ALTER … IF NOT
+  EXISTS`). Enter **either** the per-unit price **or** the total; the other is derived
+  from `quantity`. Optional on the create form; add/edit later per-row via an **Add
+  receipt** action (receipts usually arrive after issuance).
+- `PATCH /ops/v1/fuel-issues/:id` (supervisor-scoped) records/revises the cost; the Fuel
+  tab's receipt dialog uploads the file (existing `/ops/v1/documents`) + saves the price
+  in one step.
+- **Display-only comparison** vs the vehicle's efficiency-policy `price_per_unit_ngn`
+  (powertrain/make/effective-window aware, like the mileage recon): a pill shows
+  actual-vs-policy ±%.
+- **Overspend flag** (Wole 7 Nov): a configurable threshold `fuel_price_variance_pct` on
+  the efficiency policy (default 15%); over it raises a **soft tier-0** `fuel_price_overspend`
+  alert (ensureAlert notifies the supervisor) — visible, not blocking.
+- Files: `ops.service` (cost derive + policy compare + `updateFuelIssue` + overspend) +
+  `ops_fuel_issues`/`ops_vehicle_efficiency_policies.fuel_price_variance_pct` columns +
+  PATCH route + ops-console Fuel-tab list/dialog. Tests: `tests/api/ops-fuel-receipts.test.mjs`
+  (4) + e2e `ops-console-fuel-receipt.spec.mjs`.
 
 ## Phase F — HMO hospitals + map layer · size M
 
@@ -244,9 +263,10 @@ to the amoeba's supervisor(s) when an operator raises "Get support now".
 
 ## Build order
 
-**A → B → C → D** (all shipped), then **E**, **F**, **G** by priority. A→B→C delivers
+**A → B → C → D → E** (all shipped), then **F**, **G** by priority. A→B→C delivers
 the go-live migration capability (papers + bulk data); D adds revenue-history backfill
-(Bolt range + inDrive file) and the operator↔platform-id resolver.
+(Bolt range + inDrive file) and the operator↔platform-id resolver; E adds fuel-receipt
+actual-cost capture + policy comparison.
 
 ## Decisions locked (2026-11-03)
 

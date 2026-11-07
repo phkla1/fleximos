@@ -212,9 +212,13 @@
           <label>Operator and vehicle<select name="operator_id" required></select></label>
           <label>Quantity<input name="quantity" type="number" min="0" step="0.1" required /></label>
           <label>Unit<select name="unit"><option value="litres">Litres (fuel)</option><option value="kWh">kWh (charge)</option></select></label>
+          <label>Amount paid ₦<input name="total_cost_ngn" type="number" min="0" step="0.01" placeholder="optional" /></label>
           <label>Notes<input name="notes" placeholder="Optional" /></label>
           <button type="submit">Confirm fuel</button>
         </form>
+        <h3 class="subhead">Recent fuel issues</h3>
+        <p class="section-intro">Attach the receipt and record what was actually paid — compared against the policy price (display only; a large overspend raises a soft flag).</p>
+        <div id="fuelIssueList" class="fuel-issue-list"></div>
         <div id="mileageList" class="mileage-list"></div>
       </section>
 
@@ -343,6 +347,23 @@
         <p class="muted">Give this 6-digit PIN to the rider now. It is shown once and can't be retrieved again — if lost, reset it.</p>
         <p id="pinValue" class="pin-value"></p>
         <div class="dialog-actions"><button type="button" id="pinCopyButton" class="ghost">Copy</button><button value="default" class="primary">Done</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="fuelReceiptDialog" class="operator-sheet">
+      <form method="dialog">
+        <h3>Fuel receipt</h3>
+        <p id="fuelReceiptContext" class="subtle"></p>
+        <div id="fuelReceiptExisting" class="receipt-existing"></div>
+        <label>Receipt file (image or PDF)<input id="fuelReceiptFile" type="file" accept="image/*,application/pdf" /></label>
+        <label>Price per unit ₦<input id="fuelReceiptPpu" type="number" min="0" step="0.01" placeholder="e.g. 920" /></label>
+        <div class="receipt-or">or</div>
+        <label>Total amount ₦<input id="fuelReceiptTotal" type="number" min="0" step="0.01" placeholder="e.g. 9200" /></label>
+        <p id="fuelReceiptResult" class="subtle"></p>
+        <menu>
+          <button value="cancel">Cancel</button>
+          <button id="fuelReceiptSave" value="default">Save</button>
+        </menu>
       </form>
     </dialog>
 

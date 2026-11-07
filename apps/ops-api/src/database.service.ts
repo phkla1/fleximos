@@ -331,6 +331,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       -- ICE bikes of the same vehicle_type don't collide on one fuel economy.
       ALTER TABLE ops_vehicle_efficiency_policies
         ADD COLUMN IF NOT EXISTS powertrain TEXT;
+      -- Threshold for the fuel-price overspend flag (Phase E). Null → code
+      -- fallback. Distinct from allowed_variance_pct, which governs distance.
+      ALTER TABLE ops_vehicle_efficiency_policies
+        ADD COLUMN IF NOT EXISTS fuel_price_variance_pct NUMERIC(5, 2);
 
       -- Repeated saves once stacked duplicate versions (same vehicle
       -- type + make/model + effective date); keep the newest of each.
@@ -378,6 +382,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at TIMESTAMPTZ NOT NULL,
         UNIQUE(operator_id, vehicle_id, operating_date)
       );
+
+      -- Actual fuel cost the receipt substantiates (Phase E). The fuel issue
+      -- records the dispensed quantity; the receipt proves what was paid. Either
+      -- the per-unit price or the total is entered; the other is derived.
+      ALTER TABLE ops_fuel_issues ADD COLUMN IF NOT EXISTS price_per_unit_ngn NUMERIC(10, 2);
+      ALTER TABLE ops_fuel_issues ADD COLUMN IF NOT EXISTS total_cost_ngn NUMERIC(12, 2);
 
       CREATE TABLE IF NOT EXISTS ops_tracker_daily_records (
         tracker_record_id TEXT PRIMARY KEY,

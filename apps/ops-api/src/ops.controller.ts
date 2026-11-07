@@ -711,6 +711,21 @@ export class OpsController {
 
   @ApiTags("Fuel and Mileage")
   @ApiBearerAuth()
+  @ApiOperation({ summary: "Record the actual cost a fuel receipt substantiates (per-unit or total) on a fuel issue" })
+  @Patch("ops/v1/fuel-issues/:fuelIssueId")
+  async updateFuelIssue(
+    @Req() req: Request,
+    @Param("fuelIssueId") fuelIssueId: string,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, () => this.ops.updateFuelIssue(fuelIssueId, body, this.identity.dataScope(actor), actor.person_id));
+  }
+
+  @ApiTags("Fuel and Mileage")
+  @ApiBearerAuth()
   @Get("ops/v1/mileage-reconciliations")
   async mileageReconciliations(
     @Req() req: Request,
