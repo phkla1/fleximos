@@ -245,13 +245,19 @@ and the policy comparison, in the ops-console **Fuel tab** (supervisor).
   PATCH route + ops-console Fuel-tab list/dialog. Tests: `tests/api/ops-fuel-receipts.test.mjs`
   (4) + e2e `ops-console-fuel-receipt.spec.mjs`.
 
-## Phase F — HMO hospitals + map layer · size M
+## Phase F — HMO hospitals + map layer · size M · SHIPPED
 
-`ops_hospitals` (name, address, lat, lng, hmo/coverage, phone, active) + xlsx importer
-+ `GET /ops/v1/hospitals` + a Leaflet marker layer on the ops-console Map board and
-manager-console Fleet map.
-- Open (blocks F): does the sheet carry lat/lng or must we geocode? Does coverage vary
-  by HMO plan?
+`ops_hospitals` (name, provider_type, address, state, LGA, lat/lng, coords_quality,
+active) + xlsx importer (ops-admin Bulk import) + `GET /ops/v1/hospitals` +
+`PATCH /ops/v1/hospitals/:id` + a Leaflet reference layer (cross-pin, coloured by
+type, type filter + show/hide toggle) on the ops-console board map and
+manager-console fleet map.
+- Resolved: the sheet carries **no** coordinates, so geocoding is mandatory —
+  done **offline, one-time** via `tools/geocode-hospitals` (OSM Nominatim, throttled +
+  cached, LGA-centroid fallback; coords_quality = street|lga_centroid|failed). No
+  runtime geocoding. Run of record: 537 facilities → 55 street / 482 LGA / 0 failed.
+- Resolved: **one coverage value per hospital** (flat `hmo_coverage`), no per-plan matrix.
+- All provider types imported and shown, filterable by type.
 
 ## Phase G — Web Push for SOS · size L
 
@@ -263,10 +269,11 @@ to the amoeba's supervisor(s) when an operator raises "Get support now".
 
 ## Build order
 
-**A → B → C → D → E** (all shipped), then **F**, **G** by priority. A→B→C delivers
+**A → B → C → D → E → F** (all shipped), then **G** by priority. A→B→C delivers
 the go-live migration capability (papers + bulk data); D adds revenue-history backfill
 (Bolt range + inDrive file) and the operator↔platform-id resolver; E adds fuel-receipt
-actual-cost capture + policy comparison.
+actual-cost capture + policy comparison; F adds the HMO facility directory + map layer
+(offline-geocoded).
 
 ## Decisions locked (2026-11-03)
 
