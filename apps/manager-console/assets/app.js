@@ -9,7 +9,7 @@ const ids = [
   "connectionText", "dateFrom", "dateTo", "activeCount", "liveCount", "liveContext", "revenueTotal", "expectedContext",
   "grossPnl", "pnlContext", "escalationCount", "escalationContext", "notice", "updatedLabel", "teamPortfolio",
   "escalationSummary", "escalationList", "incidentList", "fleetFollowups",
-  "pnlRangeLabel", "pnlTotals", "pnlList", "expenseForm", "expenseList",
+  "pnlRangeLabel", "pnlTotals", "pnlList", "fuelOverspendList", "expenseForm", "expenseList",
   "leaderboardList", "leaderboardIntro", "dataQualityPanel", "reportList", "actionDialog", "dialogTitle", "dialogContext", "dialogNotes",
   "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList",
   "integrationList", "integrationSummary",
@@ -34,6 +34,17 @@ const operatorName = (id) => {
   const operator = state.operators.find((item) => item.operator_id === id);
   return operator ? personName(operator.person_id) : id;
 };
+const operatorVehicle = (id) => state.operators.find((item) => item.operator_id === id)?.vehicle_plate || "";
+// The overspend flag's numbers live in its metadata (PGlite returns JSONB as an
+// object; tolerate a string too). Returns the soft fuel_price_overspend alerts in
+// the current range, worst variance first.
+const fuelOverspends = () => (state.alerts || [])
+  .filter((a) => a.alert_type === "fuel_price_overspend")
+  .map((a) => {
+    const meta = typeof a.metadata === "string" ? (() => { try { return JSON.parse(a.metadata); } catch { return {}; } })() : (a.metadata || {});
+    return { ...a, meta, variance: Number(meta.variance_pct ?? 0) };
+  })
+  .sort((a, b) => b.variance - a.variance);
 const key = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const label = (value) => String(value ?? "").replaceAll("_", " ");
 
@@ -282,6 +293,8 @@ function evidenceChips(mediaIds) {
 function renderPnl() {
   const pnl = state.pnl;
   if (!pnl) return;
+  const overspends = fuelOverspends();
+  const overspendCount = overspends.length;
   el.grossPnl.textContent = money(pnl.totals.gross_pnl_ngn);
   el.pnlContext.textContent = `${pnl.period_start} → ${pnl.period_end}`;
   el.grossPnl.parentElement.classList.toggle("metric-risk", Number(pnl.totals.gross_pnl_ngn) < 0);
@@ -298,6 +311,7 @@ function renderPnl() {
     ["Fuel / charge (mileage-estimated)", state.fleetFuel?.cost
       ? `${money(state.fleetFuel.cost)}${state.fleetFuel.actual && state.fleetFuel.km ? ` · ₦${(state.fleetFuel.actual / state.fleetFuel.km).toFixed(0)}/km actual` : ""}`
       : "No unit price set", ""],
+    ["Fuel overspends", `${overspendCount}${overspendCount ? " flag" + (overspendCount === 1 ? "" : "s") : ""}`, overspendCount ? "metric-risk" : "metric-good"],
     ["Hourly P&L", pnl.totals.hourly_pnl_ngn === null ? "—" : `${money(pnl.totals.hourly_pnl_ngn)}/h`, Number(pnl.totals.hourly_pnl_ngn) < 0 ? "metric-risk" : "metric-good"]
   ].map(([name, value, cls]) => `<article class="${cls}"><span>${name}</span><strong>${value}</strong></article>`).join("");
 
@@ -317,6 +331,25 @@ function renderPnl() {
       <div class="progress-track"><span style="width:${Math.min(100, Math.max(0, Number(row.target_attainment_pct || 0)))}%"></span></div>
     </article>`;
   }).join("") : '<div class="empty">No P&L rows for the selected period.</div>';
+
+  el.fuelOverspendList.innerHTML = overspends.length ? overspends.slice(0, 8).map((flag) => {
+    const plate = operatorVehicle(flag.operator_id);
+    const actual = Number(flag.meta.price_per_unit_ngn || 0);
+    const policy = Number(flag.meta.policy_price_per_unit_ngn || 0);
+    const variance = flag.variance;
+    return `<article class="summary-card critical">
+      <div class="card-heading">
+        <div><strong>${plate ? escapeHtml(plate) : "No vehicle"}</strong><small>${escapeHtml(personName(flag.person_id))} · ${escapeHtml(amoebaName(flag.amoeba_id))}</small></div>
+        <span class="pill pending">+${variance.toFixed(1)}%</span>
+      </div>
+      <div class="card-kpis">
+        <span><strong>₦${actual.toLocaleString()}</strong> actual/unit</span>
+        <span><strong>₦${policy.toLocaleString()}</strong> policy/unit</span>
+        <span><strong>${Number(flag.meta.threshold_pct ?? 0)}%</strong> threshold</span>
+        <span>${escapeHtml(String(flag.alert_date).slice(0, 10))}</span>
+      </div>
+    </article>`;
+  }).join("") : '<div class="empty">No fuel overspends flagged in this period.</div>';
 
   el.expenseList.innerHTML = state.expenses.length ? state.expenses.slice(0, 12).map((expense) => `
     <article class="data-row">

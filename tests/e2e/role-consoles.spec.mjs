@@ -43,9 +43,14 @@ test.describe("role consoles", () => {
     await expect(page.locator("#notice")).toContainText("Manager view is limited");
 
     await expect(page.getByRole("heading", { name: "Profit & loss" })).toBeVisible();
-    await expect(page.locator("#pnlTotals article")).toHaveCount(9);
+    await expect(page.locator("#pnlTotals article")).toHaveCount(10);
     await expect(page.locator("#pnlTotals")).toContainText("Incidents");
+    await expect(page.locator("#pnlTotals")).toContainText("Fuel overspends");
     await expect(page.locator("#pnlList .summary-card")).not.toHaveCount(0);
+    // Fuel-overspend oversight: the tile and rollup always render (empty-state is
+    // fine when the demo period has no flags); both read from the alerts feed.
+    await expect(page.getByRole("heading", { name: "Fuel overspends" })).toBeVisible();
+    await expect(page.locator("#fuelOverspendList")).not.toBeEmpty();
 
     const expenseForm = page.locator("#expenseForm");
     await expenseForm.locator('input[name="amount_ngn"]').fill("1500");
