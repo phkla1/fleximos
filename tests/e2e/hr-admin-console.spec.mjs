@@ -158,6 +158,53 @@ test.describe("hr-admin console", () => {
     await expect(page.locator("#pinValue")).toHaveText(/^\d{6}$/);
   });
 
+  test("imports, lists and deactivates an HMO facility (Ops-API-backed)", async ({ page }) => {
+    // The HMO directory is served from the Ops API (4530 in e2e), like Flexi Points.
+    await page.goto(`${adminUrl}&opsApiBase=http://127.0.0.1:4530#hmo-facilities`);
+    await expect(page.getByRole("heading", { name: "HMO facilities" })).toBeVisible();
+    await expect(page.locator("#hospitalConn")).toContainText("facilities");
+
+    // Import a facility via the HR console's own import panel.
+    const name = `E2E HMO ${Date.now().toString().slice(-7)}`;
+    const csv = [
+      "name,provider_type,address,state,lga,phone,lat,lng,coords_quality",
+      `${name},Dentist,1 Test Road Ikeja,Lagos,Ikeja,08030000000,6.6018,3.3515,street`
+    ].join("\n");
+
+    const panel = page.locator("#hospitalImportPanel");
+    await panel.locator("summary").click();
+    await panel.locator('input[type="file"]').setInputFiles({
+      name: "hospitals.csv", mimeType: "text/csv", buffer: Buffer.from(csv)
+    });
+    const commit = panel.locator('[data-mode="commit"]');
+    await expect(commit).toBeDisabled();
+    await panel.locator('[data-mode="preview"]').click();
+    await expect(page.locator("#hospitalImportResult")).toContainText("Dry-run");
+    await expect(page.locator("#hospitalImportReport")).toContainText(name);
+    await expect(commit).toBeEnabled();
+    await commit.click();
+    await expect(page.locator("#hospitalImportResult")).toContainText("Committed");
+    await expect(commit).toBeDisabled();
+
+    // It appears in the directory and is reachable via the type filter.
+    const row = page.locator("#hospitalRows tr").filter({ hasText: name });
+    await expect(row).toBeVisible();
+    await page.locator("#hospitalTypeFilter").selectOption("Dentist");
+    await expect(page.locator("#hospitalRows tr").filter({ hasText: name })).toBeVisible();
+    await page.locator("#hospitalTypeFilter").selectOption("");
+
+    // Deactivating goes through the confirm dialog and drops it from the default view.
+    await row.getByRole("button", { name: "Deactivate" }).click();
+    await expect(page.locator("#confirmDialog")).toBeVisible();
+    await page.locator("#confirmButton").click();
+    await expect(page.locator("#notice")).toContainText("deactivated");
+    await expect(page.locator("#hospitalRows tr").filter({ hasText: name })).toHaveCount(0);
+
+    // "Show deactivated" brings it back, with a Reactivate action.
+    await page.locator("#hospitalInactiveToggle").check();
+    await expect(page.locator("#hospitalRows tr").filter({ hasText: name })).toBeVisible();
+  });
+
   test("mobile layout has no horizontal page overflow", async ({ page }) => {
     await page.goto(adminUrl);
     await expect(page.locator("#notice")).toContainText("Connected");

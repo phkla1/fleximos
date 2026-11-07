@@ -1,8 +1,10 @@
 const KNOWN_ROLES = ["owner", "admin", "manager", "finance", "supervisor", "operator"];
 
 const state = {
-  people: [], users: [], roleAssignments: [], amoebas: [], sites: [], serviceAccounts: []
+  people: [], users: [], roleAssignments: [], amoebas: [], sites: [], serviceAccounts: [], hospitals: []
 };
+// Client-side view state for the HMO facilities directory.
+const hospitalView = { q: "", type: "", showInactive: false };
 // Which row (by id) is currently in edit mode, per section.
 const editing = { people: null, users: null, access: null, amoebas: null, sites: null };
 // Staged, unsaved edits for the row being edited (roles for users).
@@ -20,7 +22,9 @@ const els = Object.fromEntries([
   "personForm", "userForm", "roleAssignmentForm", "amoebaForm", "siteForm", "serviceAccountForm",
   "confirmDialog", "confirmTitle", "confirmBody", "confirmButton",
   "pinDialog", "pinDialogTitle", "pinValue", "pinCopyButton",
-  "flexiPointsConfigForm", "flexiPointsConfigSummary", "flexiPointsConn"
+  "flexiPointsConfigForm", "flexiPointsConfigSummary", "flexiPointsConn",
+  "hospitalConn", "hospitalImportFile", "hospitalImportResult", "hospitalImportReport",
+  "hospitalSearch", "hospitalTypeFilter", "hospitalInactiveToggle", "hospitalCount", "hospitalRows"
 ].map((id) => [id, document.querySelector(`#${id}`)]));
 
 const params = new URLSearchParams(window.location.search);
@@ -348,9 +352,10 @@ async function refresh() {
     setConnection(false, "Connection issue");
     setNotice(error.message, true);
   }
-  // The Flexi Points panel talks to a different service; load it independently
-  // so an Ops API hiccup never blocks the identity/organisation screens.
+  // The Flexi Points panel and the HMO directory both talk to the Ops API; load
+  // them independently so an Ops API hiccup never blocks the identity screens.
   void loadFlexiPoints();
+  void loadHospitals();
 }
 
 /* ---------- Flexi Points programme (Ops API) ---------- */
@@ -420,6 +425,195 @@ els.flexiPointsConfigForm.addEventListener("submit", async (event) => {
   } catch (error) { setNotice(error.message, true); }
   finally { button.disabled = false; }
 });
+
+/* ---------- HMO facilities directory (Ops API) ----------
+   HR owns the HMO relationship, so the Flexicare facility directory is
+   maintained here. The data is served from the Ops API (it also feeds the
+   reference layer on the supervisor and operator maps) and reached with the
+   same bearer token, exactly as the Flexi Points panel above. */
+
+const HOSPITAL_TEMPLATE = {
+  headers: ["name", "provider_type", "address", "state", "lga", "phone", "lat", "lng", "coords_quality"],
+  example: ["Divine Medical Centre", "Hospital", "53 Norman Williams St, Ikoyi", "Lagos", "Eti-Osa", "", "6.4520", "3.4350", "street"]
+};
+
+function csvCell(value) {
+  const s = String(value ?? "");
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadHospitalTemplate() {
+  const t = HOSPITAL_TEMPLATE;
+  const csv = [t.headers.map(csvCell).join(","), t.example.map(csvCell).join(",")].join("\r\n") + "\r\n";
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "fleximos-hospitals-import-template.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderHospitalImportReport(report) {
+  const resultEl = els.hospitalImportResult;
+  const reportEl = els.hospitalImportReport;
+  const s = report.summary;
+  resultEl.className = "import-summary " + (s.error ? "warn" : "ok");
+  resultEl.textContent = `${report.dry_run ? "Dry-run" : "Committed"}: ${s.create} to ${report.dry_run ? "create" : "created"}, ${s.skip} ${report.dry_run ? "unchanged" : "updated/skipped"}, ${s.error} error${s.error === 1 ? "" : "s"} — of ${s.total} row${s.total === 1 ? "" : "s"}.`;
+  if (!report.rows.length) { reportEl.innerHTML = ""; return; }
+  const body = report.rows.map((r) => {
+    const cls = r.status === "error" ? "err" : r.status === "skip" ? "skip" : "ok";
+    const mark = r.status === "error" ? "✕" : r.status === "skip" ? "–" : "✓";
+    return `<tr class="${cls}"><td>${r.row}</td><td>${escapeHtml(r.label || "")}</td><td>${mark} ${r.status}</td><td>${escapeHtml(r.reason || "")}</td></tr>`;
+  }).join("");
+  reportEl.innerHTML = `<table class="import-table"><thead><tr><th>Row</th><th>Facility</th><th>Result</th><th>Detail</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+async function runHospitalImport(mode) {
+  const fileInput = els.hospitalImportFile;
+  const resultEl = els.hospitalImportResult;
+  const panel = fileInput.closest("details");
+  const commitBtn = panel.querySelector('[data-mode="commit"]');
+  const file = fileInput.files[0];
+  if (!file) { resultEl.className = "import-summary err"; resultEl.textContent = "Choose a sheet first."; return; }
+  if (file.size > 8 * 1024 * 1024) { resultEl.className = "import-summary err"; resultEl.textContent = "File is larger than 8MB."; return; }
+  const buttons = [...panel.querySelectorAll("button")];
+  buttons.forEach((b) => (b.disabled = true));
+  resultEl.className = "import-summary";
+  resultEl.textContent = mode === "commit" ? "Committing…" : "Previewing…";
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = () => reject(new Error("Could not read the file."));
+      reader.readAsDataURL(file);
+    });
+    const report = await opsApi("/ops/v1/imports/hospitals", {
+      method: "POST",
+      body: JSON.stringify({ file_base64: base64, dry_run: mode !== "commit" })
+    });
+    renderHospitalImportReport(report);
+    if (!report.dry_run) { await loadHospitals(); setNotice(`Imported ${report.summary.create} facilities (${report.summary.skip} updated).`); }
+    // Commit is allowed only straight after a dry-run that found rows to create.
+    commitBtn.disabled = !(report.dry_run && report.summary.create > 0);
+  } catch (error) {
+    resultEl.className = "import-summary err";
+    resultEl.textContent = `✕ ${error.message}`;
+  } finally {
+    buttons.forEach((b) => { if (b !== commitBtn) b.disabled = false; });
+  }
+}
+
+async function loadHospitals() {
+  els.hospitalConn.textContent = "Loading…";
+  els.hospitalConn.classList.remove("error");
+  try {
+    // Fetch everything (active and deactivated); the "show deactivated" toggle
+    // filters client-side so HR can review the whole roster without a round-trip.
+    const res = await opsApi("/ops/v1/hospitals");
+    state.hospitals = res.data || [];
+    const mapped = state.hospitals.filter((h) => h.lat != null && h.lng != null).length;
+    els.hospitalConn.textContent = `${state.hospitals.length} facilities · ${mapped} on the map`;
+  } catch {
+    state.hospitals = [];
+    els.hospitalConn.textContent = "Ops API unavailable";
+    els.hospitalConn.classList.add("error");
+  }
+  renderHospitalTypeOptions();
+  renderHospitals();
+}
+
+function renderHospitalTypeOptions() {
+  const types = [...new Set(state.hospitals.map((h) => h.provider_type).filter(Boolean))].sort();
+  const current = els.hospitalTypeFilter.value;
+  els.hospitalTypeFilter.innerHTML = `<option value="">All types</option>` +
+    types.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
+  if (types.includes(current)) els.hospitalTypeFilter.value = current;
+}
+
+function coordBadge(q) {
+  const label = { street: "street", authoritative: "fixed", lga_centroid: "LGA area", failed: "not mapped" }[q] || q || "—";
+  return `<span class="coord-badge ${escapeHtml(q || "failed")}">${escapeHtml(label)}</span>`;
+}
+
+function renderHospitals() {
+  const rowsEl = els.hospitalRows;
+  if (!rowsEl) return;
+  const q = hospitalView.q.trim().toLowerCase();
+  const visible = state.hospitals.filter((h) => {
+    if (!hospitalView.showInactive && h.active === false) return false;
+    if (hospitalView.type && h.provider_type !== hospitalView.type) return false;
+    if (q) {
+      const hay = `${h.name || ""} ${h.address || ""} ${h.lga || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  els.hospitalCount.textContent = `${visible.length} of ${state.hospitals.length}`;
+  if (!visible.length) {
+    rowsEl.innerHTML = `<tr><td colspan="7" class="empty">No facilities match this view.</td></tr>`;
+    return;
+  }
+  rowsEl.innerHTML = visible.map((h) => {
+    const inactive = h.active === false;
+    const action = inactive
+      ? `<button type="button" class="linklike" data-hosp-reactivate="${escapeHtml(h.hospital_id)}">Reactivate</button>`
+      : `<button type="button" class="linklike danger-text" data-hosp-deactivate="${escapeHtml(h.hospital_id)}">Deactivate</button>`;
+    return `<tr class="${inactive ? "is-inactive" : ""}">
+      <td><strong>${escapeHtml(h.name || "")}</strong>${h.address ? `<br><small class="subtle">${escapeHtml(h.address)}</small>` : ""}</td>
+      <td>${escapeHtml(h.provider_type || "—")}</td>
+      <td>${escapeHtml(h.lga || "—")}</td>
+      <td>${escapeHtml(h.phone || "—")}</td>
+      <td>${coordBadge(h.coords_quality)}</td>
+      <td>${inactive ? '<span class="subtle">deactivated</span>' : "active"}</td>
+      <td class="actions">${action}</td>
+    </tr>`;
+  }).join("");
+}
+
+async function setHospitalActive(id, next) {
+  try {
+    await opsApi(`/ops/v1/hospitals/${id}`, {
+      method: "PATCH",
+      headers: { "Idempotency-Key": idempotencyKey("hospital-life") },
+      body: JSON.stringify({ active: next })
+    });
+    await loadHospitals();
+    setNotice(next ? "Facility reactivated." : "Facility deactivated — it will drop off the maps.");
+  } catch (error) { setNotice(error.message, true); }
+}
+
+// One delegated click handler for the whole HMO section: template download,
+// preview/commit, and the per-row deactivate / reactivate actions.
+document.getElementById("hmo-facilities")?.addEventListener("click", (event) => {
+  const tpl = event.target.closest("[data-template='hospitals']");
+  if (tpl) { downloadHospitalTemplate(); return; }
+  const run = event.target.closest("[data-import='hospitals']");
+  if (run) { void runHospitalImport(run.dataset.mode); return; }
+  const deact = event.target.closest("[data-hosp-deactivate]");
+  if (deact) {
+    const h = state.hospitals.find((x) => x.hospital_id === deact.dataset.hospDeactivate);
+    askConfirm("Deactivate facility", `Remove "${h?.name || "this facility"}" from the HMO directory and the maps? You can reactivate it later.`, "Deactivate", () => setHospitalActive(deact.dataset.hospDeactivate, false));
+    return;
+  }
+  const react = event.target.closest("[data-hosp-reactivate]");
+  if (react) { void setHospitalActive(react.dataset.hospReactivate, true); }
+});
+
+// A fresh file selection invalidates a prior dry-run, so re-lock Commit.
+els.hospitalImportFile?.addEventListener("change", () => {
+  const panel = els.hospitalImportFile.closest("details");
+  panel.querySelector('[data-mode="commit"]').disabled = true;
+  els.hospitalImportResult.textContent = "";
+  els.hospitalImportReport.innerHTML = "";
+});
+
+els.hospitalSearch?.addEventListener("input", () => { hospitalView.q = els.hospitalSearch.value; renderHospitals(); });
+els.hospitalTypeFilter?.addEventListener("change", () => { hospitalView.type = els.hospitalTypeFilter.value; renderHospitals(); });
+els.hospitalInactiveToggle?.addEventListener("change", () => { hospitalView.showInactive = els.hospitalInactiveToggle.checked; renderHospitals(); });
 
 /* ---------- create forms ---------- */
 function bindCreate(form, path, prefix, transform, label) {

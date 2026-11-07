@@ -2557,17 +2557,12 @@ const IMPORT_TEMPLATES = {
   vehicles: {
     headers: ["plate", "vehicle_type", "make_model", "color", "powertrain", "tracker_provider", "vin", "amoeba", "assigned_operator", "status"],
     example: ["ABC-123-XY", "motorbike", "TankVolt T1", "Black", "ev", "tankvolt", "VIN0000000000001", "Island", "08030000001", "active"]
-  },
-  hospitals: {
-    headers: ["name", "provider_type", "address", "state", "lga", "phone", "lat", "lng", "coords_quality"],
-    example: ["Divine Medical Centre", "Hospital", "53 Norman Williams St, Ikoyi", "Lagos", "Eti-Osa", "", "6.4520", "3.4350", "street"]
   }
 };
 
 const IMPORT_EL = {
   operators: { file: "operatorImportFile", result: "operatorImportResult", report: "operatorImportReport" },
-  vehicles: { file: "vehicleImportFile", result: "vehicleImportResult", report: "vehicleImportReport" },
-  hospitals: { file: "hospitalImportFile", result: "hospitalImportResult", report: "hospitalImportReport" }
+  vehicles: { file: "vehicleImportFile", result: "vehicleImportResult", report: "vehicleImportReport" }
 };
 
 function csvCell(value) {
@@ -2661,7 +2656,7 @@ document.getElementById("imports").addEventListener("click", (event) => {
 });
 
 // A fresh file selection invalidates a prior dry-run, so re-lock Commit.
-["operators", "vehicles", "hospitals"].forEach((kind) => {
+["operators", "vehicles"].forEach((kind) => {
   document.getElementById(IMPORT_EL[kind].file).addEventListener("change", (event) => {
     const panel = event.target.closest("details");
     panel.querySelector('[data-mode="commit"]').disabled = true;

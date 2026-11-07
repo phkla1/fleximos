@@ -100,6 +100,38 @@ td.gps-edit input { max-width: 92px; }
 td.actions { white-space: nowrap; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .empty { text-align: center; color: var(--muted); padding: 22px; font-style: italic; }
 
+/* ---- HMO facilities ---- */
+.toolbar-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.toolbar-check input { width: auto; }
+.form-hint { margin: 0 0 10px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.form-hint code { background: var(--surface-2, rgba(0,0,0,.05)); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+.management-panel { margin: 4px 0 14px; border: 1px solid var(--line); border-radius: var(--radius, 12px); background: var(--surface, #fff); }
+.management-panel > summary { padding: 13px 15px; font-weight: 800; cursor: pointer; }
+.management-panel[open] > summary { border-bottom: 1px solid var(--line); }
+.management-panel > :not(summary) { margin: 12px 15px; }
+.import-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.import-file { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
+.import-file input { width: auto; max-width: none; }
+.import-actions { display: flex; gap: 8px; margin-left: auto; }
+.import-actions button { padding: 9px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--green); color: #fff; font-weight: 800; cursor: pointer; }
+.import-actions button[disabled] { opacity: .5; cursor: not-allowed; }
+.import-summary { margin: 6px 0; min-height: 18px; font-size: 13px; font-weight: 750; }
+.import-summary.ok { color: var(--green-dark, #1c7c54); }
+.import-summary.warn { color: var(--amber, #b26a00); }
+.import-summary.err { color: var(--red, #b3392b); }
+.import-report { overflow-x: auto; }
+.import-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.import-table th, .import-table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.import-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.import-table tr.ok td:nth-child(3) { color: var(--green-dark, #1c7c54); font-weight: 750; }
+.import-table tr.skip td:nth-child(3) { color: var(--muted); font-weight: 750; }
+.import-table tr.err td:nth-child(3) { color: var(--red, #b3392b); font-weight: 750; }
+.coord-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 750; }
+.coord-badge.street, .coord-badge.authoritative { background: rgba(28,124,84,.14); color: var(--green-dark, #1c7c54); }
+.coord-badge.lga_centroid { background: rgba(178,106,0,.15); color: var(--amber, #b26a00); }
+.coord-badge.failed { background: rgba(179,57,43,.13); color: var(--red, #b3392b); }
+#hospitalRows tr.is-inactive td { opacity: .55; }
+
 /* ---- buttons ---- */
 button.primary { padding: 7px 13px; border: 0; border-radius: 8px; background: var(--green); color: #fff; font-weight: 800; cursor: pointer; }
 button.ghost { padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--green-dark); font-weight: 700; cursor: pointer; }

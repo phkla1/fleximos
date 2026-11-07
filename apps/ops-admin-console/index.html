@@ -368,21 +368,8 @@
           <p id="vehicleImportResult" class="import-summary"></p>
           <div id="vehicleImportReport" class="import-report"></div>
         </details>
-
-        <details class="management-panel" id="hospitalImportPanel">
-          <summary>Import HMO facilities</summary>
-          <p class="form-hint">Loads the Flexicare facility directory for the map reference layer. The sheet carries no coordinates, so run it through the one-time geocoder first (<code>tools/geocode-hospitals</code>) — it adds <strong>lat</strong>, <strong>lng</strong> and <strong>coords_quality</strong> columns (street-level where the address resolves, otherwise the LGA centroid). A facility with no coordinates still imports but will not plot until corrected. Upserted by <strong>name + LGA</strong>, so a refreshed monthly sheet updates in place rather than duplicating.</p>
-          <div class="import-controls">
-            <button type="button" class="ghost" data-template="hospitals">↓ Download CSV template</button>
-            <label class="import-file">Choose sheet (.csv or .xlsx)<input type="file" id="hospitalImportFile" accept=".csv,.xlsx,text/csv" /></label>
-            <div class="import-actions">
-              <button type="button" data-import="hospitals" data-mode="preview">Preview (dry-run)</button>
-              <button type="button" data-import="hospitals" data-mode="commit" disabled>Commit import</button>
-            </div>
-          </div>
-          <p id="hospitalImportResult" class="import-summary"></p>
-          <div id="hospitalImportReport" class="import-report"></div>
-        </details>
+        <!-- HMO facilities are an HR responsibility (HR owns the HMO relationship,
+             which covers all personnel), so their import lives in the HR console. -->
       </section>
 
       <section id="trackers" class="workspace-section view">

@@ -40,33 +40,6 @@ test.describe("ops-admin bulk import", () => {
     await expect(commit).toBeDisabled();
   });
 
-  test("previews then commits an HMO facility CSV", async ({ page }) => {
-    await page.goto(`${url}#imports`);
-    await expect(page.locator("#notice")).toContainText("Connected to Fleximotion Ops.");
-
-    // Unique name so a reused dev server doesn't turn this into an upsert-skip.
-    const name = `E2E Facility ${Date.now().toString().slice(-7)}`;
-    const csv = [
-      "name,provider_type,address,state,lga,lat,lng,coords_quality",
-      `${name},Hospital,1 Test Road Ikeja,Lagos,Ikeja,6.6018,3.3515,street`
-    ].join("\n");
-
-    const panel = page.locator("#hospitalImportPanel");
-    await panel.locator("summary").click();
-    await panel.locator('input[type="file"]').setInputFiles({
-      name: "hospitals.csv", mimeType: "text/csv", buffer: Buffer.from(csv)
-    });
-
-    const commit = panel.locator('[data-mode="commit"]');
-    await expect(commit).toBeDisabled();
-    await panel.locator('[data-mode="preview"]').click();
-    await expect(page.locator("#hospitalImportResult")).toContainText("Dry-run");
-    await expect(page.locator("#hospitalImportReport")).toContainText(name);
-    await expect(commit).toBeEnabled();
-
-    await commit.click();
-    await expect(page.locator("#hospitalImportResult")).toContainText("Committed");
-    await expect(page.locator("#hospitalImportReport tr", { hasText: name })).toContainText("create");
-    await expect(commit).toBeDisabled();
-  });
+  // HMO facility imports moved to the HR console (HR owns the HMO relationship);
+  // that flow is covered in hr-admin-console.spec.mjs.
 });

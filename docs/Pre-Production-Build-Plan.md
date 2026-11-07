@@ -248,10 +248,16 @@ and the policy comparison, in the ops-console **Fuel tab** (supervisor).
 ## Phase F — HMO hospitals + map layer · size M · SHIPPED
 
 `ops_hospitals` (name, provider_type, address, state, LGA, lat/lng, coords_quality,
-active) + xlsx importer (ops-admin Bulk import) + `GET /ops/v1/hospitals` +
+active) + xlsx importer + `GET /ops/v1/hospitals` +
 `PATCH /ops/v1/hospitals/:id` + a Leaflet reference layer (cross-pin, coloured by
 type, type filter + show/hide toggle) on the ops-console board map and
 manager-console fleet map.
+- **Ownership: HMO is HR's.** The facility directory is imported and maintained in
+  the **hr-admin console** (Benefits → HMO facilities): HR owns the HMO relationship
+  and it covers all personnel. Supervisors and operators are the key *consumers*, so
+  the same facilities appear as the map reference layer in their consoles. The data is
+  served from the ops-api (same HR-owned-concept / ops-api-served split as Flexi
+  Points); hr-admin reaches it through its existing `opsApi()` helper.
 - Resolved: the sheet carries **no** coordinates, so geocoding is mandatory —
   done **offline, one-time** via `tools/geocode-hospitals` (OSM Nominatim, throttled +
   cached, LGA-centroid fallback; coords_quality = street|lga_centroid|failed). No
