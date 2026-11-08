@@ -803,6 +803,16 @@ export class OpsController {
 
   @ApiTags("Ingestion")
   @ApiBearerAuth()
+  @Get("ops/v1/unmatched-drivers")
+  @ApiOperation({ summary: "Platform drivers with revenue but no operator mapping — quarantined, awaiting onboarding/mapping (ops-admin/HR)" })
+  async unmatchedDrivers(@Req() req: Request, @Query("status") status?: string) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return { data: await this.ops.listUnmatchedDrivers({ status }), next_cursor: null };
+  }
+
+  @ApiTags("Ingestion")
+  @ApiBearerAuth()
   @Post("ops/v1/ingestion-runs")
   async ingestDailyRecords(
     @Req() req: Request,

@@ -1107,6 +1107,35 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_top_performer_awards_date ON ops_top_performer_awards(record_date);
       CREATE INDEX IF NOT EXISTS idx_top_performer_awards_operator ON ops_top_performer_awards(operator_id, record_date);
 
+      -- Quarantine for platform records whose driver isn't mapped to an operator.
+      -- Instead of discarding an unmatched ingest record (losing the revenue), we
+      -- retain it here with identity hints, alert ops-admin/HR, and replay it into
+      -- the real records once the mapping is created. One row per (account, driver,
+      -- day); idempotent upsert bumps occurrences on re-ingest.
+      CREATE TABLE IF NOT EXISTS ops_unmatched_platform_records (
+        unmatched_id TEXT PRIMARY KEY,
+        platform_account_id TEXT NOT NULL,
+        platform TEXT,
+        platform_operator_id TEXT NOT NULL,
+        record_date DATE NOT NULL,
+        driver_name TEXT,
+        driver_phone TEXT,
+        vehicle_plate TEXT,
+        payload JSONB NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',   -- pending | resolved | ignored
+        occurrences INTEGER NOT NULL DEFAULT 1,
+        alerted_at TIMESTAMPTZ,
+        resolved_operator_id TEXT,
+        resolved_at TIMESTAMPTZ,
+        first_seen_at TIMESTAMPTZ NOT NULL,
+        last_seen_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (platform_account_id, platform_operator_id, record_date)
+      );
+      CREATE INDEX IF NOT EXISTS idx_unmatched_pending ON ops_unmatched_platform_records(status, alerted_at);
+      CREATE INDEX IF NOT EXISTS idx_unmatched_driver ON ops_unmatched_platform_records(platform_account_id, platform_operator_id);
+
       -- Company accommodation: finite housing. A unit is a place with a bed
       -- capacity; an operator occupies at most one. Occupancy is derived from
       -- ops_operators.accommodation_unit_id (cleared when an operator leaves

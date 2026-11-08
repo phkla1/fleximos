@@ -10,6 +10,12 @@ type PlatformAccount = {
 
 export type NormalizedDailyRecord = {
   platform_operator_id: string;
+  // Identity hints carried through for the unmatched-driver quarantine/alert path
+  // when the platform supplies them (so ops-admin/HR can recognise an unmapped
+  // driver). Optional — not every connector populates them.
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  vehicle_plate?: string | null;
   trips_total: number;
   trips_completed: number;
   trips_cancelled: number;
@@ -212,9 +218,13 @@ export class PlatformConnectorsService {
       if (!id) continue;
       if (!aggregate.has(id)) aggregate.set(id, {
         total: 0, completed: 0, cancelled: 0, noResponse: 0, revenue: 0,
-        earnings: 0, fees: 0, cash: 0, card: 0, lastSeen: null
+        earnings: 0, fees: 0, cash: 0, card: 0, lastSeen: null,
+        name: null, phone: null, plate: null
       });
       const row = aggregate.get(id);
+      row.name = row.name || order.driver_name || null;
+      row.phone = row.phone || order.driver_phone || null;
+      row.plate = row.plate || order.vehicle_license_plate || null;
       row.total++;
       const status = String(order.order_status || "").toLowerCase();
       if (["finished", "completed"].includes(status)) row.completed++;
@@ -230,6 +240,9 @@ export class PlatformConnectorsService {
     }
     return [...aggregate.entries()].map(([id, row]) => ({
       platform_operator_id: id,
+      driver_name: row.name,
+      driver_phone: row.phone,
+      vehicle_plate: row.plate,
       trips_total: row.total,
       trips_completed: row.completed,
       trips_cancelled: row.cancelled,

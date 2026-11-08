@@ -167,7 +167,50 @@ export class JobRunnerService {
       upserted += Number(result.records_upserted || 0);
       rejected += Number(result.records_rejected || 0);
     }
+    await this.alertUnmatchedDrivers();
     return { received, upserted, rejected };
+  }
+
+  // Alert ops-admin/HR once per newly-seen unmapped platform driver (amoeba is
+  // unknown, so it can't be a supervisor task). Deduped forever per driver via the
+  // notification key; the quarantined records wait to be replayed once mapped.
+  private async alertUnmatchedDrivers() {
+    const pending = await this.db.many<any>(
+      `SELECT unmatched_id, platform, platform_account_id, platform_operator_id,
+        driver_name, driver_phone, vehicle_plate
+       FROM ops_unmatched_platform_records WHERE status = 'pending' AND alerted_at IS NULL`
+    );
+    if (!pending.length) return;
+    const admins = await this.ops.adminRecipients();
+    // One alert per distinct (account, driver), regardless of how many dates.
+    const byDriver = new Map<string, any>();
+    for (const row of pending) {
+      const key = `${row.platform_account_id}:${row.platform_operator_id}`;
+      if (!byDriver.has(key)) byDriver.set(key, row);
+    }
+    for (const row of byDriver.values()) {
+      const who = row.driver_name || row.driver_phone || row.platform_operator_id;
+      for (const person of admins) {
+        await this.notifications.queue(
+          person,
+          "push",
+          {
+            type: "unmapped_platform_driver",
+            platform: row.platform,
+            platform_account_id: row.platform_account_id,
+            platform_operator_id: row.platform_operator_id,
+            driver_name: row.driver_name,
+            driver_phone: row.driver_phone,
+            vehicle_plate: row.vehicle_plate,
+            message: `${row.platform || "Platform"} driver "${who}" has revenue but no operator mapping. Onboard/map them so their data isn't lost.`
+          },
+          `unmapped:${row.platform_account_id}:${row.platform_operator_id}:${person}`
+        );
+      }
+    }
+    await this.db.exec(
+      "UPDATE ops_unmatched_platform_records SET alerted_at = NOW() WHERE status = 'pending' AND alerted_at IS NULL"
+    );
   }
 
   private async evaluateAlerts(date: string) {

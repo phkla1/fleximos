@@ -368,6 +368,43 @@ export class OpsService {
     }
   }
 
+  // Unmapped platform drivers with retained (quarantined) revenue, grouped per
+  // driver. The ops-admin/HR work queue — onboard + map these so their data (held
+  // here) can be replayed. status defaults to 'pending'.
+  async listUnmatchedDrivers(filters: { status?: string } = {}) {
+    const status = filters.status || "pending";
+    return this.db.many<any>(
+      `SELECT platform, platform_account_id, platform_operator_id,
+        max(driver_name) AS driver_name, max(driver_phone) AS driver_phone, max(vehicle_plate) AS vehicle_plate,
+        count(*) AS days, sum(occurrences) AS occurrences,
+        min(record_date)::text AS first_date, max(record_date)::text AS last_date,
+        bool_or(alerted_at IS NOT NULL) AS alerted
+       FROM ops_unmatched_platform_records
+       WHERE status = $1
+       GROUP BY platform, platform_account_id, platform_operator_id
+       ORDER BY last_date DESC, occurrences DESC`,
+      [status]
+    );
+  }
+
+  // Active owner/admin persons — the ops-admin + HR tier (both consoles are run by
+  // the admin roles; there is no separate 'hr' role). Used to alert on things only
+  // they can resolve, e.g. an unmapped platform driver whose amoeba is unknown.
+  async adminRecipients(): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.foundationBase}/identity/v1/users`, {
+        headers: { Authorization: `Bearer ${this.serviceToken}` }
+      });
+      if (!response.ok) return [];
+      const body: any = await response.json();
+      return (body.data || [])
+        .filter((user: any) => user.status === "active" && (user.roles || []).some((role: string) => ["owner", "admin"].includes(role)))
+        .map((user: any) => user.person_id);
+    } catch {
+      return [];
+    }
+  }
+
   async createOperator(body: RecordBody) {
     for (const field of ["person_id", "operator_type", "amoeba_id", "site_id"]) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);
@@ -1881,7 +1918,30 @@ export class OpsService {
              AND r.registration_status IN ('registered', 'active')`,
           [platformAccountId, platformOperatorId]
         );
-        if (!registration) throw new Error("No active or registered operator mapping exists for this platform_operator_id.");
+        if (!registration) {
+          // Don't discard the revenue — quarantine it with identity hints so it can
+          // be replayed once the driver is mapped, and so ops-admin/HR get alerted.
+          // One row per (account, driver, day); re-ingest bumps occurrences.
+          await this.db.exec(
+            `INSERT INTO ops_unmatched_platform_records
+              (unmatched_id, platform_account_id, platform, platform_operator_id, record_date,
+               driver_name, driver_phone, vehicle_plate, payload, status, occurrences,
+               first_seen_at, last_seen_at, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',1,$10,$10,$10,$10)
+             ON CONFLICT (platform_account_id, platform_operator_id, record_date) DO UPDATE SET
+               payload = EXCLUDED.payload,
+               occurrences = ops_unmatched_platform_records.occurrences + 1,
+               driver_name = COALESCE(EXCLUDED.driver_name, ops_unmatched_platform_records.driver_name),
+               driver_phone = COALESCE(EXCLUDED.driver_phone, ops_unmatched_platform_records.driver_phone),
+               vehicle_plate = COALESCE(EXCLUDED.vehicle_plate, ops_unmatched_platform_records.vehicle_plate),
+               last_seen_at = EXCLUDED.last_seen_at,
+               updated_at = EXCLUDED.updated_at`,
+            [this.id("unmatched"), platformAccountId, account.platform || null, platformOperatorId, recordDate,
+             (record as any).driver_name || null, (record as any).driver_phone || null, (record as any).vehicle_plate || null,
+             record, timestamp]
+          );
+          throw new Error("No active or registered operator mapping exists for this platform_operator_id — record quarantined.");
+        }
 
         const existing = await this.db.one<any>(
           `SELECT * FROM ops_platform_daily_records
