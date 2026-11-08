@@ -25,9 +25,11 @@ import { PushService } from "./push.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
 import { RevenueSourcesService } from "./revenue-sources.service.js";
+import { TopPerformerController } from "./top-performer.controller.js";
+import { TopPerformerService } from "./top-performer.service.js";
 
 @Module({
-  controllers: [OpsController, DepthController, DeliveriesController, FlexiPointsController],
+  controllers: [OpsController, DepthController, DeliveriesController, FlexiPointsController, TopPerformerController],
   providers: [
     AuthService,
     DatabaseService,
@@ -49,6 +51,7 @@ import { RevenueSourcesService } from "./revenue-sources.service.js";
     TrackerIngestService,
     IntegrationStatusService,
     RevenueSourcesService,
+    TopPerformerService,
     JobRunnerService,
     SchedulerService
   ]

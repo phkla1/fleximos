@@ -407,3 +407,7 @@ main { max-width: 1240px; }
    label rule would otherwise defeat the [hidden] attribute, so honour it. */
 #revenueSourceForm label[hidden] { display: none; }
 #revenueSourceList .pill + .pill { margin-left: 4px; }
+
+/* Top-performer bonus settings: inline checkbox row */
+.entry-form .checkbox-row { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 650; }
+.entry-form .checkbox-row input { width: auto; margin: 0; }

@@ -1,5 +1,31 @@
 # FlexiMOS — Operations Go-Live, Phase 3 Spec (onboarding ramps + cohorts)
 
+> **Update 2026-11-08 (owner review — supersedes stale ₦30k references below).**
+> The rider ramp is **authoritatively governed by the compensation doc (₦25k
+> standard / ₦28k accommodated net)**, *not* ₦30k. The 12-day curve is a *shape*
+> whose top (₦30k) is only the normalising denominator; each ramp day is rescaled
+> to the rider's own steady target, so the bike pace profile was **not** raised to
+> ₦30k. Any "steady-state = ₦30,000" / "raise the bike profile to ₦30k" wording
+> below (e.g. D3, §handoff) is **obsolete** — read it as "steady-state = the
+> rider's 25k/28k target."
+> Further owner decisions this review:
+> - **On-demand → scheduled split is advisory, not enforced.** Supervisors move a
+>   whole amoeba off its expected mode for operational reasons (e.g. no Speedaf
+>   parcels → everyone on Bolt). The system does not block it; it **flags the
+>   divergence to the manager for visibility** — new read
+>   `GET /ops/v1/onboarding/mode-deviations`, surfaced on the manager console and
+>   the supervisor board.
+> - **Onboarding stipend is dropped.** The `completion_bonus_ngn` /
+>   `missed_day_reduction_pct` fields stay dormant (default 0); the compensation
+>   doc is authoritative. Do not build a stipend.
+> - **Supervisor assistant is not measured** — the assist assignment is recorded
+>   (phase + graduation) but carries no metrics; the host supervisor keeps the P&L.
+> - **Day 1 is a zero-target induction day** and never counts as a missed target.
+> - **New: daily amoeba top-performer bonus** (built this review) — the day's
+>   highest net-revenue earner in each amoeba earns a flat ₦2,000 when above the
+>   ₦28k floor; a tracked payable. Config in ops-admin → Onboarding; endpoints
+>   under `/ops/v1/top-performer/*`. See `docs/Compensation-Tracking-Roadmap.md`.
+
 **Status:** BUILT (2026-09-25). Ramp engine (`OnboardingService`), the
 `/ops/v1/onboarding/*` and `/ops/v1/supervisor-onboardings/*` endpoints, the
 teamBoard/pacing ramp override, the admin console Onboarding section, the

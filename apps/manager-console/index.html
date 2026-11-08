@@ -19,6 +19,7 @@
       <a href="#pnl">P&amp;L</a>
       <a href="#leaderboard">Leaderboard</a>
       <a href="#reports">Daily reports</a>
+      <a href="#bonus">Bonus &amp; onboarding</a>
     </nav>
     <main>
       <section id="portfolio" class="overview-band">
@@ -146,6 +147,25 @@
           <table class="data-table attendance-table">
             <thead><tr><th>Operator</th><th>Amoeba</th><th>Present</th><th>Absent</th><th>Daily register</th></tr></thead>
             <tbody id="attendanceRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="bonus" class="workspace-section">
+        <div class="section-heading"><div><p class="eyebrow">Compensation</p><h2>Top-performer bonus &amp; onboarding mode</h2></div><span id="bonusSummary" class="subtle"></span></div>
+        <p class="section-intro">The highest net-revenue earner in each amoeba earns a flat cash bonus on any day their net revenue clears the floor. Mark a bonus paid once settled. Onboarding riders working off their expected ramp mode (e.g. an amoeba moved to Bolt when no parcels arrived) are flagged below for your information only.</p>
+        <h3 class="subhead">Top-performer awards <span id="bonusPayable" class="subtle"></span></h3>
+        <div class="table-shell">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Amoeba</th><th>Rider</th><th>Net revenue</th><th>Bonus</th><th>Status</th><th></th></tr></thead>
+            <tbody id="bonusRows"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">Onboarding mode deviations</h3>
+        <div class="table-shell">
+          <table class="data-table">
+            <thead><tr><th>Amoeba</th><th>Rider</th><th>Ramp day</th><th>Expected</th><th>Actual</th><th>Note</th></tr></thead>
+            <tbody id="deviationRows"></tbody>
           </table>
         </div>
       </section>

@@ -4,6 +4,8 @@ const state = {
   alerts: [],
   teamBoard: [],
   pacing: [],
+  topAwards: [],
+  modeDeviations: [],
   dailyPerformance: [],
   fuelIssues: [],
   hospitals: null,
@@ -54,7 +56,7 @@ const el = Object.fromEntries([
   "dialogCostField", "dialogCost", "checkinApprovals", "importCustomer",
   "attendanceRows", "attendanceSummary",
   "importDate", "importFile", "importRun", "importResult",
-  "pointsRiderSelect", "pointsLedger"
+  "pointsRiderSelect", "pointsLedger", "topPerformerCard"
 ].map((id) => [id, document.getElementById(id)]));
 
 const query = new URLSearchParams(location.search);
@@ -1488,6 +1490,7 @@ function render() {
   el.boardUpdated.textContent = `Updated ${timeOf(new Date())}`;
   renderCockpit(latestAnalysis);
   renderBoard(latestAnalysis);
+  renderTopPerformer();
   renderAlerts();
   renderField();
   renderFuel();
@@ -1498,6 +1501,36 @@ function render() {
   renderImportControls();
   renderVehicleMap();
   if (openOperatorId) renderOperatorDialog(openOperatorId);
+}
+
+// Daily top-performer bonus + onboarding mode deviations for this supervisor's
+// amoebas, shown above the board. Read-only: the bonus is awarded automatically
+// and paid out by the manager/finance; the deviations are informational.
+const MODE_LABEL = {
+  on_demand_only: "on-demand only",
+  scheduled_and_on_demand: "scheduled + on-demand",
+  scheduled_only: "scheduled only",
+  no_activity: "no activity"
+};
+function renderTopPerformer() {
+  if (!el.topPerformerCard) return;
+  const awards = state.topAwards || [];
+  const deviations = state.modeDeviations || [];
+  if (!awards.length && !deviations.length) { el.topPerformerCard.innerHTML = ""; return; }
+  const awardHtml = awards.length
+    ? `<div class="tp-awards"><p class="eyebrow">Today's top performer${awards.length > 1 ? "s" : ""}</p>${awards.map((a) => `
+        <div class="tp-award"><strong>${escapeHtml(personName(a.person_id))}</strong>
+          <span>${money(a.net_revenue_ngn)} net · <b>${money(a.amount_ngn)} bonus</b></span>
+          <span class="pill ${a.status === "paid" ? "resolved" : "pending"}">${escapeHtml(String(a.status).replaceAll("_", " "))}</span>
+        </div>`).join("")}</div>`
+    : `<div class="tp-awards"><p class="eyebrow">Today's top performer</p><p class="subtle">No rider has cleared the bonus floor yet today.</p></div>`;
+  const devHtml = deviations.length
+    ? `<div class="tp-deviations"><p class="eyebrow">Off expected ramp mode</p>${deviations.map((d) => `
+        <div class="tp-dev"><strong>${escapeHtml(personName(d.person_id))}</strong>
+          <span>Day ${escapeHtml(d.day_n)}: expected ${escapeHtml(MODE_LABEL[d.expected_mode] || d.expected_mode)}, on ${escapeHtml(MODE_LABEL[d.actual_mode] || d.actual_mode)}</span>
+        </div>`).join("")}<p class="subtle">Shared with your manager for visibility — no action needed.</p></div>`
+    : "";
+  el.topPerformerCard.innerHTML = awardHtml + devHtml;
 }
 
 /* ---------- operator check-in approvals ---------- */
@@ -1834,7 +1867,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   el.dateTo.value = dateTo;
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
   const operatingDate = dateTo;
-  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, revenueSources, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins, leaderboardPage] = await Promise.all([
+  const [teamBoard, pacing, alerts, fuelIssues, mileageReconciliations, incidents, inspections, compliance, maintenance, vehicles, closeouts, deliveryBatches, deliveryAssignments, deliveryExceptions, deliveryCustomers, revenueSources, deliveryStops, deliverySummary, vehiclePositions, integrationStatus, attendanceCheckins, leaderboardPage, topAwards, modeDeviations] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`),
     ops(`/ops/v1/pacing?record_date=${operatingDate}`).catch(() => ({ data: [] })),
     ops(`/ops/v1/alerts?${range}`),
@@ -1856,7 +1889,9 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
     ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] })),
-    ops(`/ops/v1/leaderboard?period_start=${operatingDate}&period_end=${operatingDate}`).catch(() => null)
+    ops(`/ops/v1/leaderboard?period_start=${operatingDate}&period_end=${operatingDate}`).catch(() => null),
+    ops(`/ops/v1/top-performer/awards?record_date=${operatingDate}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/onboarding/mode-deviations?record_date=${operatingDate}`).catch(() => ({ data: [] }))
   ]);
   const assignedAmoebas = new Set(assigned.map((operator) => operator.amoeba_id));
   const scopedVehicles = vehicles.data.filter((vehicle) => vehicle.status === "active" && assignedAmoebas.has(vehicle.amoeba_id));
@@ -1870,6 +1905,8 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     alerts: alerts.data.filter((alert) => assignedIds.has(alert.operator_id)),
     teamBoard: teamBoard.data.filter((item) => assignedIds.has(item.operator_id)),
     pacing: (pacing.data || []).filter((item) => assignedIds.has(item.operator_id)),
+    topAwards: (topAwards.data || []).filter((a) => assignedAmoebas.has(a.amoeba_id)),
+    modeDeviations: (modeDeviations.data || []).filter((d) => assignedIds.has(d.operator_id) || assignedAmoebas.has(d.amoeba_id)),
     dailyPerformance: allPerformance.data.filter((record) => {
       const recordDate = String(record.record_date).slice(0, 10);
       return assignedIds.has(record.operator_id) && recordDate >= dateFrom && recordDate <= dateTo;

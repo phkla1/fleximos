@@ -30,6 +30,7 @@ const state = {
   onboardingRampProfiles: [],
   cohorts: [],
   onboardingSettings: { cohort_anchor_dow: 3 },
+  topPerformerSettings: { enabled: true, amount_ngn: 2000, threshold_ngn: 28000 },
   cohortBoard: [],
   supervisorOnboardings: [],
   accommodation: [],
@@ -74,6 +75,7 @@ const el = Object.fromEntries(
     "reportDialogTitle", "reportDialogSummary", "reportDialogRows",
     "onboardingRampList", "onboardingRampForm", "cohortList", "onboardingSettingsForm",
     "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
+    "topPerformerSettingsForm", "topPerformerSettingsSummary",
     "cohortBoard", "cohortBoardUpdated",
     "accommodationList", "accommodationBedsSummary",
     "platformDialog", "platformForm", "platformDialogContext", "platformDialogResult",
@@ -1307,6 +1309,20 @@ function renderOnboarding() {
   if (el.onboardingSettingsForm && state.onboardingSettings) {
     el.onboardingSettingsForm.elements.cohort_anchor_dow.value = String(state.onboardingSettings.cohort_anchor_dow ?? 3);
   }
+  // Daily top-performer bonus settings: prefill the form and show the live values.
+  if (el.topPerformerSettingsForm && state.topPerformerSettings) {
+    const tp = state.topPerformerSettings;
+    el.topPerformerSettingsForm.elements.enabled.checked = tp.enabled !== false;
+    el.topPerformerSettingsForm.elements.amount_ngn.value = Number(tp.amount_ngn ?? 2000);
+    el.topPerformerSettingsForm.elements.threshold_ngn.value = Number(tp.threshold_ngn ?? 28000);
+    if (el.topPerformerSettingsSummary) {
+      el.topPerformerSettingsSummary.innerHTML = `
+        <article class="policy-row">
+          <div><strong>${tp.enabled !== false ? `₦${Number(tp.amount_ngn ?? 0).toLocaleString()} to the day's amoeba top earner` : "Programme disabled"}</strong>
+          <small>${tp.enabled !== false ? `when net revenue exceeds ₦${Number(tp.threshold_ngn ?? 0).toLocaleString()}` : "no awards are computed while disabled"}</small></div>
+        </article>`;
+    }
+  }
   el.cohortList.innerHTML = state.cohorts.length
     ? state.cohorts.map((c) => `
       <article class="policy-row ${c.status === "active" ? "" : "superseded"}">
@@ -1500,7 +1516,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings, topPerformerSettings] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
@@ -1512,7 +1528,8 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops("/ops/v1/supervisor-onboardings").catch(() => ({ data: [] })),
     ops("/ops/v1/accommodation").catch(() => ({ data: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
-    ops("/ops/v1/onboarding/settings").catch(() => ({ cohort_anchor_dow: 3 }))
+    ops("/ops/v1/onboarding/settings").catch(() => ({ cohort_anchor_dow: 3 })),
+    ops("/ops/v1/top-performer/settings").catch(() => ({ enabled: true, amount_ngn: 2000, threshold_ngn: 28000 }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
@@ -1574,6 +1591,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     onboardingRampProfiles: rampProfiles.data,
     cohorts: cohorts.data,
     onboardingSettings: onboardingSettings || { cohort_anchor_dow: 3 },
+    topPerformerSettings: topPerformerSettings || { enabled: true, amount_ngn: 2000, threshold_ngn: 28000 },
     supervisorOnboardings: supervisorOnboardings.data,
     accommodation: accommodation.data,
     fleetPolicy,
@@ -2055,6 +2073,24 @@ el.onboardingSettingsForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ cohort_anchor_dow: Number(values.cohort_anchor_dow) })
     });
     await refresh("Cohort Day-1 weekday saved — applies to cohorts created from now on.");
+  } catch (error) { showError(error); }
+});
+
+el.topPerformerSettingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(el.topPerformerSettingsForm));
+  try {
+    await ops("/ops/v1/top-performer/settings", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("top-performer-settings") },
+      body: JSON.stringify({
+        enabled: el.topPerformerSettingsForm.elements.enabled.checked,
+        amount_ngn: Number(values.amount_ngn || 0),
+        threshold_ngn: Number(values.threshold_ngn || 0)
+      })
+    });
+    el.topPerformerSettingsForm.closest("details").open = false;
+    await refresh("Top-performer bonus settings saved.");
   } catch (error) { showError(error); }
 });
 

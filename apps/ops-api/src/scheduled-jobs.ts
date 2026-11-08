@@ -52,6 +52,7 @@ export const scheduledJobs: ScheduledJobDefinition[] = [
   job("closeout-reminder", "CloseoutModule", "external_cron", "Daily 18:30", "notifications", 600, 3, 120, "job/date/supervisor", 30, [], ["supervisor"], "final"),
   job("closeout-escalation", "CloseoutModule", "external_cron", "Daily 19:05 and 20:05", "notifications", 600, 3, 120, "job/date/amoeba/tier", 30, ["closeout-reminder"], ["manager", "admin"], "final"),
   job("daily-report-generate", "ReportingModule", "external_cron", "Daily 19:15 and on demand", "reports", 1800, 3, 300, "job/date/amoeba/revision", 60, [], ["manager", "admin"], "final"),
+  job("top-performer-award", "CompensationModule", "external_cron", "Daily 05:00; previous day (settled)", "reports", 900, 3, 300, "job/date/amoeba", 1440, ["platform-ingest", "distance-ingest"], ["manager", "admin"], "final"),
   job("uber-token-refresh", "IngestModule", "external_cron", "Daily; before expiry margin", "credentials", 600, 4, 300, "job/date/account", 1440, [], ["admin"], "final"),
   job("backup-postgres", "PlatformModule", "system_cron", "Daily 01:00", "backups", 3600, 3, 1800, "job/date", 1560, [], ["admin"], "final"),
   job("retention-housekeeping", "PlatformModule", "external_cron", "Daily 04:30", "housekeeping", 1800, 3, 600, "job/date", 1560, [], ["admin"], "final")

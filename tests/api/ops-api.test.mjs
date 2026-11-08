@@ -1354,9 +1354,10 @@ test("deletes a daily report snapshot with audit and admin-only access", async (
 test("registers scheduled jobs and records replay lifecycle", async () => {
   const jobs = await request("/ops/v1/scheduled-jobs");
   assert.equal(jobs.response.status, 200);
-  assert.equal(jobs.body.data.length, 16);
+  assert.equal(jobs.body.data.length, 17);
   assert.ok(jobs.body.data.some((job) => job.job_name === "uber-distance-report-backfill"
     && job.freshness_status === "pending_source"));
+  assert.ok(jobs.body.data.some((job) => job.job_name === "top-performer-award"));
 
   const queued = await request("/ops/v1/scheduled-jobs/daily-report-generate/runs", {
     method: "POST",
@@ -1389,7 +1390,7 @@ test("registers scheduled jobs and records replay lifecycle", async () => {
 
   const health = await fetch(`${baseUrl}/health`).then((response) => response.json());
   assert.equal(health.database, "ok");
-  assert.equal(health.scheduled_jobs.total, 16);
+  assert.equal(health.scheduled_jobs.total, 17);
   assert.equal(health.queue_depths.reports, 0);
 });
 

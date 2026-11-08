@@ -1069,6 +1069,44 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
       CREATE INDEX IF NOT EXISTS idx_supervisor_onboardings_status ON ops_supervisor_onboardings(status, host_amoeba_id);
 
+      -- Daily amoeba top-performer bonus. The single highest net-revenue earner in
+      -- an amoeba on a day gets a flat cash bonus IF their net revenue clears a
+      -- floor (default ₦28k, the accommodated steady target). Config is a singleton.
+      CREATE TABLE IF NOT EXISTS ops_top_performer_bonus_settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        amount_ngn NUMERIC(12, 2) NOT NULL DEFAULT 2000,
+        threshold_ngn NUMERIC(12, 2) NOT NULL DEFAULT 28000,
+        updated_by_person_id TEXT,
+        updated_at TIMESTAMPTZ NOT NULL
+      );
+      INSERT INTO ops_top_performer_bonus_settings (id, enabled, amount_ngn, threshold_ngn, updated_at)
+        VALUES (1, TRUE, 2000, 28000, now()) ON CONFLICT (id) DO NOTHING;
+
+      -- One award row per (amoeba, day): the computed winner and the flat bonus.
+      -- Recomputed idempotently from settled daily revenue — a late correction can
+      -- change the winner, so the row is upserted (and removed if nobody qualifies).
+      -- net_revenue_ngn is the rider's combined net (ride + attributed scheduled
+      -- delivery), the same figure the pace board judges.
+      CREATE TABLE IF NOT EXISTS ops_top_performer_awards (
+        award_id TEXT PRIMARY KEY,
+        record_date DATE NOT NULL,
+        amoeba_id TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        person_id TEXT,
+        supervisor_person_id TEXT,
+        net_revenue_ngn NUMERIC(12, 2) NOT NULL,
+        amount_ngn NUMERIC(12, 2) NOT NULL,
+        threshold_ngn NUMERIC(12, 2) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'awarded',   -- awarded | paid | void
+        computed_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (record_date, amoeba_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_top_performer_awards_date ON ops_top_performer_awards(record_date);
+      CREATE INDEX IF NOT EXISTS idx_top_performer_awards_operator ON ops_top_performer_awards(operator_id, record_date);
+
       -- Company accommodation: finite housing. A unit is a place with a bed
       -- capacity; an operator occupies at most one. Occupancy is derived from
       -- ops_operators.accommodation_unit_id (cleared when an operator leaves
@@ -1332,8 +1370,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private async seedOnboardingRamp() {
     const existing = await this.one("SELECT ramp_profile_id FROM ops_onboarding_ramp_profiles LIMIT 1");
     if (existing) return;
-    // Rider 12-day curve from onboarding-thoughts.pdf. Day 1 = induction (0),
-    // graduates to ₦30k. Placeholder bonus params (owner to set real values).
+    // Rider 12-day curve from onboarding-thoughts.pdf. Day 1 = induction (0). The
+    // curve is a SHAPE, not absolute naira: its top (₦30k, the old graduation
+    // figure) is the denominator, and each ramp day is rescaled to the rider's
+    // actual steady target (25k standard / 28k accommodated) per the compensation
+    // doc — so 30k here is intentional and never paid as a target. The onboarding
+    // stipend params (completion_bonus_ngn / missed_day_reduction_pct) stay 0: the
+    // compensation doc is authoritative and the stipend is deliberately not used.
     const dailyTargets = [0, 2500, 5000, 7500, 10000, 13000, 16000, 19000, 22000, 25000, 28000, 30000];
     await this.exec(
       `INSERT INTO ops_onboarding_ramp_profiles

@@ -168,4 +168,57 @@ export class PacingService {
       };
     });
   }
+
+  // Manager-facing, informational. During the rider ramp each onboarding day has an
+  // expected work mode (on-demand only early, then scheduled + on-demand from the
+  // split day). Supervisors legitimately override this for the whole amoeba on
+  // operational grounds — e.g. no Speedaf parcels, so everyone works Bolt that day —
+  // so we don't block it; we surface the divergence to the manager for visibility.
+  // Only onboarding riders (those still carrying a ramp snapshot) are judged here.
+  async onboardingModeDeviations(
+    filters: { record_date?: string; amoeba_id?: string },
+    scope: OpsDataScope = {}
+  ) {
+    const date = this.ops.dateRange({ record_date: filters.record_date }).to;
+    const board = await this.pacingBoard({ record_date: date, amoeba_id: filters.amoeba_id }, scope);
+    const deviations = [];
+    for (const row of board) {
+      const ramp = row.onboarding_ramp;
+      if (!ramp) continue;
+      const expected = ramp.phase; // on_demand_only | scheduled_and_on_demand
+      const hasScheduled = Number(row.scheduled_assigned || 0) > 0;
+      const hasOnline = Number(row.online_earned_ngn || 0) > 0;
+      const actual = hasScheduled && hasOnline
+        ? "scheduled_and_on_demand"
+        : hasScheduled ? "scheduled_only"
+        : hasOnline ? "on_demand_only"
+        : "no_activity";
+      let deviation: string | null = null;
+      let note = "";
+      if (expected === "on_demand_only" && hasScheduled) {
+        deviation = "scheduled_before_split";
+        note = "On a scheduled run before the ramp's scheduled-from day.";
+      } else if (expected === "scheduled_and_on_demand" && !hasScheduled && hasOnline) {
+        deviation = "no_scheduled_when_expected";
+        note = "On on-demand only on a day scheduled work was expected (e.g. no parcels).";
+      }
+      if (!deviation) continue;
+      deviations.push({
+        record_date: date,
+        operator_id: row.operator_id,
+        person_id: row.person_id,
+        amoeba_id: row.amoeba_id,
+        day_n: ramp.day_n,
+        scheduled_from_day: ramp.scheduled_from_day,
+        expected_mode: expected,
+        actual_mode: actual,
+        deviation,
+        scheduled_assigned: Number(row.scheduled_assigned || 0),
+        scheduled_delivered: Number(row.scheduled_delivered || 0),
+        online_earned_ngn: Number(row.online_earned_ngn || 0),
+        note
+      });
+    }
+    return { record_date: date, data: deviations };
+  }
 }

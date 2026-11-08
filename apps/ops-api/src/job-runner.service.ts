@@ -6,6 +6,7 @@ import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { NotificationService } from "./notification.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { DeliveriesImportService } from "./deliveries-import.service.js";
+import { TopPerformerService } from "./top-performer.service.js";
 
 type JobRun = {
   scheduled_job_run_id: string;
@@ -24,7 +25,8 @@ export class JobRunnerService {
     @Inject(NotificationService) private readonly notifications: NotificationService,
     @Inject(TrackerIngestService) private readonly trackerIngest: TrackerIngestService,
     @Inject(DeliveriesImportService) private readonly deliveryImports: DeliveriesImportService,
-    @Inject(PacingService) private readonly pacing: PacingService
+    @Inject(PacingService) private readonly pacing: PacingService,
+    @Inject(TopPerformerService) private readonly topPerformer: TopPerformerService
   ) {}
 
   private recordDate(run: JobRun) {
@@ -101,6 +103,7 @@ export class JobRunnerService {
       for (const account of accounts) await this.connectors.fetchDaily(account, date);
       return { received: accounts.length, upserted: accounts.length, rejected: 0 };
     }
+    if (run.job_name === "top-performer-award") return this.topPerformer.settleAwards(date);
     if (run.job_name === "closeout-reminder") return this.chaseMissingCloseouts(date, "reminder");
     if (run.job_name === "closeout-escalation") return this.chaseMissingCloseouts(date, "escalation");
     throw new Error(`${run.job_name} has no executable worker handler yet.`);

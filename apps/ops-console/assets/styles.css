@@ -604,3 +604,13 @@ dialog::backdrop { background: rgba(14, 34, 28, .45); backdrop-filter: blur(2px)
 .sos-push { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); }
 .sos-push-label { font-weight: 750; font-size: 13.5px; }
 .sos-push-status { font-size: 12.5px; color: var(--muted); flex: 1 1 180px; }
+
+/* Daily top-performer bonus + onboarding mode deviations (board tab) */
+.top-performer-card { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 14px; }
+.top-performer-card:empty { display: none; }
+.top-performer-card .tp-awards, .top-performer-card .tp-deviations { flex: 1 1 240px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--surface, #fff); }
+.top-performer-card .eyebrow { margin: 0 0 6px; }
+.tp-award, .tp-dev { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 4px 0; font-size: 13.5px; }
+.tp-award strong, .tp-dev strong { flex: 0 0 auto; }
+.tp-award span, .tp-dev span { color: var(--muted); font-size: 12.5px; }
+.tp-award b { color: var(--ink); }

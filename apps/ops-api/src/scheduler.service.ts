@@ -67,6 +67,9 @@ export class SchedulerService {
     // window has closed) escalate any amoeba that never closed out yesterday.
     if (hour === 22 && minute === 0) add("closeout-reminder");
     if (hour === 4 && minute === 30) add("closeout-escalation", previousDay);
+    // Settle yesterday's amoeba top-performer bonus once the overnight ingests and
+    // distance retry have landed. Idempotent, so a later correction re-run is safe.
+    if (hour === 5 && minute === 0) add("top-performer-award", previousDay);
     return jobs;
   }
 

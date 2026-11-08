@@ -13,6 +13,15 @@ and the differentiated daily targets. Each item below is its own module.
   accommodation-derived defaults (default + optional per-operator override).
 - **Onboarding ramp** rescaled to graduate to each rider's steady-state (25k/28k),
   not a flat ₦30,000.
+- **Daily amoeba top-performer bonus** (built 2026-11-08): the single highest
+  *net-revenue* earner in each amoeba on a day earns a flat **₦2,000**, but only
+  when their net revenue is **above ₦28,000** (the accommodated floor). One award
+  per amoeba per day, tracked as a payable (awarded → paid), computed from the
+  combined-net pace figure. Ties break by parcels delivered, then earliest-
+  registered rider. Config (amount, floor, on/off) lives in ops-admin → Onboarding;
+  surfaced to supervisors (ops-console board) and managers (manager console, where
+  they mark it paid). Kept separate from net revenue and Flexi Points. This is
+  **distinct** from roadmap item 3 below (the per-rider escalating 32k/35k bonus).
 
 ## Roadmap (deferred, each its own module)
 1. **Attendance KPI** — present/absent per working day, verified vs unverified

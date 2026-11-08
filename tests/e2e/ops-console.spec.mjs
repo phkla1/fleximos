@@ -908,6 +908,28 @@ test.describe("Ops admin console", () => {
     await expect(daySelect).toHaveValue("3");
   });
 
+  test("configures the daily top-performer bonus", async ({ page }) => {
+    await page.goto(`${url}#onboarding`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    // The live settings summary shows the default ₦2k / ₦28k.
+    await expect(page.locator("#topPerformerSettingsSummary")).toContainText("₦2,000");
+    await expect(page.locator("#topPerformerSettingsSummary")).toContainText("₦28,000");
+
+    const panel = page.locator("#topPerformerSettingsForm").locator("xpath=ancestor::details");
+    await page.getByText("Configure the bonus", { exact: true }).click();
+    await page.locator('#topPerformerSettingsForm input[name="amount_ngn"]').fill("3000");
+    await page.locator("#topPerformerSettingsForm").getByRole("button", { name: "Save bonus settings" }).click();
+    await expect(page.locator("#notice")).toContainText("bonus settings saved");
+    await expect(page.locator("#topPerformerSettingsSummary")).toContainText("₦3,000");
+    await expect(panel).not.toHaveAttribute("open", "");
+
+    // Reset so the figure doesn't leak into other tests.
+    await page.getByText("Configure the bonus", { exact: true }).click();
+    await page.locator('#topPerformerSettingsForm input[name="amount_ngn"]').fill("2000");
+    await page.locator("#topPerformerSettingsForm").getByRole("button", { name: "Save bonus settings" }).click();
+    await expect(page.locator("#topPerformerSettingsSummary")).toContainText("₦2,000");
+  });
+
   test("tracks finite accommodation and flags housed riders", async ({ page, request }) => {
     const opsBase = "http://127.0.0.1:4530";
     const headers = {

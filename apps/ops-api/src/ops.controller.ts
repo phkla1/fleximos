@@ -87,6 +87,7 @@ export class OpsController {
         onboarding_ramp_profiles: "/ops/v1/onboarding/ramp-profiles",
         onboarding_cohort_board: "/ops/v1/onboarding/cohort-board",
         supervisor_onboardings: "/ops/v1/supervisor-onboardings",
+        top_performer_awards: "/ops/v1/top-performer/awards",
         accommodation_units: "/ops/v1/accommodation-units",
         daily_reports: "/ops/v1/daily-reports",
         scheduled_jobs: "/ops/v1/scheduled-jobs",
@@ -890,6 +891,23 @@ export class OpsController {
         this.identity.dataScope(actor)
       )
     };
+  }
+
+  @ApiTags("Onboarding")
+  @ApiBearerAuth()
+  @Get("ops/v1/onboarding/mode-deviations")
+  @ApiOperation({ summary: "Onboarding riders working off their expected ramp mode today (manager visibility)" })
+  async onboardingModeDeviations(
+    @Req() req: Request,
+    @Query("record_date") recordDate?: string,
+    @Query("amoeba_id") amoebaId?: string
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSupervisor(actor);
+    return this.pacing.onboardingModeDeviations(
+      { record_date: recordDate, amoeba_id: amoebaId },
+      this.identity.dataScope(actor)
+    );
   }
 
   /* -------------------- Onboarding ramps (Phase 3) -------------------- */

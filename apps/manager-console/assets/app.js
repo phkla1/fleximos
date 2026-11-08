@@ -4,6 +4,7 @@ const state = {
   vehiclePositions: { positions: [], no_feed: [] }, controlActions: [], integrationStatus: [],
   checkins: [], dateFrom: null, dateTo: null,
   hospitals: null,
+  topAwards: [], bonusPayable: 0, deviations: [],
   operatingDate: null
 };
 const ids = [
@@ -15,7 +16,8 @@ const ids = [
   "fleetMap", "fleetMapStatus", "fleetNoFeed", "controlActionList",
   "hospitalToggle", "hospitalTypeFilter", "hospitalMapStatus",
   "integrationList", "integrationSummary",
-  "attendanceRows", "attendanceSummary"
+  "attendanceRows", "attendanceSummary",
+  "bonusRows", "deviationRows", "bonusPayable", "bonusSummary"
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const query = new URLSearchParams(location.search);
@@ -542,6 +544,50 @@ function render() {
   renderLeaderboard();
   renderReports();
   renderAttendance();
+  renderBonus();
+}
+
+const MODE_LABEL = {
+  on_demand_only: "On-demand only",
+  scheduled_and_on_demand: "Scheduled + on-demand",
+  scheduled_only: "Scheduled only",
+  no_activity: "No activity"
+};
+
+// Daily top-performer awards (a tracked payable the manager can mark paid) and the
+// onboarding mode-deviation flags — both informational to the manager.
+function renderBonus() {
+  if (el.bonusRows) {
+    const awards = state.topAwards || [];
+    el.bonusRows.innerHTML = awards.length
+      ? awards.map((a) => `
+        <tr>
+          <td>${escapeHtml(a.record_date)}</td>
+          <td>${escapeHtml(amoebaName(a.amoeba_id))}</td>
+          <td>${escapeHtml(personName(a.person_id))}</td>
+          <td>${money(a.net_revenue_ngn)}</td>
+          <td>${money(a.amount_ngn)}</td>
+          <td><span class="pill ${a.status === "paid" ? "" : "pending"}">${escapeHtml(label(a.status))}</span></td>
+          <td>${a.status === "awarded" ? `<button type="button" class="secondary" data-pay-award="${escapeHtml(a.award_id)}">Mark paid</button>` : ""}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="7" class="subtle">No amoeba cleared the bonus floor in this range.</td></tr>`;
+    if (el.bonusPayable) el.bonusPayable.textContent = awards.length ? `· ${money(state.bonusPayable)} payable` : "";
+    if (el.bonusSummary) el.bonusSummary.textContent = awards.length ? `${awards.length} award${awards.length === 1 ? "" : "s"}` : "";
+  }
+  if (el.deviationRows) {
+    const rows = state.deviations || [];
+    el.deviationRows.innerHTML = rows.length
+      ? rows.map((d) => `
+        <tr>
+          <td>${escapeHtml(amoebaName(d.amoeba_id))}</td>
+          <td>${escapeHtml(personName(d.person_id))}</td>
+          <td>Day ${escapeHtml(d.day_n)}</td>
+          <td>${escapeHtml(MODE_LABEL[d.expected_mode] || label(d.expected_mode))}</td>
+          <td>${escapeHtml(MODE_LABEL[d.actual_mode] || label(d.actual_mode))}</td>
+          <td class="subtle">${escapeHtml(d.note)}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="6" class="subtle">No onboarding riders are off their expected mode today.</td></tr>`;
+  }
 }
 
 // Attendance register from check-ins over the selected range. Present = checked
@@ -644,7 +690,7 @@ async function refresh({ allowClamp = false } = {}) {
     state.amoebas.map((amoeba) => `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`).join("");
 
   const range = `date_from=${dateFrom}&date_to=${dateTo}`;
-  const [board, alerts, reports, escalations, vehiclePositions, controlActions, integrationStatus, deliveryBatches, deliveryExceptions, checkins] = await Promise.all([
+  const [board, alerts, reports, escalations, vehiclePositions, controlActions, integrationStatus, deliveryBatches, deliveryExceptions, checkins, awardsRes, deviationsRes] = await Promise.all([
     ops(`/ops/v1/team-board?${range}`), ops(`/ops/v1/alerts?${range}`),
     ops(`/ops/v1/daily-reports?${range}`), ops("/ops/v1/escalations"),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] })),
@@ -652,14 +698,18 @@ async function refresh({ allowClamp = false } = {}) {
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
     ops(`/ops/v1/delivery-batches?${range}`).catch(() => ({ data: [] })),
     ops("/ops/v1/delivery-exceptions?status=open").catch(() => ({ data: [] })),
-    ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] }))
+    ops(`/ops/v1/checkins?${range}`).catch(() => ({ data: [] })),
+    ops(`/ops/v1/top-performer/awards?${range}`).catch(() => ({ data: [], total_payable_ngn: 0 })),
+    ops(`/ops/v1/onboarding/mode-deviations?record_date=${dateTo}`).catch(() => ({ data: [] }))
   ]);
   Object.assign(state, {
     board: board.data, alerts: alerts.data, reports: reports.data, escalations,
     deliveryBatches: deliveryBatches.data, deliveryExceptions: deliveryExceptions.data,
     vehiclePositions, controlActions: controlActions.data,
     checkins: checkins.data || [],
-    integrationStatus: integrationStatus.integrations || []
+    integrationStatus: integrationStatus.integrations || [],
+    topAwards: awardsRes.data || [], bonusPayable: Number(awardsRes.total_payable_ngn || 0),
+    deviations: deviationsRes.data || []
   });
   await loadPnlAndLeaderboard();
   render();
@@ -672,6 +722,15 @@ document.addEventListener("click", (event) => {
   const evidenceButton = event.target.closest("[data-open-evidence]");
   if (evidenceButton) {
     openEvidence(evidenceButton.dataset.openEvidence);
+    return;
+  }
+  const payButton = event.target.closest("[data-pay-award]");
+  if (payButton) {
+    const awardId = payButton.dataset.payAward;
+    payButton.disabled = true;
+    ops(`/ops/v1/top-performer/awards/${awardId}/pay`, { method: "POST", headers: { "Idempotency-Key": key("manager-pay-award") } })
+      .then(() => refresh())
+      .catch((error) => { payButton.disabled = false; showError(error); });
     return;
   }
   const alertButton = event.target.closest("[data-alert-action]");
