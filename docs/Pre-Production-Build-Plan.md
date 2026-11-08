@@ -265,21 +265,44 @@ manager-console fleet map.
 - Resolved: **one coverage value per hospital** (flat `hmo_coverage`), no per-plan matrix.
 - All provider types imported and shown, filterable by type.
 
-## Phase G — Web Push for SOS · size L
+## Phase G — Web Push for SOS · size L · SHIPPED
 
-Builds on the existing `service-worker.js` in both the rider PWA and supervisor app:
-push subscription + VAPID keys (env) + subscriptions table + permission UX; fire a push
-to the amoeba's supervisor(s) when an operator raises "Get support now".
+A **two-way** SOS push loop, on top of the SOS pipeline that already existed (the
+operator's 🆘 "Get support now" → `POST /ops/v1/incidents` → supervisor notification
+was already queued; only the browser-push transport was missing).
+- `ops_push_subscriptions` (person_id, endpoint, p256dh, auth, user_agent, active) +
+  `POST`/`DELETE /ops/v1/push/subscriptions` + `GET /ops/v1/push/vapid-public-key`
+  (all person-scoped to the caller; any authenticated role).
+- `PushService` (new) sends via the `web-push` package (VAPID + RFC-8291 encryption);
+  `NotificationService` gained a `web_push` channel that fans out to the recipient's
+  devices and prunes gone endpoints (404/410); `in_app` is unchanged.
+- **Real-time, not batched:** `createIncident` pushes to the supervisor immediately;
+  `acknowledgeIncident` pushes back to the operator ("help is on the way"). The
+  durable queue + 5-minute `notification-dispatch` job is the retry safety net.
+- Service-worker `push` + `notificationclick` handlers on both the supervisor console
+  and the operator PWA; a per-device "Turn on SOS alerts" opt-in in each (shared
+  `role-console-assets/push-client.js`). Degrades where unsupported (notably iOS
+  Safari outside an installed PWA).
+- Payloads carry only event type + incident category/severity — never a name — so
+  nothing sensitive rides in a push the OS may cache; details stay behind auth.
+- **Resolved (Wole, 7 Nov):** scope is supervisor←SOS and operator←acknowledged;
+  no manager fan-out, no general alert escalations.
+- Config: `WEB_PUSH_VAPID_PUBLIC_KEY` / `_PRIVATE_KEY` / `_SUBJECT` in `fleximos.env`
+  (both deploy paths already source it and set `FLEXI_EMBED_JOBS=true`); unset = feature
+  off, in-app incident list still works. Generate keys: `npx web-push generate-vapid-keys`.
+- Tests: `tests/unit/push.service.test.ts` (fan-out / 410-prune / transient-retry /
+  no-subs / disabled), `tests/api/ops-push.test.mjs` (vapid key, subscribe/unsubscribe,
+  auth, bad body), e2e opt-in render in `ops-console.spec.mjs`.
 
 ---
 
 ## Build order
 
-**A → B → C → D → E → F** (all shipped), then **G** by priority. A→B→C delivers
+**A → B → C → D → E → F → G** — all shipped. A→B→C delivers
 the go-live migration capability (papers + bulk data); D adds revenue-history backfill
 (Bolt range + inDrive file) and the operator↔platform-id resolver; E adds fuel-receipt
 actual-cost capture + policy comparison; F adds the HMO facility directory + map layer
-(offline-geocoded).
+(offline-geocoded); G adds the two-way SOS web-push loop.
 
 ## Decisions locked (2026-11-03)
 

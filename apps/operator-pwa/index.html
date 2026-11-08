@@ -149,6 +149,11 @@
           <div class="section-heading"><h2>Get support</h2></div>
           <p class="section-intro">Tell your supervisor straight away if something happens while you're out. Add a photo if it helps — it opens the camera so the photo has the time on it.</p>
           <button id="supportButton" type="button" class="sos-button">🆘 Get support now</button>
+          <div class="sos-push" id="sosPushControl" hidden>
+            <span class="sos-push-label">🔔 Let your supervisor reach you</span>
+            <button type="button" id="sosPushBtn" class="ghost">Turn on alerts</button>
+            <span class="sos-push-status" id="sosPushStatus"></span>
+          </div>
 
           <div class="section-heading"><h2>Report a vehicle problem</h2></div>
           <form id="maintenanceForm" class="report-form">
@@ -258,6 +263,7 @@
     </dialog>
 
     <script src="../role-console-assets/flexi-env.js"></script>
+    <script src="../role-console-assets/push-client.js"></script>
     <script src="./assets/app.js"></script>
   </body>
 </html>

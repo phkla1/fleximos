@@ -233,6 +233,11 @@
           <div><p class="eyebrow">Field response</p><h2>Incidents</h2></div>
           <span class="subtle">Support requests from your operators</span>
         </div>
+        <div class="sos-push" id="sosPushControl" hidden>
+          <span class="sos-push-label">🔔 SOS alerts on this device</span>
+          <button type="button" id="sosPushBtn" class="ghost">Turn on</button>
+          <span class="sos-push-status" id="sosPushStatus"></span>
+        </div>
         <div id="incidentList" class="alert-list"></div>
 
         <details class="management-panel">
@@ -405,6 +410,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="../role-console-assets/flexi-env.js"></script>
     <script src="../role-console-assets/flexi-map.js"></script>
+    <script src="../role-console-assets/push-client.js"></script>
     <script src="./assets/app.js"></script>
   </body>
 </html>

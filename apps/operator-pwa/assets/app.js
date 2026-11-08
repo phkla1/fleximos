@@ -331,6 +331,7 @@ async function load() {
   currentOperator = operator;
   void refreshCheckin();
   startCheckinPolling();
+  setupSosPush();
   let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
   let dateTo = el.dateTo.value || dateFrom;
   if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
@@ -891,4 +892,52 @@ el.maintenanceForm.addEventListener("submit", async (event) => {
 });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+
+/* ---------- SOS push opt-in (so your supervisor's "on my way" reaches you) ---------- */
+let sosPushWired = false;
+function setupSosPush() {
+  const control = document.getElementById("sosPushControl");
+  const button = document.getElementById("sosPushBtn");
+  const status = document.getElementById("sosPushStatus");
+  const push = window.flexiPush;
+  if (!control || !button || !push) return;
+  control.hidden = false;
+
+  async function paint() {
+    if (!push.supported()) {
+      button.hidden = true;
+      status.textContent = "To get alerts on iPhone, add this app to your Home Screen first.";
+      return;
+    }
+    if (push.permission() === "denied") {
+      button.hidden = true;
+      status.textContent = "Alerts are blocked. Turn them on for this app in your phone settings.";
+      return;
+    }
+    const on = await push.isSubscribed();
+    button.hidden = false;
+    button.textContent = on ? "Turn off alerts" : "Turn on alerts";
+    button.dataset.on = on ? "1" : "";
+    status.textContent = on ? "On — we'll tell you when your supervisor is on the way." : "";
+  }
+
+  if (!sosPushWired) {
+    sosPushWired = true;
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      const wasOn = button.dataset.on === "1";
+      try {
+        if (wasOn) await push.disable(opsBase, token);
+        else await push.enable(opsBase, token);
+      } catch (error) {
+        status.textContent = error.message || "Could not change alerts.";
+      } finally {
+        button.disabled = false;
+        await paint();
+      }
+    });
+  }
+  void paint();
+}
+
 load().catch((error) => showLogin(error.message));

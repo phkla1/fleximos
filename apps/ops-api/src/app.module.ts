@@ -21,6 +21,7 @@ import { PacingService } from "./pacing.service.js";
 import { PlatformConnectorsService } from "./platform-connectors.service.js";
 import { SchedulerService } from "./scheduler.service.js";
 import { NotificationService } from "./notification.service.js";
+import { PushService } from "./push.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
 import { RevenueSourcesService } from "./revenue-sources.service.js";
@@ -44,6 +45,7 @@ import { RevenueSourcesService } from "./revenue-sources.service.js";
     AttendanceService,
     PlatformConnectorsService,
     NotificationService,
+    PushService,
     TrackerIngestService,
     IntegrationStatusService,
     RevenueSourcesService,

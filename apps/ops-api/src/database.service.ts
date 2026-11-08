@@ -466,6 +466,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_ops_notifications_status
         ON ops_notification_deliveries(status, next_attempt_at, created_at);
 
+      -- Web Push (SOS): one row per browser install a person has opted in on.
+      CREATE TABLE IF NOT EXISTS ops_push_subscriptions (
+        push_subscription_id TEXT PRIMARY KEY,
+        person_id TEXT NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL,
+        last_seen_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ops_push_subs_person
+        ON ops_push_subscriptions(person_id, active);
+
       CREATE UNIQUE INDEX IF NOT EXISTS idx_ops_alerts_dedup
         ON ops_alerts(operator_id, alert_type, alert_date, COALESCE(episode_key, ''), tier);
 

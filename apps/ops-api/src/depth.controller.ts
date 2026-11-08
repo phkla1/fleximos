@@ -20,13 +20,15 @@ import type { Request, Response } from "express";
 import { AuthService } from "./auth.service.js";
 import { DepthService } from "./depth.service.js";
 import { OpsService } from "./ops.service.js";
+import { PushService } from "./push.service.js";
 
 @Controller()
 export class DepthController {
   constructor(
     @Inject(DepthService) private readonly depth: DepthService,
     @Inject(OpsService) private readonly ops: OpsService,
-    @Inject(AuthService) private readonly identity: AuthService
+    @Inject(AuthService) private readonly identity: AuthService,
+    @Inject(PushService) private readonly push: PushService
   ) {}
 
   private auth(req: Request) {
@@ -51,6 +53,44 @@ export class DepthController {
     if (!visible.some((alert: any) => alert.alert_id === alertId)) {
       throw new UnauthorizedException("Alert is outside your Ops scope.");
     }
+  }
+
+  // ------------------------------------------------------------ web push (SOS)
+
+  @ApiTags("Push")
+  @ApiBearerAuth()
+  @Get("ops/v1/push/vapid-public-key")
+  @ApiOperation({ summary: "The VAPID public key a browser needs to subscribe to SOS push" })
+  async vapidPublicKey(@Req() req: Request) {
+    await this.auth(req); // any authenticated person may read it
+    return { public_key: this.push.vapidPublicKey(), enabled: this.push.enabled() };
+  }
+
+  @ApiTags("Push")
+  @ApiBearerAuth()
+  @Post("ops/v1/push/subscriptions")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Register this device for SOS push (supervisor or operator)" })
+  async subscribePush(
+    @Req() req: Request,
+    @Headers("user-agent") userAgent: string | undefined,
+    @Body() body: Record<string, any>
+  ) {
+    const actor = await this.auth(req);
+    // The subscription is keyed by its own endpoint, so re-posting is idempotent
+    // without an Idempotency-Key header (the client toggle just POSTs on enable).
+    return this.push.saveSubscription(actor.person_id, body?.subscription ?? body, userAgent ?? null);
+  }
+
+  @ApiTags("Push")
+  @ApiBearerAuth()
+  @Delete("ops/v1/push/subscriptions")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Stop SOS push on this device" })
+  async unsubscribePush(@Req() req: Request, @Body() body: Record<string, any>) {
+    const actor = await this.auth(req);
+    const endpoint = String(body?.endpoint ?? body?.subscription?.endpoint ?? "");
+    return this.push.removeSubscription(actor.person_id, endpoint);
   }
 
   // ---------------------------------------------------------------- media

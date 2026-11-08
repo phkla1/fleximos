@@ -2533,6 +2533,52 @@ function showError(error) {
 }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+
+/* ---------- SOS web-push opt-in (per device) ---------- */
+function setupSosPush() {
+  const control = document.getElementById("sosPushControl");
+  const button = document.getElementById("sosPushBtn");
+  const status = document.getElementById("sosPushStatus");
+  const push = window.flexiPush;
+  if (!control || !button || !push) return;
+  control.hidden = false;
+
+  async function paint() {
+    if (!push.supported()) {
+      button.hidden = true;
+      status.textContent = "This browser can't show alerts. On iPhone, add this app to your Home Screen first.";
+      return;
+    }
+    if (push.permission() === "denied") {
+      button.hidden = true;
+      status.textContent = "Alerts are blocked — turn them on for this site in your browser settings.";
+      return;
+    }
+    const on = await push.isSubscribed();
+    button.hidden = false;
+    button.textContent = on ? "Turn off" : "Turn on";
+    button.dataset.on = on ? "1" : "";
+    status.textContent = on ? "On — you'll get an SOS even when this app is closed." : "Off — turn on to get SOS pushes on this device.";
+  }
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const wasOn = button.dataset.on === "1";
+    status.textContent = wasOn ? "Turning off…" : "Turning on…";
+    try {
+      if (wasOn) await push.disable(opsApiBase, token);
+      else await push.enable(opsApiBase, token);
+    } catch (error) {
+      status.textContent = error.message || "Could not change alert settings.";
+    } finally {
+      button.disabled = false;
+      await paint();
+    }
+  });
+  void paint();
+}
+setupSosPush();
+
 refresh(undefined, { allowClamp: true }).catch(showError);
 
 // Auto-refresh so operator check-ins and SOS surface without a manual tap.

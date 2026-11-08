@@ -4,6 +4,7 @@ import { AuthService, type OpsActor, type OpsDataScope } from "./auth.service.js
 import { DatabaseService } from "./database.service.js";
 import { DeliveriesService } from "./deliveries.service.js";
 import { DocumentStoreService } from "./document-store.js";
+import { NotificationService } from "./notification.service.js";
 import { OpsService } from "./ops.service.js";
 
 type RecordBody = Record<string, unknown>;
@@ -61,8 +62,22 @@ export class DepthService {
     @Inject(OpsService) private readonly ops: OpsService,
     @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
     @Inject(DocumentStoreService) private readonly store: DocumentStoreService,
-    @Inject(AuthService) private readonly identity: AuthService
+    @Inject(AuthService) private readonly identity: AuthService,
+    @Inject(NotificationService) private readonly notifications: NotificationService
   ) {}
+
+  // Queue a web push and attempt it immediately (SOS is time-critical, so it must
+  // not wait for the 5-minute dispatch batch). The queued row is the retry safety
+  // net; the immediate send is best-effort and never fails the caller's action.
+  private async pushNow(recipientPersonId: string, payload: Record<string, unknown>) {
+    const deliveryId = this.id("notification");
+    try {
+      await this.notifications.queue(recipientPersonId, "web_push", payload, deliveryId);
+      void this.notifications.deliverNow(deliveryId).catch(() => {});
+    } catch {
+      // Never let a notification problem block the incident write itself.
+    }
+  }
 
   private id(prefix: string) {
     return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 26)}`;
@@ -554,6 +569,14 @@ export class DepthService {
           timestamp
         ]
       );
+      // Real-time SOS: push to the supervisor's browsers straight away.
+      await this.pushNow(operator.supervisor_person_id, {
+        event_type: "ops.incident.created",
+        incident_id: incident.incident_id,
+        operator_id: incident.operator_id,
+        incident_type: incident.incident_type,
+        severity: incident.severity
+      });
     }
     await this.ops.audit("incident.created", "incident", incident.incident_id, null, incident, actorPersonId);
     return incident;
@@ -576,6 +599,18 @@ export class DepthService {
       [incidentId, this.now(), actorPersonId]
     );
     const updated = await this.getIncident(incidentId);
+    // Close the SOS loop: tell the operator help is coming, on their own device.
+    const operator = await this.db.one<{ person_id: string }>(
+      "SELECT person_id FROM ops_operators WHERE operator_id = $1",
+      [incident.operator_id]
+    );
+    if (operator?.person_id) {
+      await this.pushNow(operator.person_id, {
+        event_type: "ops.incident.acknowledged",
+        incident_id: incidentId,
+        incident_type: incident.incident_type
+      });
+    }
     await this.ops.audit("incident.acknowledged", "incident", incidentId, incident, updated, actorPersonId);
     return updated;
   }

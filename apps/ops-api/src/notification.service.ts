@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "./database.service.js";
+import { PushService } from "./push.service.js";
 
 type Delivery = {
   notification_delivery_id: string;
@@ -11,7 +12,10 @@ type Delivery = {
 
 @Injectable()
 export class NotificationService {
-  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(PushService) private readonly push: PushService
+  ) {}
 
   // Enqueue a notification not tied to an alert (e.g. a closeout reminder). The
   // deterministic id makes repeated job runs idempotent.
@@ -24,6 +28,21 @@ export class NotificationService {
        ON CONFLICT (notification_delivery_id) DO NOTHING`,
       [dedupId, recipientPersonId, channel, payload, now]
     );
+  }
+
+  // Deliver one specific queued row right now — used for the SOS fast path, so
+  // a push does not wait for the 5-minute batch. Safe against the batch: the
+  // conditional claim means whichever runs first wins; the other gets null.
+  async deliverNow(deliveryId: string) {
+    const claimed = await this.db.one<Delivery>(
+      `UPDATE ops_notification_deliveries
+       SET status='sending', attempt=attempt+1, updated_at=NOW()
+       WHERE notification_delivery_id=$1 AND status IN ('pending','retrying')
+       RETURNING notification_delivery_id, recipient_person_id, channel, payload, attempt`,
+      [deliveryId]
+    );
+    if (!claimed) return null;
+    return this.deliver(claimed);
   }
 
   async deliverBatch(limit = 50) {
@@ -84,6 +103,13 @@ export class NotificationService {
   }
 
   private async send(delivery: Delivery) {
+    // Web Push rides a dedicated channel: fan out to the recipient's browsers.
+    // Zero subscriptions (or push unconfigured) is a no-op success, not a retry.
+    if (delivery.channel === "web_push") {
+      const sent = await this.push.pushToPerson(delivery.recipient_person_id, delivery.payload);
+      return `webpush_${sent}_${delivery.notification_delivery_id}`;
+    }
+
     const webhook = process.env.OPS_NOTIFICATION_WEBHOOK_URL;
     if (!webhook) {
       if (process.env.NODE_ENV === "production") {

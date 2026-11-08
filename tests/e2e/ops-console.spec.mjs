@@ -357,6 +357,25 @@ test.describe("Supervisor Ops console", () => {
     await expect(page.locator("#hospitalTypeFilter")).toBeHidden();
   });
 
+  test("offers an SOS push opt-in on this device in the Field tab", async ({ page }) => {
+    await page.goto(`${url}&actorPersonId=person_founder_wole#field`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    // The opt-in control is revealed for a signed-in supervisor.
+    const control = page.locator("#sosPushControl");
+    await expect(control).toBeVisible();
+    await expect(control).toContainText("SOS alerts");
+    // In a browser that supports push the action reads "Turn on"; where it is
+    // unsupported the control explains why instead — either way it renders.
+    const button = page.locator("#sosPushBtn");
+    const status = page.locator("#sosPushStatus");
+    const hasButton = await button.isVisible().catch(() => false);
+    if (hasButton) {
+      await expect(button).toHaveText(/Turn on|Turn off/);
+    } else {
+      await expect(status).not.toHaveText("");
+    }
+  });
+
   test("shows the live pace timeline and scopes the list extras to List mode", async ({ page }) => {
     await page.goto(`${url}&actorPersonId=person_founder_wole#board`);
     await expect(page.locator("#notice")).toContainText("Connected");
