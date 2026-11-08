@@ -2,6 +2,7 @@ const query = new URLSearchParams(location.search);
 const foundationBase = query.get("foundationApiBase") || window.flexiServiceBase("foundation", 4010);
 const opsBase = query.get("opsApiBase") || window.flexiServiceBase("ops", 4030);
 const storageKey = "fleximotion_operator_access_token";
+const refreshKey = "fleximotion_operator_refresh_token";
 const ids = [
   "loginView", "appView", "loginForm", "loginNotice", "appNotice", "operatorName",
   "logoutButton", "dateFrom", "dateTo", "connectionStatus", "liveStatus", "liveDot",
@@ -17,6 +18,7 @@ const ids = [
 ];
 const el = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 let token = localStorage.getItem(storageKey);
+let refreshToken = localStorage.getItem(refreshKey);
 let currentOperator = null;
 let currentAlerts = [];
 let currentIncidents = [];
@@ -73,7 +75,25 @@ const alertWaitLabel = (status) =>
     ? "Your supervisor has seen this"
     : "Waiting for your supervisor";
 
-async function api(base, path, options = {}) {
+// Exchange the stored refresh token for a fresh access token. Returns true on
+// success (tokens updated in place), false if the refresh is gone/expired.
+async function tryRefresh() {
+  if (!refreshToken) return false;
+  try {
+    const response = await fetch(`${foundationBase}/identity/v1/auth/refresh`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if (!response.ok) return false;
+    const session = await response.json();
+    token = session.access_token;
+    refreshToken = session.refresh_token;
+    try { localStorage.setItem(storageKey, token); localStorage.setItem(refreshKey, refreshToken); } catch { /* private mode */ }
+    return true;
+  } catch { return false; }
+}
+
+async function api(base, path, options = {}, _retried = false) {
   const response = await fetch(`${base}${path}`, {
     ...options,
     headers: {
@@ -82,6 +102,10 @@ async function api(base, path, options = {}) {
       ...(options.headers || {})
     }
   });
+  // Access token expired → transparently refresh once and retry.
+  if (response.status === 401 && !_retried && token && !path.includes("/auth/")) {
+    if (await tryRefresh()) return api(base, path, options, true);
+  }
   const body = await response.json();
   if (!response.ok) throw new Error(body.message || body.error?.message || "Request failed.");
   return body;
@@ -101,7 +125,9 @@ function appMessage(message, error = false) {
 
 function showLogin(message = "") {
   token = null;
+  refreshToken = null;
   localStorage.removeItem(storageKey);
+  localStorage.removeItem(refreshKey);
   el.appView.hidden = true;
   el.loginView.hidden = false;
   el.loginNotice.textContent = message;
@@ -782,14 +808,24 @@ el.loginForm.addEventListener("submit", async (event) => {
       method: "POST", body: JSON.stringify(values)
     });
     token = session.access_token;
+    refreshToken = session.refresh_token;
     localStorage.setItem(storageKey, token);
+    try { localStorage.setItem(refreshKey, refreshToken); } catch { /* private mode */ }
     await load();
   } catch (error) {
     showLogin(error.message);
     el.loginNotice.classList.add("error");
   }
 });
-el.logoutButton.addEventListener("click", () => showLogin("Signed out."));
+el.logoutButton.addEventListener("click", async () => {
+  // Best-effort server-side revocation so the session can't be reused.
+  try {
+    await fetch(`${foundationBase}/identity/v1/auth/logout`, {
+      method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+  } catch { /* offline — local clear still signs out this device */ }
+  showLogin("Signed out.");
+});
 el.dateFrom.addEventListener("change", () => load().catch((error) => appMessage(error.message, true)));
 el.dateTo.addEventListener("change", () => load().catch((error) => appMessage(error.message, true)));
 

@@ -55,6 +55,16 @@ function tokenHash(token) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+// Session tokens: opaque random strings, stored only as SHA-256 hashes in the
+// sessions table (same pattern as service_account_tokens). Access tokens are
+// short-lived; refresh tokens are long-lived and rotate on every use. This
+// replaced the old forgeable `dev_access_<userId>` scheme.
+const ACCESS_TTL_MS = Number(process.env.FLEXI_ACCESS_TTL_MIN || 60) * 60000;
+const REFRESH_TTL_MS = Number(process.env.FLEXI_REFRESH_TTL_DAYS || 30) * 86400000;
+function sessionToken(prefix) {
+  return `${prefix}_${randomBytes(32).toString("hex")}`;
+}
+
 // Operator PINs: a random 6-digit code, stored only as a salted scrypt hash.
 // The plaintext is shown once at issue/reset and never retrievable again.
 const PIN_LOCK_THRESHOLD = 5;
@@ -134,6 +144,26 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_set_by TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_failed_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_locked_until TIMESTAMPTZ;
+
+    -- Login sessions: opaque access + refresh tokens stored as SHA-256 hashes,
+    -- with real expiry and server-side revocation. Replaces the old non-expiring,
+    -- forgeable dev_access_ tokens.
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(user_id),
+      person_id TEXT NOT NULL,
+      access_token_hash TEXT NOT NULL UNIQUE,
+      refresh_token_hash TEXT NOT NULL UNIQUE,
+      access_expires_at TIMESTAMPTZ NOT NULL,
+      refresh_expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      last_used_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_access ON sessions(access_token_hash);
+    CREATE INDEX IF NOT EXISTS idx_sessions_refresh ON sessions(refresh_token_hash);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
     CREATE TABLE IF NOT EXISTS role_assignments (
       role_assignment_id TEXT PRIMARY KEY,
@@ -481,9 +511,8 @@ async function authIdentity(req) {
   if (header === `Bearer ${serviceToken}`) {
     return { kind: "service", actor_person_id: "person_system", scopes: ["identity:*", "amoeba:*"] };
   }
-  if (header.startsWith("Bearer dev_access_")) {
-    const userId = header.replace("Bearer dev_access_", "");
-    const user = await one("SELECT * FROM users WHERE user_id = $1", [userId]);
+  if (header.startsWith("Bearer flexi_at_")) {
+    const user = await userForAccessToken(header.replace("Bearer ", ""));
     if (user) return { kind: "user", actor_person_id: user.person_id, user };
   }
   if (header.startsWith("Bearer flexi_sa_")) {
@@ -512,6 +541,52 @@ async function assertAuth(req, res) {
   if (auth) return auth;
   error(res, 401, "unauthorized", "Missing or invalid bearer token.");
   return null;
+}
+
+// Mint a fresh access + refresh pair as a new session row. Returns only the
+// plaintext tokens (the server keeps hashes). expires_in is the access TTL.
+async function issueSession(user, req) {
+  const accessToken = sessionToken("flexi_at");
+  const refreshToken = sessionToken("flexi_rt");
+  const timestamp = now();
+  await exec(
+    `INSERT INTO sessions
+      (session_id, user_id, person_id, access_token_hash, refresh_token_hash,
+       access_expires_at, refresh_expires_at, user_agent, created_at, last_used_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
+    [prefixed("session"), user.user_id, user.person_id, tokenHash(accessToken), tokenHash(refreshToken),
+     new Date(Date.now() + ACCESS_TTL_MS).toISOString(), new Date(Date.now() + REFRESH_TTL_MS).toISOString(),
+     String(req.headers["user-agent"] || "").slice(0, 300), timestamp]
+  );
+  return { access_token: accessToken, refresh_token: refreshToken, token_type: "Bearer", expires_in: Math.floor(ACCESS_TTL_MS / 1000) };
+}
+
+// Rotate a session: issue new tokens into the SAME row and extend expiry, so the
+// presented refresh token is single-use (its hash no longer matches afterwards).
+async function rotateSession(session, req) {
+  const accessToken = sessionToken("flexi_at");
+  const refreshToken = sessionToken("flexi_rt");
+  const timestamp = now();
+  await exec(
+    `UPDATE sessions SET access_token_hash=$2, refresh_token_hash=$3,
+       access_expires_at=$4, refresh_expires_at=$5, user_agent=$6, last_used_at=$7
+     WHERE session_id=$1`,
+    [session.session_id, tokenHash(accessToken), tokenHash(refreshToken),
+     new Date(Date.now() + ACCESS_TTL_MS).toISOString(), new Date(Date.now() + REFRESH_TTL_MS).toISOString(),
+     String(req.headers["user-agent"] || "").slice(0, 300), timestamp]
+  );
+  return { access_token: accessToken, refresh_token: refreshToken, token_type: "Bearer", expires_in: Math.floor(ACCESS_TTL_MS / 1000) };
+}
+
+// Resolve an access token to its user, or null if the session is unknown,
+// expired, revoked, or the user is no longer active.
+async function userForAccessToken(rawToken) {
+  const session = await one("SELECT * FROM sessions WHERE access_token_hash=$1", [tokenHash(rawToken)]);
+  if (!session || session.revoked_at || new Date(session.access_expires_at) <= new Date()) return null;
+  const user = await one("SELECT * FROM users WHERE user_id=$1", [session.user_id]);
+  if (!user || user.status !== "active") return null;
+  exec("UPDATE sessions SET last_used_at=$2 WHERE session_id=$1", [session.session_id, now()]).catch(() => {});
+  return user;
 }
 
 function assertSystemAdmin(auth, res) {
@@ -717,11 +792,29 @@ async function handleIdentity(req, res, parts) {
     if (Number(user.pin_failed_count || 0) !== 0 || user.pin_locked_until) {
       await exec("UPDATE users SET pin_failed_count = 0, pin_locked_until = NULL, updated_at = $2 WHERE user_id = $1", [user.user_id, now()]);
     }
-    return json(res, 200, {
-      access_token: `dev_access_${user.user_id}`,
-      refresh_token: `dev_refresh_${user.user_id}`,
-      expires_in: 900
-    });
+    return json(res, 200, await issueSession(user, req));
+  }
+
+  if (resource === "auth" && id === "refresh" && req.method === "POST") {
+    const body = await readBody(req);
+    const raw = String(body.refresh_token || "");
+    const session = raw.startsWith("flexi_rt_")
+      ? await one("SELECT * FROM sessions WHERE refresh_token_hash=$1", [tokenHash(raw)])
+      : null;
+    if (!session || session.revoked_at || new Date(session.refresh_expires_at) <= new Date()) {
+      return error(res, 401, "invalid_refresh", "Invalid or expired refresh token.");
+    }
+    const user = await one("SELECT user_id, status FROM users WHERE user_id=$1", [session.user_id]);
+    if (!user || user.status !== "active") return error(res, 401, "invalid_refresh", "Invalid or expired refresh token.");
+    return json(res, 200, await rotateSession(session, req));
+  }
+
+  if (resource === "auth" && id === "logout" && req.method === "POST") {
+    const header = req.headers.authorization || "";
+    if (header.startsWith("Bearer flexi_at_")) {
+      await exec("UPDATE sessions SET revoked_at=$2 WHERE access_token_hash=$1 AND revoked_at IS NULL", [tokenHash(header.replace("Bearer ", "")), now()]);
+    }
+    return json(res, 200, { ok: true });
   }
 
   const auth = await assertAuth(req, res);
@@ -898,6 +991,9 @@ async function handleIdentity(req, res, parts) {
            pin_failed_count = 0, pin_locked_until = NULL, updated_at = $3 WHERE user_id = $1`,
         [id, hashPin(pin), timestamp, resetBy]
       );
+      // A PIN reset invalidates every live session for that user — anyone holding
+      // an old token must sign in again with the new PIN.
+      await exec("UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL", [id, timestamp]);
       await addHistory("user", id, resetBy, "pin_reset", { pin_set_at: timestamp, pin_set_by: resetBy });
       return { status: 200, body: { user_id: id, pin } };
     });
@@ -928,6 +1024,11 @@ async function handleIdentity(req, res, parts) {
         updated.status,
         updated.updated_at
       ]);
+      // Deactivating (or otherwise moving off 'active') kills live sessions — a
+      // departed user can't keep working off an existing token.
+      if (updated.status !== "active") {
+        await exec("UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL", [id, updated.updated_at]);
+      }
       await addHistory("user", id, auth.actor_person_id, "updated", body);
       return { status: 200, body: publicUser(updated) };
     });

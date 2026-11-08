@@ -278,6 +278,78 @@ test("accepts everyday phone formats at login", async () => {
   assert.equal(rejected.response.status, 401);
 });
 
+const loginOwner = () => fetch(`${baseUrl}/identity/v1/auth/login`, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ phone_or_email: "+2347033550173", pin: "000000" })
+}).then((r) => r.json());
+const me = (accessToken) => fetch(`${baseUrl}/identity/v1/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
+
+test("issues opaque session tokens and rejects forged dev_access_ tokens", async () => {
+  const session = await loginOwner();
+  assert.match(session.access_token, /^flexi_at_/);
+  assert.match(session.refresh_token, /^flexi_rt_/);
+  assert.ok(Number(session.expires_in) > 0);
+  // The old forgeable scheme must be dead: knowing a user_id grants nothing.
+  const forged = await me("dev_access_user_founder_wole");
+  assert.equal(forged.status, 401);
+  const forgedPerson = await me("dev_access_person_founder_wole");
+  assert.equal(forgedPerson.status, 401);
+});
+
+test("refresh rotates tokens and the old refresh/access are single-use", async () => {
+  const session = await loginOwner();
+  const rotated = await fetch(`${baseUrl}/identity/v1/auth/refresh`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: session.refresh_token })
+  });
+  assert.equal(rotated.status, 200);
+  const next = await rotated.json();
+  assert.match(next.access_token, /^flexi_at_/);
+  assert.notEqual(next.access_token, session.access_token);
+  assert.equal((await me(next.access_token)).status, 200);
+  // Rotation invalidates the previous pair.
+  assert.equal((await me(session.access_token)).status, 401);
+  const replay = await fetch(`${baseUrl}/identity/v1/auth/refresh`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: session.refresh_token })
+  });
+  assert.equal(replay.status, 401, "the old refresh token must not be reusable");
+});
+
+test("logout revokes the session server-side", async () => {
+  const session = await loginOwner();
+  assert.equal((await me(session.access_token)).status, 200);
+  const out = await fetch(`${baseUrl}/identity/v1/auth/logout`, {
+    method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }
+  });
+  assert.equal(out.status, 200);
+  assert.equal((await me(session.access_token)).status, 401);
+});
+
+test("a PIN reset revokes that user's live sessions", async () => {
+  const phone = "+234700" + String(Date.now()).slice(-7);
+  const person = await request("/identity/v1/people", {
+    method: "POST", headers: { "Idempotency-Key": `sess-person-${Date.now()}` },
+    body: JSON.stringify({ display_name: "Session Test", phone })
+  });
+  assert.equal(person.response.status, 201);
+  const user = await request("/identity/v1/users", {
+    method: "POST", headers: { "Idempotency-Key": `sess-user-${Date.now()}` },
+    body: JSON.stringify({ person_id: person.body.person_id, roles: ["operator"] })
+  });
+  assert.equal(user.response.status, 201);
+  const login = await fetch(`${baseUrl}/identity/v1/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_or_email: phone, pin: user.body.initial_pin })
+  }).then((r) => r.json());
+  assert.equal((await me(login.access_token)).status, 200);
+  const reset = await request(`/identity/v1/users/${user.body.user_id}/reset-pin`, {
+    method: "POST", headers: { "Idempotency-Key": `sess-reset-${Date.now()}` }
+  });
+  assert.equal(reset.response.status, 200);
+  assert.equal((await me(login.access_token)).status, 401, "a PIN reset must kill existing sessions");
+});
+
 test("rejects duplicate person contact details", async () => {
   const duplicate = await request("/identity/v1/people", {
     method: "POST",

@@ -1,4 +1,4 @@
-const cacheName = "fleximotion-driver-v3";
+const cacheName = "fleximotion-driver-v4";
 const assets = ["./", "./index.html", "./assets/styles.css", "./assets/app.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
