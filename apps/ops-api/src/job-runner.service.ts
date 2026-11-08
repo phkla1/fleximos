@@ -193,7 +193,7 @@ export class JobRunnerService {
       for (const person of admins) {
         await this.notifications.queue(
           person,
-          "push",
+          "in_app",
           {
             type: "unmapped_platform_driver",
             platform: row.platform,
@@ -365,6 +365,9 @@ export class JobRunnerService {
         }
       }
     }
+    // Path-independent safety sweep: alert on any quarantined driver not yet
+    // alerted, however it was ingested (scheduled, manual, or backfill).
+    await this.alertUnmatchedDrivers();
     return { received: board.length, upserted: created, rejected: 0 };
   }
 }
