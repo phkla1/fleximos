@@ -11,6 +11,12 @@ window.flexiServiceToken = function flexiServiceToken() {
     try { localStorage.setItem("flexiServiceToken", fromQuery); } catch { /* private mode */ }
     return fromQuery;
   }
+  // A signed-in staff session (flexi-auth.js) takes precedence over the shared
+  // service-token fallback, so per-user tokens are used once someone logs in.
+  try {
+    const staff = localStorage.getItem("flexiStaffAccess");
+    if (staff) return staff;
+  } catch { /* private mode */ }
   let stored = null;
   try { stored = localStorage.getItem("flexiServiceToken"); } catch { /* private mode */ }
   return stored || "flexi-dev-service-token";

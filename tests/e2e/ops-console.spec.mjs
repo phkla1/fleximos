@@ -500,8 +500,8 @@ test.describe("Ops admin console", () => {
     await expect(page.getByRole("heading", { name: "Vehicle efficiency policy" })).toBeVisible();
     await page.locator('.rail nav a[href="#data-health"]').click();
     await expect(page.getByRole("heading", { name: "Data health" })).toBeVisible();
-    await expect(page.getByText("16 registered jobs")).toBeVisible();
-    await expect(page.locator(".job-row")).toHaveCount(16);
+    await expect(page.getByText("17 registered jobs")).toBeVisible();
+    await expect(page.locator(".job-row")).toHaveCount(17);
   });
 
   test("summarises teams before exposing individual operators", async ({ page }) => {
