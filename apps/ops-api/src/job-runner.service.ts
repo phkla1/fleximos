@@ -150,7 +150,9 @@ export class JobRunnerService {
   private async ingestPlatform(platform: string, date: string) {
     const accounts = (await this.ops.listPlatformAccounts() as any[])
       .filter((account: any) => account.platform === platform && account.is_active);
-    if (!accounts.length) throw new Error(`No active ${platform} platform accounts are configured.`);
+    // No active accounts (e.g. a retired platform like Uber) → a clean no-op, not
+    // a failed run, so the hourly job doesn't error indefinitely.
+    if (!accounts.length) return { received: 0, upserted: 0, rejected: 0 };
     let received = 0;
     let upserted = 0;
     let rejected = 0;
