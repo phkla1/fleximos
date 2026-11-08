@@ -411,3 +411,7 @@ main { max-width: 1240px; }
 /* Top-performer bonus settings: inline checkbox row */
 .entry-form .checkbox-row { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 650; }
 .entry-form .checkbox-row input { width: auto; margin: 0; }
+
+/* Unmapped-driver resolution row: operator picker + map button inline */
+.unmatched-map { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.unmatched-map select { max-width: 260px; }

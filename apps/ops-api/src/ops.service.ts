@@ -1848,6 +1848,59 @@ export class OpsService {
     return registration;
   }
 
+  // Resolve a quarantined (unmapped) driver: map them to an operator, then REPLAY
+  // every retained record for that driver into the real daily records so nothing
+  // is lost. Returns the dates touched so the caller can recompute them.
+  async resolveUnmatchedDriver(body: RecordBody, actorPersonId: string) {
+    const platformAccountId = String(body.platform_account_id || "");
+    const platformOperatorId = String(body.platform_operator_id || "");
+    const operatorId = String(body.operator_id || "");
+    if (!platformAccountId || !platformOperatorId || !operatorId) {
+      throw new BadRequestException("platform_account_id, platform_operator_id and operator_id are required.");
+    }
+    await this.getOperator(operatorId); // 404s if the operator doesn't exist
+    // Ensure the mapping exists; an existing registration for this account is fine.
+    try {
+      await this.registerPlatform(operatorId, {
+        platform_account_id: platformAccountId, platform_operator_id: platformOperatorId, registration_status: "active"
+      });
+    } catch (error: unknown) {
+      if (!(error instanceof ConflictException)) throw error;
+    }
+    const rows = await this.db.many<any>(
+      // record_date::text — PGlite returns DATE as a JS Date otherwise, which the
+      // ingest's YYYY-MM-DD validation rejects.
+      "SELECT unmatched_id, payload, record_date::text AS record_date FROM ops_unmatched_platform_records WHERE platform_account_id=$1 AND platform_operator_id=$2 AND status='pending' ORDER BY record_date",
+      [platformAccountId, platformOperatorId]
+    );
+    const dates = new Set<string>();
+    const resolvedIds: string[] = [];
+    for (const row of rows) {
+      const recordDate = String(row.record_date).slice(0, 10);
+      // PGlite returns JSONB as a string; real Postgres returns a parsed object.
+      const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
+      try {
+        await this.ingestDailyRecords(
+          { platform_account_id: platformAccountId, record_date: recordDate, source: "live", records: [payload] },
+          actorPersonId
+        );
+        dates.add(recordDate);
+        resolvedIds.push(row.unmatched_id);
+      } catch { /* leave this row pending if its replay fails; others still proceed */ }
+    }
+    if (resolvedIds.length) {
+      const placeholders = resolvedIds.map((_, i) => `$${i + 3}`).join(",");
+      await this.db.exec(
+        `UPDATE ops_unmatched_platform_records SET status='resolved', resolved_operator_id=$1, resolved_at=$2
+         WHERE unmatched_id IN (${placeholders})`,
+        [operatorId, this.now(), ...resolvedIds]
+      );
+    }
+    await this.audit("unmatched_driver.resolved", "operator", operatorId, null,
+      { platform_account_id: platformAccountId, platform_operator_id: platformOperatorId, replayed: resolvedIds.length, dates: [...dates] }, actorPersonId);
+    return { operator_id: operatorId, platform_account_id: platformAccountId, platform_operator_id: platformOperatorId, replayed: resolvedIds.length, dates: [...dates] };
+  }
+
   async listIngestionRuns(recordDate?: string, dateFrom?: string, dateTo?: string) {
     if (dateFrom || dateTo) {
       const { from, to } = this.dateRange({ date_from: dateFrom, date_to: dateTo });

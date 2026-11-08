@@ -31,6 +31,7 @@ const state = {
   cohorts: [],
   onboardingSettings: { cohort_anchor_dow: 3 },
   topPerformerSettings: { enabled: true, amount_ngn: 2000, threshold_ngn: 28000 },
+  unmatchedDrivers: [],
   cohortBoard: [],
   supervisorOnboardings: [],
   accommodation: [],
@@ -76,6 +77,7 @@ const el = Object.fromEntries(
     "onboardingRampList", "onboardingRampForm", "cohortList", "onboardingSettingsForm",
     "cohortMemberForm", "supervisorOnboardingList", "supervisorOnboardingForm",
     "topPerformerSettingsForm", "topPerformerSettingsSummary",
+    "unmatchedDriverList", "unmatchedCount",
     "cohortBoard", "cohortBoardUpdated",
     "accommodationList", "accommodationBedsSummary",
     "platformDialog", "platformForm", "platformDialogContext", "platformDialogResult",
@@ -1146,6 +1148,21 @@ function render() {
     <button type="button" data-job-filter="__runs" title="Show recent runs"><span>Queued or running</span><strong>${queued}</strong></button>
     <button type="button" data-job-filter="__gaps" title="Show operators without a vehicle" class="${operatorsWithoutVehicle.length ? "attention" : ""}"><span>Ops without vehicle</span><strong>${operatorsWithoutVehicle.length}</strong></button>`;
 
+  if (el.unmatchedDriverList) {
+    const unmatched = state.unmatchedDrivers || [];
+    if (el.unmatchedCount) el.unmatchedCount.textContent = unmatched.length ? `· ${unmatched.length} pending` : "";
+    el.unmatchedDriverList.innerHTML = unmatched.length ? unmatched.map((d) => `
+      <article class="data-row run-row">
+        <div><strong>${escapeHtml(d.driver_name || d.platform_operator_id)}</strong><small>${escapeHtml(d.platform || "platform")}${d.driver_phone ? " · " + escapeHtml(d.driver_phone) : ""}${d.vehicle_plate ? " · " + escapeHtml(d.vehicle_plate) : ""}</small></div>
+        <div><span class="row-label">Retained</span><strong>${escapeHtml(d.days)} day${Number(d.days) === 1 ? "" : "s"}</strong><small>${escapeHtml(d.first_date)} → ${escapeHtml(d.last_date)}</small></div>
+        <div class="unmatched-map">
+          <select data-unmatched-operator>${operatorOptions(state.operators, "Select operator…")}</select>
+          <button type="button" data-resolve-unmatched data-account="${escapeHtml(d.platform_account_id)}" data-driver="${escapeHtml(d.platform_operator_id)}">Map &amp; backfill</button>
+        </div>
+      </article>
+    `).join("") : `<div class="empty">No unmapped platform drivers — every earning driver is mapped.</div>`;
+  }
+
   el.rosterGapList.innerHTML = operatorsWithoutVehicle.length ? operatorsWithoutVehicle.map((operator) => `
     <article class="data-row run-row">
       <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_type)}</small></div>
@@ -1516,7 +1533,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
   ,
     ops("/ops/v1/tracker/devices").catch(() => ({ configured: false, provider: null, device_count: 0, mapped_count: 0, devices: [] })),
     ops("/ops/v1/vehicle-positions").catch(() => ({ positions: [], no_feed: [] }))]);
-  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings, topPerformerSettings] = await Promise.all([
+  const [leaderboardConfig, inspectionCompliance, fleetPolicy, deliveryCustomers, revenueSources, allocatedPrices, rampProfiles, cohorts, supervisorOnboardings, accommodation, integrationStatus, onboardingSettings, topPerformerSettings, unmatchedDrivers] = await Promise.all([
     ops("/ops/v1/leaderboard-config").catch(() => null),
     ops("/ops/v1/inspections/compliance").catch(() => null),
     ops("/ops/v1/fleet-policy").catch(() => null),
@@ -1529,7 +1546,8 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops("/ops/v1/accommodation").catch(() => ({ data: [] })),
     ops("/ops/v1/integration-status").catch(() => ({ integrations: [] })),
     ops("/ops/v1/onboarding/settings").catch(() => ({ cohort_anchor_dow: 3 })),
-    ops("/ops/v1/top-performer/settings").catch(() => ({ enabled: true, amount_ngn: 2000, threshold_ngn: 28000 }))
+    ops("/ops/v1/top-performer/settings").catch(() => ({ enabled: true, amount_ngn: 2000, threshold_ngn: 28000 })),
+    ops("/ops/v1/unmatched-drivers").catch(() => ({ data: [] }))
   ]);
   const availableDates = [...new Set(allDailyPerformance.data.map((record) => String(record.record_date).slice(0, 10)))].sort().reverse();
   let dateFrom = el.dateFrom.value || el.dateTo.value || lagosToday();
@@ -1592,6 +1610,7 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     cohorts: cohorts.data,
     onboardingSettings: onboardingSettings || { cohort_anchor_dow: 3 },
     topPerformerSettings: topPerformerSettings || { enabled: true, amount_ngn: 2000, threshold_ngn: 28000 },
+    unmatchedDrivers: (unmatchedDrivers && unmatchedDrivers.data) || [],
     supervisorOnboardings: supervisorOnboardings.data,
     accommodation: accommodation.data,
     fleetPolicy,
@@ -1953,6 +1972,23 @@ el.allocatedPriceList.addEventListener("click", async (event) => {
     });
     await refresh("Allocated price deleted.");
   } catch (error) { showError(error); }
+});
+
+el.unmatchedDriverList.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-resolve-unmatched]");
+  if (!btn) return;
+  const select = btn.closest("article").querySelector("[data-unmatched-operator]");
+  const operatorId = select && select.value;
+  if (!operatorId) { showError(new Error("Pick an operator to map this driver to.")); return; }
+  btn.disabled = true;
+  try {
+    const res = await ops("/ops/v1/unmatched-drivers/resolve", {
+      method: "POST",
+      headers: { "Idempotency-Key": key("resolve-unmatched") },
+      body: JSON.stringify({ platform_account_id: btn.dataset.account, platform_operator_id: btn.dataset.driver, operator_id: operatorId })
+    });
+    await refresh(`Mapped — backfilled ${res.replayed || 0} day${(res.replayed || 0) === 1 ? "" : "s"} of revenue.`);
+  } catch (error) { btn.disabled = false; showError(error); }
 });
 
 // Edit a specific policy version: load that exact row into its form, open the

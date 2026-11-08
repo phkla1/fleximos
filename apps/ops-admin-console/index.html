@@ -216,6 +216,11 @@
           <div id="backfillIds" class="import-report"></div>
           <div id="backfillReport" class="import-report"></div>
         </details>
+        <details class="management-panel" id="unmatchedPanel">
+          <summary>Unmapped platform drivers <span id="unmatchedCount" class="subtle"></span></summary>
+          <p class="panel-intro">Drivers earning on a platform (e.g. Bolt) with no operator mapping. Their revenue is retained safely — pick the operator and it's mapped and <strong>replayed</strong> into the daily records automatically, then the affected days recompute. Ops-admin/HR resolve these (the amoeba is unknown, so it isn't a supervisor task).</p>
+          <div id="unmatchedDriverList" class="data-list compact-list"></div>
+        </details>
         <details class="management-panel" id="jobsPanel">
           <summary>View scheduled jobs</summary>
           <p id="jobFilterSummary" class="filter-summary"></p>

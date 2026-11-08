@@ -26,6 +26,7 @@ import { PacingService } from "./pacing.service.js";
 import { TrackerIngestService } from "./tracker-ingest.service.js";
 import { IntegrationStatusService } from "./integration-status.service.js";
 import { AttendanceService } from "./attendance.service.js";
+import { TopPerformerService } from "./top-performer.service.js";
 
 @Controller()
 export class OpsController {
@@ -39,7 +40,8 @@ export class OpsController {
     @Inject(OnboardingService) private readonly onboarding: OnboardingService,
     @Inject(AccommodationService) private readonly accommodation: AccommodationService,
     @Inject(BatchImportService) private readonly batchImport: BatchImportService,
-    @Inject(BackfillService) private readonly backfill: BackfillService
+    @Inject(BackfillService) private readonly backfill: BackfillService,
+    @Inject(TopPerformerService) private readonly topPerformer: TopPerformerService
   ) {}
 
   private auth(req: Request) {
@@ -809,6 +811,26 @@ export class OpsController {
     const actor = await this.auth(req);
     this.identity.requireSystemAdmin(actor);
     return { data: await this.ops.listUnmatchedDrivers({ status }), next_cursor: null };
+  }
+
+  @ApiTags("Ingestion")
+  @ApiBearerAuth()
+  @Post("ops/v1/unmatched-drivers/resolve")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Map a quarantined driver to an operator and replay their retained records into the real daily records (ops-admin/HR)" })
+  async resolveUnmatchedDriver(
+    @Req() req: Request,
+    @Headers("idempotency-key") rawKey: string | undefined,
+    @Body() body: Record<string, unknown>
+  ) {
+    const actor = await this.auth(req);
+    this.identity.requireSystemAdmin(actor);
+    return this.mutate(this.key(rawKey), HttpStatus.OK, async () => {
+      const result = await this.ops.resolveUnmatchedDriver(body, actor.person_id);
+      // Recompute the top-performer awards for every day we just backfilled.
+      for (const date of result.dates) await this.topPerformer.settleAwards(date).catch(() => undefined);
+      return result;
+    });
   }
 
   @ApiTags("Ingestion")

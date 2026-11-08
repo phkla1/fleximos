@@ -368,6 +368,42 @@ export class JobRunnerService {
     // Path-independent safety sweep: alert on any quarantined driver not yet
     // alerted, however it was ingested (scheduled, manual, or backfill).
     await this.alertUnmatchedDrivers();
+    await this.alertUnmatchedCouriers();
     return { received: board.length, upserted: created, rejected: 0 };
+  }
+
+  // Speedaf parity: delivery couriers with retained waybills but no operator
+  // alias. Dedup is by the notification key (once per courier), so no alerted_at
+  // column is needed. Their raw data is already kept in ops_speedaf_waybills.
+  private async alertUnmatchedCouriers() {
+    const couriers = await this.db.many<any>(
+      `SELECT w.delivery_customer_id, w.courier_norm,
+         max(w.courier_display) AS courier_display, count(*) AS waybills
+       FROM ops_speedaf_waybills w
+       LEFT JOIN ops_delivery_courier_aliases a
+         ON a.courier_norm = w.courier_norm
+        AND (a.delivery_customer_id = w.delivery_customer_id OR a.delivery_customer_id IS NULL)
+       WHERE w.courier_norm IS NOT NULL AND w.courier_norm <> '' AND a.alias_id IS NULL
+       GROUP BY 1, 2`
+    );
+    if (!couriers.length) return;
+    const admins = await this.ops.adminRecipients();
+    for (const c of couriers) {
+      const who = c.courier_display || c.courier_norm;
+      for (const person of admins) {
+        await this.notifications.queue(
+          person,
+          "in_app",
+          {
+            type: "unmapped_delivery_courier",
+            delivery_customer_id: c.delivery_customer_id,
+            courier: c.courier_display,
+            waybills: Number(c.waybills),
+            message: `Delivery courier "${who}" has ${Number(c.waybills)} waybills but no operator mapping. Map them so their deliveries attribute.`
+          },
+          `unmapped-courier:${c.delivery_customer_id}:${c.courier_norm}:${person}`
+        );
+      }
+    }
   }
 }

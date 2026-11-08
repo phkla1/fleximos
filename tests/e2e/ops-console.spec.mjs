@@ -930,6 +930,33 @@ test.describe("Ops admin console", () => {
     await expect(page.locator("#topPerformerSettingsSummary")).toContainText("₦2,000");
   });
 
+  test("resolves an unmapped platform driver from data health, backfilling their revenue", async ({ page, request }) => {
+    const opsBase = "http://127.0.0.1:4530";
+    const headers = { Authorization: "Bearer flexi-dev-service-token", "Content-Type": "application/json" };
+    const accounts = await (await request.get(`${opsBase}/ops/v1/platform-accounts`, { headers })).json();
+    const account = (accounts.data || [])[0];
+    expect(account).toBeTruthy();
+    const uuid = `e2e-unmapped-${Date.now()}`;
+    // Quarantine a driver with revenue but no mapping.
+    const ingest = await request.post(`${opsBase}/ops/v1/ingestion-runs`, {
+      headers: { ...headers, "Idempotency-Key": `e2e-unmapped-${Date.now()}` },
+      data: { platform_account_id: account.platform_account_id, record_date: "2026-11-06", source: "live", records: [{ platform_operator_id: uuid, driver_name: "E2E Unmapped", net_earnings_ngn: 40000, trips_total: 11 }] }
+    });
+    expect(ingest.status()).toBe(201);
+
+    await page.goto(`${url}#data-health`);
+    await expect(page.locator("#notice")).toContainText("Connected");
+    await page.getByText("Unmapped platform drivers", { exact: false }).first().click();
+    const row = page.locator("#unmatchedDriverList article").filter({ hasText: "E2E Unmapped" });
+    await expect(row).toBeVisible();
+    // Map to the first real operator and backfill.
+    await row.locator("select[data-unmatched-operator]").selectOption({ index: 1 });
+    await row.getByRole("button", { name: "Map & backfill" }).click();
+    await expect(page.locator("#notice")).toContainText("backfilled");
+    // The driver leaves the queue once resolved.
+    await expect(page.locator("#unmatchedDriverList article").filter({ hasText: "E2E Unmapped" })).toHaveCount(0);
+  });
+
   test("tracks finite accommodation and flags housed riders", async ({ page, request }) => {
     const opsBase = "http://127.0.0.1:4530";
     const headers = {

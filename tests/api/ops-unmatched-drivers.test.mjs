@@ -102,3 +102,46 @@ test("the quarantine queue requires authentication", async () => {
   const res = await anon("/ops/v1/unmatched-drivers");
   assert.equal(res.response.status, 401);
 });
+
+const adminF = (url, options = {}) => fetch(`${foundationBaseUrl}${url}`, {
+  ...options, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(options.headers || {}) }
+}).then(async (response) => ({ response, body: await response.json() }));
+
+test("resolving a quarantined driver maps them and replays the retained revenue", async () => {
+  const account = (await admin("/ops/v1/platform-accounts")).body.data[0];
+  const amoeba = ((await adminF("/amoeba/v1/amoebas")).body.data || [])[0];
+  assert.ok(amoeba, "need a seeded amoeba");
+  // A fresh operator with no prior platform registration.
+  const person = await adminF("/identity/v1/people", {
+    method: "POST", headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ display_name: "Resolve Target", phone: "+234701" + String(Date.now()).slice(-7) })
+  });
+  const operator = await admin("/ops/v1/operators", {
+    method: "POST", headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ person_id: person.body.person_id, operator_type: "rider", operator_status: "active", amoeba_id: amoeba.amoeba_id, site_id: "site_resolve_test" })
+  });
+  const operatorId = operator.body.operator_id;
+  assert.ok(operatorId);
+
+  const uuid = `unmapped-resolve-${randomUUID().slice(0, 8)}`;
+  const date = "2026-11-05";
+  await admin("/ops/v1/ingestion-runs", {
+    method: "POST", headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ platform_account_id: account.platform_account_id, record_date: date, source: "live", records: [{ platform_operator_id: uuid, driver_name: "Replay Me", net_earnings_ngn: 50000, trips_total: 10, trips_completed: 9 }] })
+  });
+  assert.ok(((await admin("/ops/v1/unmatched-drivers")).body.data || []).some((r) => r.platform_operator_id === uuid), "driver should be quarantined first");
+
+  const res = await admin("/ops/v1/unmatched-drivers/resolve", {
+    method: "POST", headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ platform_account_id: account.platform_account_id, platform_operator_id: uuid, operator_id: operatorId })
+  });
+  assert.equal(res.response.status, 200);
+  assert.ok(res.body.replayed >= 1, "should replay at least one record");
+  assert.ok(res.body.dates.includes(date));
+
+  // No longer pending, and the revenue now attributes to the operator.
+  assert.ok(!((await admin("/ops/v1/unmatched-drivers")).body.data || []).some((r) => r.platform_operator_id === uuid), "resolved driver leaves the queue");
+  const perf = await admin(`/ops/v1/daily-performance?record_date=${date}`);
+  const row = (perf.body.data || []).find((r) => r.operator_id === operatorId && Number(r.net_earnings_ngn) >= 50000);
+  assert.ok(row, "the replayed record should be attributed to the operator");
+});
