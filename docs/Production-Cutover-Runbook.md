@@ -52,13 +52,13 @@ Set this session:
 
 ## 4. Rotate the owner bootstrap PIN (owner action — before §7)
 
-First boot seeded the founder owner (`user_founder_wole`, roles owner+admin, phone `+2347033550173`) with the **default bootstrap PIN `000000`** (because `FLEXI_BOOTSTRAP_PIN` was unset). Rotate it before the login page becomes public. Run on the box (prints the new PIN in your own terminal):
+First boot seeded the founder owner (`user_founder_wole`, roles owner+admin, phone `+2348077999999`) with the **default bootstrap PIN `000000`** (because `FLEXI_BOOTSTRAP_PIN` was unset). Rotate it before the login page becomes public. The reset endpoint is private to the box (`127.0.0.1:4011`) and, as a mutating request, **requires an `Idempotency-Key` header**. SSH into the box, then run (prints the new PIN in your own terminal):
 
 ```
-ssh -A 212.71.252.254 'export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"; set -a; . ~/fleximos-data/fleximos.env; set +a; curl -s -X POST http://127.0.0.1:4011/identity/v1/users/user_founder_wole/reset-pin -H "Authorization: Bearer $FLEXI_SERVICE_TOKEN" -H "Content-Type: application/json" -d "{\"reset_by\":\"person_founder_wole\"}" | python3 -m json.tool'
+set -a; . ~/fleximos-data/fleximos.env; set +a; curl -s -X POST http://127.0.0.1:4011/identity/v1/users/user_founder_wole/reset-pin -H "Authorization: Bearer $FLEXI_SERVICE_TOKEN" -H "Content-Type: application/json" -H "Idempotency-Key: reset-wole-$(python3 -c 'import uuid;print(uuid.uuid4())')" -d '{"reset_by":"person_founder_wole"}' | python3 -m json.tool
 ```
 
-Then: owner logs in → creates the staff users (admin/manager/finance/supervisor) in the HR/Identity console → HR/Ops create operators. Staff are created by hand (the batch importer covers operators, vehicles and hospitals only, not staff roles).
+Login is then **username `wole` + that PIN** (the console bakes in `@fleximotion.online`). Then: owner logs in → creates the staff users (admin/manager/finance/supervisor) in the HR/Identity console → HR/Ops create operators. Staff are created by hand (the batch importer covers operators, vehicles and hospitals only, not staff roles).
 
 ## 5. Build the real org (HR, via the consoles — after §7 makes it reachable, or via the private port)
 
