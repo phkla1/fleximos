@@ -304,7 +304,7 @@ async function seedDb() {
     person_id: "person_founder_wole",
     legal_name: "Wole",
     display_name: "Wole",
-    phone: "+2347033550173",
+    phone: "+2348077999999",
     email: "wole@fleximotion.online",
     global_status: "active",
     created_at: timestamp,

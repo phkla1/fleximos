@@ -9,6 +9,10 @@
   var REFRESH = "flexiStaffRefresh";
   var EXPIRY = "flexiStaffExpiry";
   var foundationBase = window.flexiServiceBase("foundation", 4010);
+  // Staff sign in with just their username; the domain is baked in and appended
+  // on submit, so nobody types "@fleximotion.online". A full email or phone
+  // typed in (contains "@") is still passed through unchanged.
+  var EMAIL_DOMAIN = "fleximotion.online";
 
   var script = document.currentScript;
   var allowedRoles = (script && script.dataset.roles ? script.dataset.roles : "")
@@ -117,8 +121,11 @@
       '<form style="width:100%;max-width:340px;background:#fff;border-radius:14px;padding:24px;box-sizing:border-box;">' +
       '<div style="font:500 18px/1.3 sans-serif;color:#13261c;margin-bottom:4px;">Fleximotion sign in</div>' +
       '<div style="font:400 13px/1.5 sans-serif;color:#5f6b63;margin-bottom:16px;">' + esc(consoleName) + '</div>' +
-      '<label style="display:block;font:400 13px sans-serif;color:#333;margin-bottom:12px;">Phone or email' +
-      '<input name="phone_or_email" autocomplete="username" required style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border:1px solid #cfd6d1;border-radius:8px;font-size:15px;"/></label>' +
+      '<label style="display:block;font:400 13px sans-serif;color:#333;margin-bottom:12px;">Username' +
+      '<span style="display:flex;align-items:stretch;margin-top:4px;border:1px solid #cfd6d1;border-radius:8px;overflow:hidden;">' +
+      '<input name="username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required style="flex:1;min-width:0;box-sizing:border-box;padding:10px;border:0;outline:none;font-size:15px;"/>' +
+      '<span aria-hidden="true" style="display:flex;align-items:center;padding:0 10px;background:#f2f5f3;color:#5f6b63;font-size:14px;white-space:nowrap;border-left:1px solid #cfd6d1;">@' + esc(EMAIL_DOMAIN) + '</span>' +
+      '</span></label>' +
       '<label style="display:block;font:400 13px sans-serif;color:#333;margin-bottom:16px;">PIN' +
       '<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" required style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border:1px solid #cfd6d1;border-radius:8px;font-size:15px;"/></label>' +
       '<button type="submit" style="width:100%;padding:11px;border:0;border-radius:8px;background:#1d9e75;color:#fff;font:500 15px sans-serif;cursor:pointer;">Sign in</button>' +
@@ -131,8 +138,10 @@
       var notice = wrap.querySelector("[data-notice]");
       var btn = wrap.querySelector("button[type=submit]");
       var data = new FormData(e.target);
+      var typed = String(data.get("username") || "").trim().toLowerCase().replace(/[\s]/g, "");
       var creds = {
-        phone_or_email: String(data.get("phone_or_email") || "").replace(/[\s\-()]/g, ""),
+        // Append the baked-in domain unless they typed a full email (or anything with "@").
+        phone_or_email: !typed ? "" : (typed.indexOf("@") !== -1 ? typed : typed + "@" + EMAIL_DOMAIN),
         pin: String(data.get("pin") || "").trim()
       };
       btn.disabled = true; notice.textContent = "Signing in…";
