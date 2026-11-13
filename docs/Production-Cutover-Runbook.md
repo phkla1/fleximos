@@ -1,18 +1,18 @@
 # FlexiMOS — Production Cutover Runbook
 
-**Status:** Prod instance PROVISIONED up to first boot (9 Nov 2026). **Do not run the public go-live flip (§7) without Wole's explicit go-ahead.** Everything up to and including a clean, verified, *private* production instance is done; what remains is gated on his decision.
+**Status (13 Nov 2026): PROD IS LIVE on `fleximos.hyve.com.ng`.** Provisioned 9 Nov; connectors wired to live creds and `FLEXI_INTEGRATIONS_ENV=production` (§6, 10 Nov); public nginx flip done (§7, 13 Nov). **The active task now is building the real org (§5)** — logging in as `wole` and entering staff/amoebas/operators. Rollback is still one line (§9).
 
 Production is **co-resident with QA on the same Linode box** (`212.71.252.254`). It is a second, fully isolated instance — its own directory, ports, Postgres databases, env file and pm2 processes — not a migration of QA. QA (the former test instance) now lives at **`qamos.hyve.com.ng`**; production will take over **`fleximos.hyve.com.ng`** at the go-live flip.
 
-| | QA (live) | Production (private, provisioned) |
+| | QA (sandbox) | Production (LIVE) |
 |---|---|---|
-| URL | `https://qamos.hyve.com.ng` | `https://fleximos.hyve.com.ng` (after §7) |
+| URL | `https://qamos.hyve.com.ng` | `https://fleximos.hyve.com.ng` (LIVE — flipped 13 Nov) |
 | Repo dir | `~/qamos` | `~/fleximos` |
 | Data/env | `~/qamos-data` | `~/fleximos-data` |
 | pm2 apps | `qamos-foundation/ops-api/payments/frontend` | `fleximos-foundation/ops-api/payments/frontend` |
 | Ports | 4010 / 4030 / 4040 / 8080 | 4011 / 4031 / 4041 / **8081 (bound 127.0.0.1 = private)** |
 | Postgres DBs | `fleximos_foundation/ops/payments` | `fleximos_prod_foundation/ops/payments` |
-| Integrations | `test` | `test` → `production` at §6 |
+| Integrations | `test` (creds stripped, all platform accounts deactivated → no live calls) | **`production`** (live creds, 10 Nov) |
 | Demo seed | on | **off (clean org)** |
 
 ---
@@ -60,23 +60,31 @@ set -a; . ~/fleximos-data/fleximos.env; set +a; curl -s -X POST http://127.0.0.1
 
 Login is then **username `wole` + that PIN** (the console bakes in `@fleximotion.online`). Then: owner logs in → creates the staff users (admin/manager/finance/supervisor) in the HR/Identity console → HR/Ops create operators. Staff are created by hand (the batch importer covers operators, vehicles and hospitals only, not staff roles).
 
-## 5. Build the real org (HR, via the consoles — after §7 makes it reachable, or via the private port)
+## 5. Build the real org — ACTIVE STEP (HR, via the consoles at `https://fleximos.hyve.com.ng`)
 
-Identity first, then structure, then people:
-1. **People + staff users** — each with legal name, **phone and NIN**; login users with the right roles (each issued a PIN at creation, shown once).
-2. **Amoebas + sites**; assign each amoeba its supervisor.
-3. **Operators** (batch importer: operators sheet with `start_date` for ramp maturity + optional `vehicle_plate`; vehicles sheet; hospitals sheet). Issue operator PINs.
-4. **Identity rule (critical):** match every real person on a strong key (NIN/phone), never a similar name — at volume there will be exact-name collisions.
+> **Access note:** administer prod only on the **public hostname**. The consoles' local mode (`flexiServiceBase`) targets the default ports 4010/4030/4040 + the dev token, so reaching prod via `localhost`/a plain SSH tunnel silently talks to **QA**. Use `https://fleximos.hyve.com.ng` (or, pre-flip, a non-`localhost` tunnel hostname).
 
-## 6. Connect the platforms (flip to production)
+Log in at **`/apps/hr-admin-console/`** as username **`wole`** + the rotated PIN (the console appends `@fleximotion.online`). Identity first, then structure, then people — order matters:
 
-1. Add the `*_PROD` connector creds + set `FLEXI_INTEGRATIONS_ENV=production` in `~/fleximos-data/fleximos.env`, then restart so the env is re-read: `pm2 delete fleximos-foundation fleximos-ops-api fleximos-payments fleximos-frontend && pm2 start ~/fleximos-data/ecosystem.config.cjs && pm2 save` (a plain `pm2 restart` does **not** re-read the env file).
-2. **Map platform drivers → operators:** Bolt — register each active driver's `driver_uuid` to its operator; any that earns before mapping is retained + surfaced in ops-admin → Data health → "Unmapped platform drivers" and backfills on resolve. Speedaf — map each courier name → operator via the courier aliases; unmapped couriers are retained + alerted.
-3. Confirm the Speedaf delivery customer exists (or set its id).
+1. **People** (hr-admin → *People*) — each staff member: legal name, **phone, NIN**, email.
+2. **Users & roles** (hr-admin → *Users & roles*) — a login per person with role(s) `owner`/`admin`/`manager`/`finance`/`supervisor`; **each PIN is shown once — record it**. No staff importer; this is by hand.
+3. **Amoebas** (hr-admin → *Amoebas*) — create each amoeba, assign its **supervisor**.
+4. **Sites** (hr-admin → *Sites*) — sites/accommodation (an amoeba may share a site, M:N).
+5. **Operators** (ops-admin → *Bulk import*) — upload the operator CSV (**dry-runs by default**; commit after previewing). Then issue operator PINs. Accepted headers (any alias works): `full name` · `phone` · `nin` · `email` · `operator type` · `amoeba` *(must match a step-3 name)* · `site` · `operator class` · `start date` *(ramp maturity)* · `daily target` *(optional, defaults from policy)* · `vehicle plate` *(optional, links the bike)* · `status`.
+6. **Vehicles / trackers** (ops-admin → *Vehicles*, *Trackers*) — load bikes; Tankvolt auto-links battery↔bike by VIN, so only the rider↔bike roster is managed here.
+7. **Map platform drivers → operators** (ops-admin → *Data health → Unmapped platform drivers*) — connectors have been **live against an empty org since 10 Nov**, so real Bolt/Speedaf records sit in **quarantine**. Map each Bolt `driver_uuid` / Speedaf courier to its operator and **Map & backfill** — the retained history replays into daily records (nothing lost).
+8. **Targets & policy** (ops-admin → *Targets & policy*) — confirm 25k/28k targets + bonus thresholds before announcing.
+9. **Identity rule (critical):** match every real person on a strong key (NIN/phone), never a similar name — at volume there will be exact-name collisions.
 
-## 7. Go live — PUBLIC FLIP (gated on Wole's go-ahead)
+## 6. Connect the platforms — DONE (10 Nov 2026)
 
-Point `fleximos.hyve.com.ng` at the prod instance (its TLS cert already exists). Edit `/etc/nginx/sites-available/fleximos.hyve.com.ng`: change the `location /` `proxy_pass` from `http://127.0.0.1:8080` (QA) to **`http://127.0.0.1:8081`** (prod), then `sudo nginx -t && sudo systemctl reload nginx`. QA stays reachable at `qamos.hyve.com.ng`. Announce the URL to staff.
+1. The 8 live connector creds (`BOLT_CLIENT_ID`/`_SECRET`, `SPEEDAF_ACCOUNT`/`_PASSWORD`, `CARTRACKER_EMAIL`/`_PASSWORD`, `TANKVOLT_API_KEY`/`_API_BASE`) were copied from QA's env into `~/fleximos-data/fleximos.env`; `FLEXI_INTEGRATIONS_ENV=production` set (Monnify stays `simulated`); restarted via `pm2 delete … && pm2 start ~/fleximos-data/ecosystem.config.cjs && pm2 save` (a plain `pm2 restart` does **not** re-read the env file). `integration-status` verified: Bolt OAuth ok, Speedaf armed, Car Tracker + Tankvolt signed in. QA was sandboxed the same day (creds stripped, all platform accounts deactivated) so the two don't both hit the same partner accounts. Env backed up to `fleximos.env.bak.*`.
+2. **Driver/courier mapping** is now part of the §5 build (step 7) — map Bolt `driver_uuid` + Speedaf couriers, backfill the quarantine.
+3. Speedaf delivery customer: confirm `dcustomer_speedaf` exists in prod (or set its id).
+
+## 7. Go live — PUBLIC FLIP — DONE (13 Nov 2026)
+
+`fleximos.hyve.com.ng` now proxies to the prod instance. `/etc/nginx/sites-available/fleximos.hyve.com.ng` `proxy_pass` changed `http://127.0.0.1:8080` (QA) → **`http://127.0.0.1:8081`** (prod), `nginx -t` + `systemctl reload nginx`. Verified: people count via the public domain = 1 (founder), console 200. Config backed up to `…bak.*`. QA stays reachable at `qamos.hyve.com.ng`. **Still to do: announce the URL to staff** once §5 is populated.
 
 ## 8. Verify end-to-end (before announcing)
 
@@ -97,4 +105,4 @@ Watch `pm2 monit`, job runs (failed ingests), the unmapped-driver/courier queues
 
 ---
 
-**Open inputs still needed from the owner before the gated steps:** the prod `*_PROD` connector credentials (§0/§6) and the go-ahead for the §7 public flip. Everything else above is done or mechanical.
+**Remaining owner work:** build the real org (§5), then verify end-to-end (§8) and announce the URL to staff. Provisioning, connectors (§6) and the public flip (§7) are all done.
