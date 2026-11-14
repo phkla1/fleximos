@@ -10,6 +10,8 @@ Improvements captured from real use, starting with the first onboarding sessions
 | 4 | Fold hospital geocoding into the importer (background) | 2026-11-14 | open |
 | 5 | Speedaf pull crash takes down ops-api (unhandled rejection) | 2026-11-14 | open |
 | 6 | Inventory management (batteries, chargers, parts) | 2026-11-14 | open |
+| 7 | Align DestinyO email to the username convention (deferred) | 2026-11-14 | open |
+| 8 | No obvious way to move an amoeba from one site to another | 2026-11-14 | open |
 
 ---
 
@@ -100,3 +102,21 @@ The fleet sheets carry more than bikes. The Tankvolt workbook's `EV BIKE TANKVOL
 - Decide whether inventory lives in ops-api beside vehicles or its own module.
 
 **Why now:** staff are uploading fleet sheets today that contain this data; for the moment it's silently skipped on vehicle import (surfaced as skip rows), so nothing is lost but nothing is captured either.
+
+## 7. Align DestinyO email to the username convention (deferred)
+**Raised:** 2026-11-14 (FemiM login ticket) · **Status:** open
+
+The staff login username is the email's local part, and the convention is email = display-name lowercased (`femia`, `kennedya`, `nikeo`…). Two staff were created with **first-name-only** emails:
+- **FemiM → `femi@`** — FIXED 14 Nov (people row updated to `femim@fleximotion.online` after he couldn't log in as "femim").
+- **DestinyO → `destiny@`** — NOT changed, intentionally deferred: he has **already logged in successfully** as `destiny`, so flipping the email to `destinyo@` now would break his working login.
+
+**To do (coordinated):** change DestinyO's email `destiny@` → `destinyo@fleximotion.online` at a point where it won't disrupt him (tell him the new username first, or do it when he's not mid-shift). `UPDATE people SET email='destinyo@fleximotion.online' WHERE display_name='DestinyO';` (foundation DB) — or via the HR console once the service-token/API path is sorted.
+
+**Root cause / prevention:** manual staff creation lets the email drift from the username people expect. The **personnel batch importer (backlog #1)** auto-generates `display_name` and should generate the email from the same rule, eliminating this class of ticket. Consider also auto-deriving/validating email ↔ display-name on manual create. (Minor related note from this ticket: the foundation `/identity` API rejected an ad-hoc service-token call during debugging while the app's own internal calls worked — worth a quick check that the service token path is consistent, though it isn't affecting users.)
+
+## 8. No obvious way to move an amoeba from one site to another
+**Raised:** 2026-11-14 (HR) · **Status:** open
+
+HR wanted to move the **Kainji** amoeba to the **Egbeda** site and found no obvious route. Site↔amoeba is M:N and the Sites page lets you *share* a site with additional amoebas and *unshare* non-primary links — but there's no clear "move this amoeba to a different site" action, and an amoeba's **primary** site link can't be removed at all (hard-guarded), so you can't move an amoeba off its primary site.
+
+**Improvement:** an amoeba-centric way to manage its site(s) — e.g. on the Amoebas page (or the amoeba row), show its site(s) and allow "move to / set primary site" (swap the primary link) and add/remove shared sites, mirroring how operators are placed into amoebas. Decide what "primary site" means operationally (geofence/accommodation anchor) and allow it to change, not just add.
