@@ -370,10 +370,12 @@ export class BatchImportService {
         });
         operatorByPerson.set(personId, operator);
 
-        // Ramp maturity: anchor a (backdated) cohort to start_date. If the date is
-        // older than the ramp window, the ramp engine simply reports no ramp and
-        // the operator is judged against the veteran target — no branch needed.
-        if (startDate) {
+        // Ramp maturity: anchor a (backdated) cohort to start_date. A cohort is
+        // per amoeba+class, so this only applies to an ASSIGNED operator — an
+        // unassigned rider gets its ramp when it's later placed into an amoeba.
+        // (Guarding here also prevents a post-create throw that would leave the
+        // operator created but the row reported as an error.)
+        if (startDate && amoebaId) {
           const cohort: any = await this.onboarding.createCohort(
             { start_date: startDate, operator_class: operator.operator_class, amoeba_id: amoebaId },
             actorPersonId
