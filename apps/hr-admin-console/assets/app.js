@@ -75,6 +75,8 @@ const formData = (form) => Object.fromEntries(new FormData(form).entries());
 const personName = (id) => state.people.find((p) => p.person_id === id)?.display_name || id || "";
 const amoebaName = (id) => state.amoebas.find((a) => a.amoeba_id === id)?.name || id || "";
 const siteName = (id) => state.sites.find((s) => s.site_id === id)?.name || id || "";
+// An amoeba belongs to at most one site — the set already assigned to some site.
+const assignedAmoebaIdSet = () => new Set(state.sites.flatMap((s) => (s.amoeba_ids && s.amoeba_ids.length) ? s.amoeba_ids : [s.amoeba_id].filter(Boolean)));
 function scopeName(a) {
   if (a.scope_type === "company") return "Whole company";
   if (a.scope_type === "amoeba") return amoebaName(a.scope_id);
@@ -133,7 +135,7 @@ function renderOptions() {
   els.amoebaForm.elements.supervisor_person_id.innerHTML = supervisorOptions("");
   els.userForm.elements.person_id.innerHTML = people;
   els.roleAssignmentForm.elements.person_id.innerHTML = people;
-  els.siteForm.elements.amoeba_id.innerHTML = optionList(state.amoebas, (a) => a.amoeba_id, (a) => a.name);
+  els.siteForm.elements.amoeba_id.innerHTML = optionList(state.amoebas.filter((a) => !assignedAmoebaIdSet().has(a.amoeba_id) && a.status !== "archived"), (a) => a.amoeba_id, (a) => a.name);
   renderAssignmentScopeOptions();
 }
 function renderAssignmentScopeOptions() {
@@ -280,6 +282,7 @@ function renderAmoebas() {
 }
 
 function renderSites() {
+  const assigned = assignedAmoebaIdSet();
   const rows = state.sites.map((s) => ({ ...s, __status: s.status }));
   const shown = applyFilter("sites", rows, (s) => `${s.name} ${amoebaName(s.amoeba_id)}`);
   setCount("sites", shown.length, rows.length);
@@ -288,7 +291,7 @@ function renderSites() {
     if (editing.sites === id) {
       return `<tr data-row="sites:${escapeHtml(id)}">
         <td><input data-field="name" value="${escapeHtml(s.name)}" /><input data-field="address" value="${escapeHtml(s.address ?? "")}" placeholder="address" /></td>
-        <td><select data-field="amoeba_id">${optionList(state.amoebas, (a) => a.amoeba_id, (a) => a.name, s.amoeba_id)}</select></td>
+        <td><select data-field="amoeba_id">${optionList(state.amoebas.filter((a) => a.amoeba_id === s.amoeba_id || (!assigned.has(a.amoeba_id) && a.status !== "archived")), (a) => a.amoeba_id, (a) => a.name, s.amoeba_id)}</select></td>
         <td class="gps-edit"><input data-field="gps_lat" type="number" step="0.000001" value="${escapeHtml(s.gps_lat ?? "")}" placeholder="lat" /><input data-field="gps_lng" type="number" step="0.000001" value="${escapeHtml(s.gps_lng ?? "")}" placeholder="lng" /></td>
         <td><input data-field="alert_radius_m" type="number" min="1" value="${escapeHtml(s.alert_radius_m)}" /></td>
         <td><input data-field="accommodation_capacity" type="number" min="0" value="${escapeHtml(s.accommodation_capacity ?? 0)}" /></td>
@@ -301,7 +304,7 @@ function renderSites() {
       const isPrimary = aid === s.amoeba_id;
       return `<span class="amoeba-chip${isPrimary ? " primary" : ""}">${escapeHtml(amoebaName(aid))}${isPrimary ? " ★" : `<button type="button" class="chip-x" data-unshare-site="${escapeHtml(id)}" data-unshare-amoeba="${escapeHtml(aid)}" title="Stop sharing with this amoeba">✕</button>`}</span>`;
     }).join(" ");
-    const addable = state.amoebas.filter((a) => !linked.includes(a.amoeba_id) && a.status !== "archived");
+    const addable = state.amoebas.filter((a) => !assigned.has(a.amoeba_id) && a.status !== "archived");
     const shareCtl = addable.length
       ? `<div class="amoeba-share-row"><select data-share-pick="${escapeHtml(id)}">${optionList(addable, (a) => a.amoeba_id, (a) => a.name)}</select><button type="button" class="ghost tiny" data-share-site="${escapeHtml(id)}">＋ share</button></div>`
       : "";

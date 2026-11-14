@@ -1273,6 +1273,10 @@ async function handleAmoeba(req, res, parts) {
       if (await one("SELECT site_id FROM amoeba_sites WHERE amoeba_id = $1 AND lower(name) = lower($2)", [body.amoeba_id, body.name])) {
         return error(res, 409, "duplicate_site", "A site with this name already exists for this amoeba.");
       }
+      // One site per amoeba: a new site's amoeba must not already be on another site.
+      if (await one("SELECT site_id FROM amoeba_site_links WHERE amoeba_id = $1", [body.amoeba_id])) {
+        return error(res, 409, "amoeba_has_site", "That amoeba is already assigned to a site. An amoeba can belong to only one site.");
+      }
       const response = await onceForIdempotency(key, async () => {
         const timestamp = now();
         const site = {
@@ -1343,6 +1347,10 @@ async function handleAmoeba(req, res, parts) {
       if (await one("SELECT site_id FROM amoeba_sites WHERE amoeba_id = $1 AND lower(name) = lower($2) AND site_id <> $3", [nextAmoebaId, nextName, id])) {
         return error(res, 409, "duplicate_site", "A site with this name already exists for this amoeba.");
       }
+      // One site per amoeba: a changed primary amoeba must not already be on another site.
+      if (nextAmoebaId !== site.amoeba_id && await one("SELECT site_id FROM amoeba_site_links WHERE amoeba_id = $1 AND site_id <> $2", [nextAmoebaId, id])) {
+        return error(res, 409, "amoeba_has_site", "That amoeba is already assigned to another site. An amoeba can belong to only one site.");
+      }
       const response = await onceForIdempotency(key, async () => {
         const updated = {
           ...site,
@@ -1407,8 +1415,9 @@ async function handleAmoeba(req, res, parts) {
       if (!(await one("SELECT amoeba_id FROM amoebas WHERE amoeba_id = $1", [body.amoeba_id]))) {
         return error(res, 400, "validation_failed", "Amoeba not found.", [{ field: "amoeba_id", reason: "not_found" }]);
       }
-      if (await one("SELECT amoeba_id FROM amoeba_sites WHERE amoeba_id = $1 AND lower(name) = lower($2) AND site_id <> $3", [body.amoeba_id, site.name, id])) {
-        return error(res, 409, "duplicate_site", "That amoeba already has a different site with this name.");
+      // One site per amoeba: can't share with an amoeba already linked to another site.
+      if (await one("SELECT site_id FROM amoeba_site_links WHERE amoeba_id = $1 AND site_id <> $2", [body.amoeba_id, id])) {
+        return error(res, 409, "amoeba_has_site", "That amoeba is already assigned to another site. An amoeba can belong to only one site.");
       }
       const response = await onceForIdempotency(key, async () => {
         const timestamp = now();
