@@ -9,6 +9,7 @@ Improvements captured from real use, starting with the first onboarding sessions
 | 3 | Sites lat/lng reject high-precision coords from Google Maps | 2026-11-14 | open |
 | 4 | Fold hospital geocoding into the importer (background) | 2026-11-14 | open |
 | 5 | Speedaf pull crash takes down ops-api (unhandled rejection) | 2026-11-14 | open |
+| 6 | Inventory management (batteries, chargers, parts) | 2026-11-14 | open |
 
 ---
 
@@ -85,3 +86,17 @@ It surfaced as a `triggerUncaughtException` (an unhandled promise rejection esca
 - Playwright/Chromium headless on the box can be flaky under memory/zombie conditions — consider a retry with a fresh context (the connector already has a retry helper for the ride connectors).
 
 **Impact:** medium-high — a delivery-connector hiccup shouldn't interrupt the whole ops API (dashboards, ingest, alerts). Not a blocker today (it recovered), but should be hardened before heavy production reliance.
+
+## 6. Inventory management (batteries, chargers, parts)
+**Raised:** 2026-11-14 (vehicle import) · **Status:** open
+
+The fleet sheets carry more than bikes. The Tankvolt workbook's `EV BIKE TANKVOLT` tab stacks, under one `Type` column: **Motorcycle** rows (the bikes), **Battery** rows (serials like `BT207205015HYCY260225123`), and **Charger** rows (serials like `22016050005`). The vehicle importer now imports only the Motorcycle rows and **skips** Battery/Charger as "not a vehicle (inventory)". We need a proper home for that inventory.
+
+**Scope to design:**
+- **Batteries**: serial, model, state (in service / spare / damaged), and association to a bike. Per [[tankvolt-battery-vehicle-association]], Tankvolt auto-links a battery to a bike and we track/control by VIN — so battery↔bike likely comes from the Tankvolt side, with the sheet as a cross-check/seed.
+- **Chargers**: serial, location/site, state.
+- **Spares/parts** generally (helmets, boxes, tyres…) — same pattern, lower priority.
+- An importer for these (same engine: multi-sheet, header detection, dedupe by serial), and an ops-admin/inventory surface to view/assign.
+- Decide whether inventory lives in ops-api beside vehicles or its own module.
+
+**Why now:** staff are uploading fleet sheets today that contain this data; for the moment it's silently skipped on vehicle import (surfaced as skip rows), so nothing is lost but nothing is captured either.

@@ -136,6 +136,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       -- to an amoeba, so amoeba_id is optional (NULL = unassigned/warehouse).
       ALTER TABLE ops_vehicles ALTER COLUMN amoeba_id DROP NOT NULL;
 
+      -- Some fleets (e.g. Tankvolt EV bikes) are tracked by VIN and have no
+      -- registration plate yet, so plate is optional. It stays UNIQUE, which in
+      -- Postgres still permits many NULLs.
+      ALTER TABLE ops_vehicles ALTER COLUMN plate DROP NOT NULL;
+
       CREATE TABLE IF NOT EXISTS ops_integration_health (
         integration_key TEXT PRIMARY KEY,
         status TEXT NOT NULL,

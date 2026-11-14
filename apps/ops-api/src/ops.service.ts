@@ -1103,18 +1103,16 @@ export class OpsService {
   }
 
   async createVehicle(body: RecordBody) {
-    for (const field of ["plate", "vehicle_type"]) {
-      if (!body[field]) throw new BadRequestException(`${field} is required.`);
-    }
-    // amoeba_id is optional: a vehicle can be registered into the warehouse
-    // (unassigned) and allocated to an amoeba later.
-    if (await this.db.one("SELECT vehicle_id FROM ops_vehicles WHERE lower(plate) = lower($1)", [body.plate])) {
+    if (!body.vehicle_type) throw new BadRequestException("vehicle_type is required.");
+    // plate is optional: VIN-tracked fleets (e.g. Tankvolt bikes) may have no
+    // plate yet. amoeba_id is optional too (NULL = warehouse/unassigned).
+    if (body.plate && await this.db.one("SELECT vehicle_id FROM ops_vehicles WHERE lower(plate) = lower($1)", [body.plate])) {
       throw new ConflictException("Vehicle plate already exists.");
     }
     const timestamp = this.now();
     const vehicle = {
       vehicle_id: this.id("vehicle"),
-      plate: String(body.plate).toUpperCase(),
+      plate: body.plate ? String(body.plate).toUpperCase() : null,
       vehicle_type: body.vehicle_type,
       amoeba_id: body.amoeba_id || null,
       make_model: body.make_model || null,

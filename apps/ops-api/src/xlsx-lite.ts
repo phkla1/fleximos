@@ -142,7 +142,7 @@ export function parseWorkbook(buffer: Buffer): string[][] {
 // identified by its contents, not its position — e.g. the inDrive export, whose
 // populated tabs sit behind a template tab at sheet1. Reuses the same ZIP/shared-
 // string/sheet primitives as parseWorkbook.
-export function parseWorkbookSheets(buffer: Buffer): Array<{ name: string; grid: string[][] }> {
+export function parseWorkbookSheets(buffer: Buffer): Array<{ name: string; grid: string[][]; hidden: boolean }> {
   const files = readZipEntries(buffer);
   const shared = parseSharedStrings(files.get("xl/sharedStrings.xml")?.toString("utf8"));
   const workbook = files.get("xl/workbook.xml")?.toString("utf8") || "";
@@ -156,13 +156,15 @@ export function parseWorkbookSheets(buffer: Buffer): Array<{ name: string; grid:
       targetById.set(id, `xl/${target.replace(/^\/?xl\//, "").replace(/^\.\//, "")}`);
     }
   }
-  const sheets: Array<{ name: string; grid: string[][] }> = [];
+  const sheets: Array<{ name: string; grid: string[][]; hidden: boolean }> = [];
   for (const tag of workbook.match(/<sheet\b[^>]*\/>/g) || []) {
     const name = decodeXmlEntities(tag.match(/\bname="([^"]*)"/)?.[1] || "");
     const rid = tag.match(/r:id="([^"]+)"/)?.[1] || "";
+    // Excel marks a tab the user can't see as state="hidden" (or "veryHidden").
+    const hidden = /\bstate="(hidden|veryHidden)"/i.test(tag);
     const path = targetById.get(rid);
     const xml = path ? files.get(path)?.toString("utf8") : undefined;
-    sheets.push({ name, grid: xml ? parseSheet(xml, shared) : [] });
+    sheets.push({ name, grid: xml ? parseSheet(xml, shared) : [], hidden });
   }
   return sheets;
 }

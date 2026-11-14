@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "./database.service.js";
 import { OpsService } from "./ops.service.js";
 import { OnboardingService } from "./onboarding.service.js";
-import { parseWorkbook, parseDelimited } from "./xlsx-lite.js";
+import { parseWorkbookSheets, parseDelimited } from "./xlsx-lite.js";
 
 // Batch importers for go-live roster migration: operators (person → user →
 // operator, with ramp maturity from start_date) and vehicles (plate/VIN, optional
@@ -57,7 +57,7 @@ export class BatchImportService {
       const buffer = Buffer.from(String(body.file_base64), "base64");
       const isXlsx = buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b; // "PK"
       try {
-        grid = isXlsx ? parseWorkbook(buffer) : parseDelimited(buffer.toString("utf8"));
+        grid = isXlsx ? this.pickSheet(parseWorkbookSheets(buffer), spec) : parseDelimited(buffer.toString("utf8"));
       } catch (error: any) {
         throw new BadRequestException(`Could not read the file: ${String(error?.message).slice(0, 160)}`);
       }
@@ -83,6 +83,32 @@ export class BatchImportService {
       rows: grid.slice(headerIdx + 1),
       firstDataRow: headerIdx + 2 // 1-based row number of the first data row, for error reporting
     };
+  }
+
+  // Choose which worksheet to import from a multi-tab workbook. Excel files often
+  // carry a hidden cover/template tab as the first physical sheet while the data
+  // the user sees is on a visible named tab. So: ignore hidden tabs (unless there
+  // is nothing else), and among the visible ones pick the tab whose rows best
+  // match the expected columns, tie-breaking on how much data it has.
+  private pickSheet(sheets: Array<{ name: string; grid: string[][]; hidden: boolean }>, spec?: Record<string, string[]>): string[][] {
+    const candidates = sheets
+      .map((s) => ({ ...s, rows: s.grid.filter((r) => r.some((c) => String(c ?? "").trim() !== "")) }))
+      .filter((s) => s.rows.length > 0);
+    if (!candidates.length) return [];
+    const visible = candidates.filter((s) => !s.hidden);
+    const pool = visible.length ? visible : candidates;
+    const score = (rows: string[][]) => {
+      if (!spec) return 0;
+      let best = 0;
+      for (let i = 0; i < Math.min(rows.length, 10); i++) best = Math.max(best, this.headerMatchCount(rows[i], spec));
+      return best;
+    };
+    let chosen = pool[0], bestScore = -1, bestRows = -1;
+    for (const s of pool) {
+      const sc = score(s.rows);
+      if (sc > bestScore || (sc === bestScore && s.rows.length > bestRows)) { chosen = s; bestScore = sc; bestRows = s.rows.length; }
+    }
+    return chosen.grid;
   }
 
   // How many columns in this row match a known field alias — used to locate the
@@ -251,8 +277,8 @@ export class BatchImportService {
     const users = await this.foundationGet("/identity/v1/users");
     const existingOperators = await this.db.many<any>("SELECT operator_id, person_id, vehicle_id FROM ops_operators");
     const operatorByPerson = new Map(existingOperators.map((o) => [o.person_id, o]));
-    const vehicles = await this.ops.listVehicles({ unrestricted: true });
-    const vehicleByPlate = new Map(vehicles.map((v: any) => [this.norm(v.plate), v]));
+    // Vehicle assignment is deliberately NOT part of operator import — any vehicle
+    // column in the sheet is ignored; bikes are assigned later from the roster.
 
     const findPerson = (phone?: string, nin?: string) =>
       people.find((p: any) => (phone && p.phone === phone) || (nin && p.nin && String(p.nin) === String(nin)));
@@ -297,12 +323,6 @@ export class BatchImportService {
         startDate = nd.date;
       }
 
-      let vehicleId: string | undefined;
-      if (rec.vehicle_plate) {
-        const vehicle = vehicleByPlate.get(this.norm(String(rec.vehicle_plate)));
-        if (!vehicle) { fail(`unknown vehicle plate '${rec.vehicle_plate}'`); continue; }
-        vehicleId = vehicle.vehicle_id;
-      }
 
       const existingPerson = findPerson(phone, nin);
       if (existingPerson && operatorByPerson.has(existingPerson.person_id)) {
@@ -345,7 +365,7 @@ export class BatchImportService {
           operator_status: rec.status ? String(rec.status).toLowerCase() : "active",
           amoeba_id: amoebaId,
           site_id: siteId,
-          vehicle_id: vehicleId || null,
+          vehicle_id: null, // never assigned at import — set later from the roster
           daily_revenue_target_ngn: rec.daily_revenue_target_ngn ? Number(rec.daily_revenue_target_ngn) : null
         });
         operatorByPerson.set(personId, operator);
@@ -378,7 +398,7 @@ export class BatchImportService {
   private static readonly VEHICLE_SPEC: Record<string, string[]> = {
     plate: ["plate", "plate number", "reg", "registration"],
     vehicle_type: ["vehicle type", "type"],
-    make_model: ["make model", "make", "model"],
+    make_model: ["make model", "make", "model", "vehicle model"],
     color: ["color", "colour"],
     powertrain: ["powertrain", "fuel", "drive", "engine"],
     tracker_provider: ["tracker provider", "tracker", "provider"],
@@ -397,7 +417,12 @@ export class BatchImportService {
 
     const { amoebaByName } = await this.resolveMaps();
     const vehicles = await this.ops.listVehicles({ unrestricted: true });
-    const plateSet = new Set(vehicles.map((v: any) => this.norm(v.plate)));
+    // Bikes are identified by VIN (stored as tracker_device_id); plate is optional
+    // and not used as the key.
+    const vinSet = new Set(vehicles.map((v: any) => this.norm(v.tracker_device_id)).filter(Boolean));
+    // Fleet sheets often mix battery/charger inventory lines under the same Type
+    // column — those are not vehicles and are skipped (inventory lives elsewhere).
+    const NON_VEHICLE_TYPES = new Set(["battery", "charger", "charging station", "swap station"]);
     const operators = await this.ops.listOperators({}, {});
     const people = await this.foundationGet("/identity/v1/people");
 
@@ -412,14 +437,19 @@ export class BatchImportService {
     const rows: RowReport[] = [];
     for (const rec of records) {
       const rowNo = Number(rec._row);
-      const label = String(rec.plate || "—");
+      const vin = String(rec.vin || "").trim();
+      const vehicleType = String(rec.vehicle_type || "").trim().toLowerCase();
+      const label = vin || String(rec.vehicle_type || "—");
       const fail = (reason: string) => rows.push({ row: rowNo, status: "error" as Verdict, reason, label });
 
-      const plate = String(rec.plate || "").trim();
-      if (!plate) { fail("missing plate"); continue; }
-      if (!rec.vehicle_type) { fail("missing vehicle_type"); continue; }
-      if (plateSet.has(this.norm(plate))) {
-        rows.push({ row: rowNo, status: "skip", reason: "plate already exists", label });
+      if (!vehicleType) { fail("missing vehicle_type"); continue; }
+      if (NON_VEHICLE_TYPES.has(vehicleType)) {
+        rows.push({ row: rowNo, status: "skip", reason: `${vehicleType} — not a vehicle (inventory)`, label });
+        continue;
+      }
+      if (!vin) { fail("missing VIN"); continue; }
+      if (vinSet.has(this.norm(vin))) {
+        rows.push({ row: rowNo, status: "skip", reason: "VIN already imported", label });
         continue;
       }
       let amoebaId: string | null = null;
@@ -440,19 +470,19 @@ export class BatchImportService {
 
       try {
         const vehicle: any = await this.ops.createVehicle({
-          plate,
-          vehicle_type: String(rec.vehicle_type).toLowerCase(),
+          plate: null, // identified by VIN; plate assigned later from the roster
+          vehicle_type: vehicleType,
           make_model: rec.make_model || null,
           color: rec.color || null,
           // ice/ev is the stored vocabulary; accept friendly synonyms. A blank
           // value falls through to the provider/make heuristic in createVehicle.
           powertrain: this.powertrainWord(rec.powertrain),
           tracker_provider: rec.tracker_provider || null,
-          tracker_device_id: rec.vin || null, // VIN is the tracker identity; no separate column
+          tracker_device_id: vin, // VIN is the tracker + the vehicle's identity
           amoeba_id: amoebaId,
           status: rec.status ? String(rec.status).toLowerCase() : "active"
         });
-        plateSet.add(this.norm(plate));
+        vinSet.add(this.norm(vin));
         // Link via the operator side so the one-active-holder guard applies.
         if (operator) {
           await this.ops.updateOperator(operator.operator_id, { vehicle_id: vehicle.vehicle_id });
