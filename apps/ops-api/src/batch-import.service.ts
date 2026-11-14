@@ -48,7 +48,7 @@ export class BatchImportService {
   // Decode an uploaded sheet into a raw string grid. Accepts an .xlsx
   // (file_base64, detected by the ZIP magic bytes), a CSV/TSV (file_base64 or
   // file_text), or pre-parsed rows (array of objects — used by tests).
-  private readGrid(body: Body): { header: string[]; rows: string[][] } | { records: Body[] } {
+  private readGrid(body: Body, spec?: Record<string, string[]>): { header: string[]; rows: string[][]; firstDataRow: number } | { records: Body[] } {
     if (Array.isArray(body.rows)) return { records: body.rows as Body[] };
     let grid: string[][] | null = null;
     if (typeof body.file_text === "string" && body.file_text.length) {
@@ -65,11 +65,63 @@ export class BatchImportService {
     if (!grid) throw new BadRequestException("Provide a sheet (file_base64 or file_text) or rows.");
     grid = grid.filter((r) => r.some((cell) => String(cell ?? "").trim() !== ""));
     if (grid.length < 1) throw new BadRequestException("The sheet is empty.");
-    return { header: grid[0].map((h) => String(h ?? "")), rows: grid.slice(1) };
+    // Real spreadsheets often carry a title/logo/blank row above the header (and
+    // the xlsx template ships with a title row). Find the row that actually looks
+    // like the header — the one matching the most known column names — instead of
+    // assuming row 1. Falls back to row 1 when nothing matches (e.g. no spec).
+    let headerIdx = 0;
+    if (spec) {
+      let best = 0;
+      const scan = Math.min(grid.length, 10);
+      for (let i = 0; i < scan; i++) {
+        const matches = this.headerMatchCount(grid[i], spec);
+        if (matches > best) { best = matches; headerIdx = i; }
+      }
+    }
+    return {
+      header: grid[headerIdx].map((h) => String(h ?? "")),
+      rows: grid.slice(headerIdx + 1),
+      firstDataRow: headerIdx + 2 // 1-based row number of the first data row, for error reporting
+    };
+  }
+
+  // How many columns in this row match a known field alias — used to locate the
+  // real header row when title/blank rows sit above it.
+  private headerMatchCount(row: string[], spec: Record<string, string[]>): number {
+    let count = 0;
+    for (const cell of row) {
+      const n = this.norm(String(cell ?? ""));
+      if (!n) continue;
+      if (Object.values(spec).some((needles) => needles.some((needle) => n === needle || n.includes(needle)))) count++;
+    }
+    return count;
   }
 
   private norm(value: string): string {
     return String(value || "").toLowerCase().replace(/[\s_]+/g, " ").trim();
+  }
+
+  // Accept the date shapes staff sheets actually contain and emit YYYY-MM-DD:
+  // unpadded ISO (2026-8-28, 2026/9/1), day-first (28/08/2026 — the NG norm), and
+  // Excel date serials. Rejects anything that isn't a real calendar date.
+  private normalizeDate(raw: string): { date?: string; error?: string } {
+    const s = String(raw ?? "").trim();
+    if (!s) return {};
+    let y: number | undefined, m: number | undefined, d: number | undefined, mt: RegExpMatchArray | null;
+    if ((mt = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) { y = +mt[1]; m = +mt[2]; d = +mt[3]; }
+    else if ((mt = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/))) { d = +mt[1]; m = +mt[2]; y = +mt[3]; }
+    else if (/^\d{3,6}(\.0+)?$/.test(s)) {
+      const serial = Math.round(Number(s)); // Excel serial: days since 1899-12-30
+      const dt = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+      y = dt.getUTCFullYear(); m = dt.getUTCMonth() + 1; d = dt.getUTCDate();
+    } else return { error: `start_date '${raw}' isn't a date (use YYYY-MM-DD)` };
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const iso = `${y}-${pad(m!)}-${pad(d!)}`;
+    const check = new Date(`${iso}T00:00:00Z`);
+    if (isNaN(check.getTime()) || check.getUTCMonth() + 1 !== m || check.getUTCDate() !== d) {
+      return { error: `start_date '${raw}' isn't a valid calendar date` };
+    }
+    return { date: iso };
   }
 
   // Canonicalise a Nigerian phone to +234XXXXXXXXXX. Tolerant to how staff sheets
@@ -91,7 +143,7 @@ export class BatchImportService {
   // Map a header row to canonical field names via a spec of accepted substrings,
   // then turn each data row into a { _row, <field>: value } record. Tolerant to
   // wording/casing, like the Speedaf parser.
-  private toRecords(header: string[], rows: string[][], spec: Record<string, string[]>): Body[] {
+  private toRecords(header: string[], rows: string[][], spec: Record<string, string[]>, baseRow = 2): Body[] {
     const fieldByColumn = header.map((h) => {
       const n = this.norm(h);
       for (const [field, needles] of Object.entries(spec)) {
@@ -101,7 +153,7 @@ export class BatchImportService {
     });
     const records: Body[] = [];
     rows.forEach((cells, index) => {
-      const record: Body = { _row: index + 2 }; // +2: 1-based, past the header
+      const record: Body = { _row: index + baseRow }; // 1-based spreadsheet row, past the header
       fieldByColumn.forEach((field, col) => {
         if (field && cells[col] !== undefined) {
           const value = String(cells[col]).trim();
@@ -189,10 +241,10 @@ export class BatchImportService {
 
   async importOperators(body: Body, actorPersonId: string): Promise<ImportReport> {
     const dryRun = body.dry_run !== false; // default to a dry-run unless explicitly committed
-    const parsed = this.readGrid(body);
+    const parsed = this.readGrid(body, BatchImportService.OPERATOR_SPEC);
     const records = "records" in parsed
       ? parsed.records.map((r, i) => ({ _row: i + 2, ...r }))
-      : this.toRecords(parsed.header, parsed.rows, BatchImportService.OPERATOR_SPEC);
+      : this.toRecords(parsed.header, parsed.rows, BatchImportService.OPERATOR_SPEC, parsed.firstDataRow);
 
     const { amoebaByName, siteByName } = await this.resolveMaps();
     const people = await this.foundationGet("/identity/v1/people");
@@ -238,8 +290,12 @@ export class BatchImportService {
         siteId = siteByName.get(this.norm(String(rec.site)));
         if (!siteId) { fail(`unknown site '${rec.site}'`); continue; }
       }
-      const startDate = rec.start_date ? String(rec.start_date).trim() : undefined;
-      if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) { fail("start_date must be YYYY-MM-DD"); continue; }
+      let startDate: string | undefined;
+      if (rec.start_date != null && String(rec.start_date).trim() !== "") {
+        const nd = this.normalizeDate(String(rec.start_date));
+        if (nd.error) { fail(nd.error); continue; }
+        startDate = nd.date;
+      }
 
       let vehicleId: string | undefined;
       if (rec.vehicle_plate) {
@@ -334,10 +390,10 @@ export class BatchImportService {
 
   async importVehicles(body: Body, actorPersonId: string): Promise<ImportReport> {
     const dryRun = body.dry_run !== false;
-    const parsed = this.readGrid(body);
+    const parsed = this.readGrid(body, BatchImportService.VEHICLE_SPEC);
     const records = "records" in parsed
       ? parsed.records.map((r, i) => ({ _row: i + 2, ...r }))
-      : this.toRecords(parsed.header, parsed.rows, BatchImportService.VEHICLE_SPEC);
+      : this.toRecords(parsed.header, parsed.rows, BatchImportService.VEHICLE_SPEC, parsed.firstDataRow);
 
     const { amoebaByName } = await this.resolveMaps();
     const vehicles = await this.ops.listVehicles({ unrestricted: true });
@@ -446,10 +502,10 @@ export class BatchImportService {
 
   async importHospitals(body: Body, actorPersonId: string): Promise<ImportReport> {
     const dryRun = body.dry_run !== false;
-    const parsed = this.readGrid(body);
+    const parsed = this.readGrid(body, BatchImportService.HOSPITAL_SPEC);
     const records: Body[] = "records" in parsed
       ? parsed.records.map((r, i) => ({ _row: i + 2, ...r }))
-      : this.toRecords(parsed.header, parsed.rows, BatchImportService.HOSPITAL_SPEC);
+      : this.toRecords(parsed.header, parsed.rows, BatchImportService.HOSPITAL_SPEC, parsed.firstDataRow);
 
     const rows: RowReport[] = [];
     for (const rec of records) {
