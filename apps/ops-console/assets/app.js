@@ -1838,8 +1838,17 @@ async function refresh(message = "Connected to Fleximotion Ops.", { allowClamp =
     ops("/ops/v1/daily-performance"),
     ops(`/ops/v1/checkins?check_in_date=${lagosToday()}`).catch(() => ({ data: [] }))
   ]);
+  // Who is viewing: the logged-in user (deployed = a real per-user session). A
+  // ?actorPersonId= query param still wins for testing. Local dev uses the shared
+  // service token (no human session), so fall back to the demo shim there.
+  let sessionPersonId = null;
+  try {
+    const me = await foundation("/identity/v1/me");
+    if (me && me.actor_type === "human" && me.person_id) sessionPersonId = me.person_id;
+  } catch { /* no session — local dev / service token */ }
   if (!query.get("actorPersonId")) {
-    actorPersonId = people.data.find((person) => person.display_name.toLowerCase() === "tunde")?.person_id
+    actorPersonId = sessionPersonId
+      || people.data.find((person) => person.display_name.toLowerCase() === "tunde")?.person_id
       || operators.data.find((operator) => operator.supervisor_person_id)?.supervisor_person_id
       || actorPersonId;
   }
