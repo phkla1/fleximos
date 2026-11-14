@@ -12,6 +12,7 @@ Improvements captured from real use, starting with the first onboarding sessions
 | 6 | Inventory management (batteries, chargers, parts) | 2026-11-14 | open |
 | 7 | Align DestinyO email to the username convention (deferred) | 2026-11-14 | open |
 | 8 | No obvious way to move an amoeba from one site to another | 2026-11-14 | open |
+| 9 | Staff users carry an unneeded `operator` role | 2026-11-14 | open |
 
 ---
 
@@ -120,3 +121,14 @@ The staff login username is the email's local part, and the convention is email 
 HR wanted to move the **Kainji** amoeba to the **Egbeda** site and found no obvious route. Site↔amoeba is M:N and the Sites page lets you *share* a site with additional amoebas and *unshare* non-primary links — but there's no clear "move this amoeba to a different site" action, and an amoeba's **primary** site link can't be removed at all (hard-guarded), so you can't move an amoeba off its primary site.
 
 **Improvement:** an amoeba-centric way to manage its site(s) — e.g. on the Amoebas page (or the amoeba row), show its site(s) and allow "move to / set primary site" (swap the primary link) and add/remove shared sites, mirroring how operators are placed into amoebas. Decide what "primary site" means operationally (geofence/accommodation anchor) and allow it to change, not just add.
+
+## 9. Staff users carry an unneeded `operator` role
+**Raised:** 2026-11-14 (roster UI questions) · **Status:** open
+
+Staff created in the HR console came through with `operator` in their roles alongside their real role (e.g. `["supervisor","operator"]`, `["admin","operator"]`, `["manager","finance","operator"]`). Consequence: those staff appear in ops-admin's **Add-operator → Person** dropdown (which lists people who have the `operator` role but no operator record yet), cluttering it with supervisors/admins who shouldn't be turned into operators. It's otherwise harmless — the supervisor data-scope fallback still works because it keys on the `supervisor` role.
+
+**To do:**
+- Remove the `operator` role from staff users who aren't actually operators (keep `supervisor`/`admin`/`manager`/`finance`). On prod the affected users are the `@fleximotion.online` staff (DestinyO, NikeO, FemiM, TunjiA, FemiA, SanusiT, MuyiwaO, …) — verify each before stripping, in case any genuinely also rides.
+- Prevent recurrence at the source: don't default-add `operator` when creating a staff user in the HR console (and/or the personnel importer, backlog #1, should only set the roles given).
+
+**Note:** low priority / cosmetic (dropdown hygiene); do it when convenient, ideally alongside #1 and #7 as one identity-cleanup pass.
