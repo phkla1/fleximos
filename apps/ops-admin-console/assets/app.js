@@ -602,9 +602,10 @@ function updateVehicleFilters() {
 
 function updateOperatorFilters() {
   const previousAmoeba = el.operatorAmoebaFilter.value;
+  const unassignedCount = state.operators.filter((o) => !o.amoeba_id && !["inactive", "suspended"].includes(o.operator_status)).length;
   el.operatorAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
-  ).join("") + `<option value="__unassigned">⚠ Unassigned (no amoeba)</option><option value="__all">All operating units</option>`;
+  ).join("") + `<option value="__unassigned">⚠ Unassigned (no amoeba)${unassignedCount ? ` · ${unassignedCount}` : ""}</option><option value="__all">All operating units</option>`;
   if (["__all", "__unassigned"].includes(previousAmoeba) || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.operatorAmoebaFilter.value = previousAmoeba;
 }
 
@@ -853,9 +854,12 @@ function render() {
     if (operatorQuery && !searchable.includes(operatorQuery)) return false;
     return true;
   }) : [];
+  const unassignedActive = state.operators.filter((o) => !o.amoeba_id && !["inactive", "suspended"].includes(o.operator_status)).length;
   el.operatorFilterSummary.textContent = hasOperatorScope
     ? `${currentOperators.length} matching active ${currentOperators.length === 1 ? "operator" : "operators"}`
-    : "Select an amoeba, or search by name or vehicle.";
+    : unassignedActive
+      ? `${unassignedActive} operator${unassignedActive === 1 ? "" : "s"} not yet in an amoeba — pick “⚠ Unassigned (no amoeba)” to place them. Or select an amoeba / search.`
+      : "Select an amoeba, or search by name or vehicle.";
   el.operatorList.innerHTML = currentOperators.length ? currentOperators.map((operator) => `
     <article class="data-row" data-operator-id="${escapeHtml(operator.operator_id)}">
       <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodated ? `<span class="pill ${operator.operator_status === "active" ? "" : "open"}" title="${operator.operator_status === "active" ? "Housed — holding a bed" : "Bed reserved until activation"}">🏠 ${operator.operator_status === "active" ? "Housed" : "Reserved"}</span>` : ""}</div>
