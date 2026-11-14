@@ -7,6 +7,7 @@ Improvements captured from real use, starting with the first onboarding sessions
 | 1 | Batch upload for personnel (staff) | 2026-11-14 | open |
 | 2 | Warn in "new user" dialog when the person already has a login | 2026-11-14 | open |
 | 3 | Sites lat/lng reject high-precision coords from Google Maps | 2026-11-14 | open |
+| 4 | Fold hospital geocoding into the importer (background) | 2026-11-14 | open |
 
 ---
 
@@ -43,3 +44,19 @@ Pasting a coordinate copied from Google Maps (e.g. `3.4780440520406373`) into th
 **Cause:** frontend only. hr-admin-console `index.html` lines 234-235 use `<input type="number" step="0.000001">`; the browser's native step validation (`stepMismatch`) rejects any value that isn't an exact multiple of 0.000001, so a 16-decimal paste fails. The backend accepts any in-range number (`gps_lat`/`gps_lng` are `DOUBLE PRECISION`; validation only checks −90..90 / −180..180 + NaN), so nothing server-side needs changing.
 
 **Fix:** change the inputs to `step="any"` and round/truncate to ~6 decimal places (≈0.11 m — ample) on input or before submit, so a long paste is silently normalised rather than blocked. Quick one-liner; still goes QA → prod per the no-straight-to-prod rule.
+
+## 4. Fold hospital geocoding into the importer (background)
+**Raised:** 2026-11-14 (first onboarding session) · **Status:** open
+
+Today HR must run a separate CLI (`tools/geocode-hospitals/geocode.mts`) on the raw facilities sheet to add `lat`/`lng`/`coords_quality` before the hospital importer will plot them. That's friction for a non-technical HR flow.
+
+**Why it's separate now:** the geocoder uses OSM **Nominatim** (free, no key) which caps at **1 request/second** and wants a descriptive User-Agent. Doing that inside the upload request would hang for minutes / time out and risk the server IP being throttled. Coordinates are therefore geocoded once, offline, and baked into the data so the ops-api never geocodes at runtime. Quality is tagged `street` / `lga_centroid` / `failed`.
+
+**Improvement:** let HR upload the **raw** sheet (no coords). The importer persists facilities immediately with coords blank, then a **background worker** geocodes them at ≤1/sec (reusing the existing cache + street→LGA-centroid fallback + quality tagging) and fills them in; they appear on the map as they resolve. No CLI, no separate file.
+
+**Notes for implementation:**
+- Reuse the logic in `tools/geocode-hospitals/geocode.mts` (Nominatim call, Lagos viewbox bias, 1.1s throttle, JSON cache, centroal fallback, quality tags) — lift it into an ops-api service + a queued job rather than duplicating.
+- Persist the cache in the DB (or the doc store) so it survives restarts and is shared across monthly sheets.
+- Import stays idempotent; re-running a sheet should only geocode genuinely new addresses.
+- Surface per-facility `coords_quality` in the ops-admin hospitals view so `lga_centroid`/`failed` rows can be eyeballed/corrected (the sites lat/lng paste fix, item 3, helps here).
+- Keep the CLI as a fallback/bulk path.
