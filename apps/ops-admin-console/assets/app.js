@@ -524,8 +524,12 @@ function operatorOptions(operators, empty = "") {
 
 function updateSiteOptions() {
   const amoebaId = el.operatorForm.elements.amoeba_id.value;
-  const sites = state.sites.filter((site) => site.amoeba_id === amoebaId && site.status === "active");
-  el.operatorForm.elements.site_id.innerHTML = optionHtml(sites, "site_id", "name");
+  // Include sites shared with this amoeba (M:N), not just its primary site.
+  const sites = state.sites.filter((site) =>
+    ((site.amoeba_ids && site.amoeba_ids.length) ? site.amoeba_ids.includes(amoebaId) : site.amoeba_id === amoebaId)
+    && site.status === "active");
+  // Site is optional — blank means "use the amoeba's site" (the operator inherits it).
+  el.operatorForm.elements.site_id.innerHTML = `<option value="">— Use amoeba's site —</option>` + optionHtml(sites, "site_id", "name");
 }
 
 // Inline roster-row reassignment: the site option list for a given amoeba. Keeps
