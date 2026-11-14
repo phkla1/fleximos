@@ -1161,6 +1161,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       UPDATE ops_operators SET accommodated = TRUE WHERE accommodation_unit_id IS NOT NULL AND accommodated = FALSE;
       CREATE INDEX IF NOT EXISTS idx_operators_accommodated ON ops_operators(site_id, accommodated);
 
+      -- An operator can be onboarded before its amoeba/site is decided; ops-admin
+      -- assigns it later from the roster. So amoeba_id and site_id are nullable.
+      ALTER TABLE ops_operators ALTER COLUMN amoeba_id DROP NOT NULL;
+      ALTER TABLE ops_operators ALTER COLUMN site_id DROP NOT NULL;
+
       -- Accommodated riders carry a higher steady-state daily target than standard
       -- riders (housing is the trade-off). A null here means "same as standard".
       ALTER TABLE ops_revenue_pace_profiles ADD COLUMN IF NOT EXISTS daily_target_accommodated_ngn NUMERIC(12, 2);

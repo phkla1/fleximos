@@ -406,7 +406,9 @@ export class OpsService {
   }
 
   async createOperator(body: RecordBody) {
-    for (const field of ["person_id", "operator_type", "amoeba_id", "site_id"]) {
+    // amoeba_id / site_id are optional: an operator can be onboarded unassigned
+    // and placed into an amoeba later from the ops-admin roster.
+    for (const field of ["person_id", "operator_type"]) {
       if (!body[field]) throw new BadRequestException(`${field} is required.`);
     }
     if (await this.db.one("SELECT operator_id FROM ops_operators WHERE person_id = $1", [body.person_id])) {
@@ -421,8 +423,8 @@ export class OpsService {
       // sensible default from operator_type, else rider.
       operator_class: this.operatorClassOf(body.operator_class, body.operator_type),
       operator_status: body.operator_status || "pending_activation",
-      amoeba_id: body.amoeba_id,
-      site_id: body.site_id,
+      amoeba_id: body.amoeba_id || null,
+      site_id: body.site_id || null,
       supervisor_person_id: await this.supervisorForAmoeba(body.amoeba_id),
       vehicle_id: body.vehicle_id || null,
       daily_revenue_target_ngn: body.daily_revenue_target_ngn ?? null,
@@ -468,6 +470,10 @@ export class OpsService {
     const allowed = ["operator_type", "operator_class", "operator_status", "amoeba_id", "site_id", "vehicle_id", "daily_revenue_target_ngn"];
     const updated: any = { ...current };
     for (const key of allowed) if (key in body) updated[key] = body[key];
+    // amoeba_id / site_id / vehicle_id are nullable — treat an empty string as "unassign".
+    for (const key of ["amoeba_id", "site_id", "vehicle_id"]) if (updated[key] === "") updated[key] = null;
+    // A site belongs to an amoeba, so unassigning the amoeba clears the site too.
+    if (!updated.amoeba_id) updated.site_id = null;
     // Supervisor is derived from the amoeba, never set per operator.
     updated.supervisor_person_id = await this.supervisorForAmoeba(updated.amoeba_id);
     if ("operator_class" in body) updated.operator_class = this.operatorClassOf(body.operator_class, updated.operator_type);

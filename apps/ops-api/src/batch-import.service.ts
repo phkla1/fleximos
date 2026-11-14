@@ -72,6 +72,22 @@ export class BatchImportService {
     return String(value || "").toLowerCase().replace(/[\s_]+/g, " ").trim();
   }
 
+  // Canonicalise a Nigerian phone to +234XXXXXXXXXX. Tolerant to how staff sheets
+  // actually arrive: +234…, 234…, local 0-prefixed (0803…), and — crucially —
+  // Excel silently stripping the leading 0 so an 11-digit number arrives as 10
+  // (8031234567). NG mobile national numbers are 10 digits starting 7/8/9.
+  private normalizePhone(raw: string): { phone?: string; error?: string } {
+    const digits = String(raw || "").replace(/\D/g, "");
+    let national: string | undefined;
+    if (digits.length === 10) national = digits;                                  // 8031234567 (Excel stripped the 0)
+    else if (digits.length === 11 && digits.startsWith("0")) national = digits.slice(1); // 08031234567
+    else if (digits.length === 13 && digits.startsWith("234")) national = digits.slice(3); // 234…/+234…
+    if (!national || !/^[789]\d{9}$/.test(national)) {
+      return { error: `phone '${raw}' is not a valid Nigerian mobile number` };
+    }
+    return { phone: `+234${national}` };
+  }
+
   // Map a header row to canonical field names via a spec of accepted substrings,
   // then turn each data row into a { _row, <field>: value } record. Tolerant to
   // wording/casing, like the Speedaf parser.
@@ -197,18 +213,31 @@ export class BatchImportService {
 
       const displayName = String(rec.display_name || "").trim();
       if (!displayName) { fail("missing name"); continue; }
-      const phone = rec.phone ? String(rec.phone).trim() : undefined;
+      let phone: string | undefined;
+      if (rec.phone != null && String(rec.phone).trim() !== "") {
+        const normalized = this.normalizePhone(String(rec.phone));
+        if (normalized.error) { fail(normalized.error); continue; }
+        phone = normalized.phone;
+      }
       const nin = rec.nin ? String(rec.nin).trim() : undefined;
       if (nin && !/^\d{11}$/.test(nin)) { fail("NIN must be 11 digits"); continue; }
       const email = rec.email ? String(rec.email).trim() : undefined;
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fail("invalid email"); continue; }
       const operatorType = String(rec.operator_type || "rider").trim().toLowerCase();
-      if (!rec.amoeba) { fail("missing amoeba"); continue; }
-      const amoebaId = amoebaByName.get(this.norm(String(rec.amoeba)));
-      if (!amoebaId) { fail(`unknown amoeba '${rec.amoeba}'`); continue; }
-      if (!rec.site) { fail("missing site"); continue; }
-      const siteId = siteByName.get(this.norm(String(rec.site)));
-      if (!siteId) { fail(`unknown site '${rec.site}'`); continue; }
+      // amoeba + site are optional: a row with neither imports unassigned, to be
+      // placed into an amoeba later from the ops-admin roster. A value that IS
+      // given must resolve; a site still needs its amoeba alongside it.
+      let amoebaId: string | undefined;
+      if (rec.amoeba) {
+        amoebaId = amoebaByName.get(this.norm(String(rec.amoeba)));
+        if (!amoebaId) { fail(`unknown amoeba '${rec.amoeba}'`); continue; }
+      }
+      let siteId: string | undefined;
+      if (rec.site) {
+        if (!amoebaId) { fail("site needs an amoeba too"); continue; }
+        siteId = siteByName.get(this.norm(String(rec.site)));
+        if (!siteId) { fail(`unknown site '${rec.site}'`); continue; }
+      }
       const startDate = rec.start_date ? String(rec.start_date).trim() : undefined;
       if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) { fail("start_date must be YYYY-MM-DD"); continue; }
 
@@ -226,7 +255,11 @@ export class BatchImportService {
       }
 
       if (dryRun) {
-        rows.push({ row: rowNo, status: "create", reason: existingPerson ? "existing person — will attach operator" : undefined, label });
+        const notes = [
+          existingPerson ? "existing person — will attach operator" : undefined,
+          amoebaId ? undefined : "no amoeba — will import unassigned"
+        ].filter(Boolean);
+        rows.push({ row: rowNo, status: "create", reason: notes.join("; ") || undefined, label });
         continue;
       }
 

@@ -533,11 +533,12 @@ function updateSiteOptions() {
 // saving the row never silently drops an assignment. (Supervisor is derived from
 // the amoeba and shown read-only; it is not chosen per operator.)
 function rowSiteOptions(amoebaId, selectedId) {
-  const sites = state.sites.filter((s) => s.amoeba_id === amoebaId && s.status === "active");
+  const sites = amoebaId ? state.sites.filter((s) =>
+    ((s.amoeba_ids && s.amoeba_ids.length) ? s.amoeba_ids.includes(amoebaId) : s.amoeba_id === amoebaId) && s.status === "active") : [];
   if (selectedId && !sites.some((s) => s.site_id === selectedId)) {
     sites.unshift({ site_id: selectedId, name: nameForSite(selectedId) });
   }
-  return optionHtml(sites, "site_id", "name", selectedId);
+  return `<option value="" ${selectedId ? "" : "selected"}>— None —</option>` + optionHtml(sites, "site_id", "name", selectedId);
 }
 
 // Active vehicles in the amoeba that aren't already held by another active
@@ -603,8 +604,8 @@ function updateOperatorFilters() {
   const previousAmoeba = el.operatorAmoebaFilter.value;
   el.operatorAmoebaFilter.innerHTML = `<option value="">Select an amoeba</option>` + state.amoebas.map((amoeba) =>
     `<option value="${escapeHtml(amoeba.amoeba_id)}">${escapeHtml(amoeba.name)}</option>`
-  ).join("") + `<option value="__all">All operating units</option>`;
-  if (previousAmoeba === "__all" || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.operatorAmoebaFilter.value = previousAmoeba;
+  ).join("") + `<option value="__unassigned">⚠ Unassigned (no amoeba)</option><option value="__all">All operating units</option>`;
+  if (["__all", "__unassigned"].includes(previousAmoeba) || state.amoebas.some((amoeba) => amoeba.amoeba_id === previousAmoeba)) el.operatorAmoebaFilter.value = previousAmoeba;
 }
 
 // Versioned-policy forms (pace, efficiency, economics) share one behaviour:
@@ -845,7 +846,8 @@ function render() {
   const hasOperatorScope = Boolean(selectedOperatorAmoeba || operatorQuery);
   const currentOperators = hasOperatorScope ? state.operators.filter((operator) => {
     if (["inactive", "suspended"].includes(operator.operator_status)) return false;
-    if (selectedOperatorAmoeba && selectedOperatorAmoeba !== "__all" && operator.amoeba_id !== selectedOperatorAmoeba) return false;
+    if (selectedOperatorAmoeba === "__unassigned") { if (operator.amoeba_id) return false; }
+    else if (selectedOperatorAmoeba && selectedOperatorAmoeba !== "__all" && operator.amoeba_id !== selectedOperatorAmoeba) return false;
     const platforms = operator.platform_registrations?.map((item) => item.platform_display_name).join(" ") || "";
     const searchable = `${nameForPerson(operator.person_id)} ${operator.vehicle_plate || ""} ${platforms}`.toLowerCase();
     if (operatorQuery && !searchable.includes(operatorQuery)) return false;
@@ -858,7 +860,7 @@ function render() {
     <article class="data-row" data-operator-id="${escapeHtml(operator.operator_id)}">
       <div><strong>${escapeHtml(nameForPerson(operator.person_id))}</strong><small>${escapeHtml(operator.operator_id)}</small>${operator.accommodated ? `<span class="pill ${operator.operator_status === "active" ? "" : "open"}" title="${operator.operator_status === "active" ? "Housed — holding a bed" : "Bed reserved until activation"}">🏠 ${operator.operator_status === "active" ? "Housed" : "Reserved"}</span>` : ""}</div>
       <div><span class="row-label">Assignment</span>
-        <select class="row-field" aria-label="Amoeba" data-operator-amoeba>${optionHtml(state.amoebas, "amoeba_id", "name", operator.amoeba_id)}</select>
+        <select class="row-field" aria-label="Amoeba" data-operator-amoeba><option value="" ${operator.amoeba_id ? "" : "selected"}>— Unassigned —</option>${optionHtml(state.amoebas, "amoeba_id", "name", operator.amoeba_id)}</select>
         <select class="row-field" aria-label="Site" data-operator-site>${rowSiteOptions(operator.amoeba_id, operator.site_id || "")}</select>
         <small class="row-note" data-operator-supervisor-note>Supervisor: ${operator.supervisor_person_id ? escapeHtml(nameForPerson(operator.supervisor_person_id)) : "set on the amoeba (HR console)"}</small>
       </div>
@@ -2414,9 +2416,12 @@ document.addEventListener("click", async (event) => {
   if (saveOperator) {
     const row = saveOperator.closest("[data-operator-id]");
     const accommodatedBox = row.querySelector("[data-operator-accommodated]");
+    const amoebaId = row.querySelector("[data-operator-amoeba]").value;
     const siteId = row.querySelector("[data-operator-site]").value;
     const target = row.querySelector("[data-operator-target]").value;
-    if (!siteId) { showError("Pick a site for the selected amoeba before saving."); return; }
+    // amoeba and site are both optional (an operator may stay unassigned); a site
+    // can't be set without its amoeba.
+    if (siteId && !amoebaId) { showError("Pick the amoeba before choosing a site."); return; }
     try {
       await ops(`/ops/v1/operators/${saveOperator.dataset.saveOperator}`, {
         method: "PATCH",
@@ -2424,8 +2429,8 @@ document.addEventListener("click", async (event) => {
         body: JSON.stringify({
           operator_status: row.querySelector("[data-operator-status]").value,
           accommodated: accommodatedBox ? accommodatedBox.checked : undefined,
-          amoeba_id: row.querySelector("[data-operator-amoeba]").value,
-          site_id: siteId,
+          amoeba_id: amoebaId || null,
+          site_id: siteId || null,
           vehicle_id: row.querySelector("[data-operator-vehicle]").value || null,
           daily_revenue_target_ngn: target === "" ? null : Number(target)
         })
