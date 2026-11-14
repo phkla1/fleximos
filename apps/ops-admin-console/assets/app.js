@@ -891,19 +891,17 @@ function render() {
     if (vehicle.status !== "active") return false;
     if (selectedVehicleAmoeba === "__unassigned") { if (vehicle.amoeba_id) return false; }
     else if (selectedVehicleAmoeba && selectedVehicleAmoeba !== "__all" && vehicle.amoeba_id !== selectedVehicleAmoeba) return false;
-    if (vehicleQuery && !`${vehicle.plate} ${vehicle.make_model || ""}`.toLowerCase().includes(vehicleQuery)) return false;
+    if (vehicleQuery && !`${vehicle.plate || ""} ${vehicle.make_model || ""} ${vehicle.tracker_device_id || ""}`.toLowerCase().includes(vehicleQuery)) return false;
     return true;
   }) : [];
   el.vehicleFilterSummary.textContent = hasVehicleScope
     ? `${currentVehicles.length} matching active ${currentVehicles.length === 1 ? "vehicle" : "vehicles"}`
     : "Select an amoeba, or search by plate or model.";
   el.vehicleList.innerHTML = currentVehicles.length ? currentVehicles.map((vehicle) => `
-    <article class="data-row">
-      <div><strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(vehicle.vehicle_id)}</small></div>
-      <div><span class="row-label">Type</span><strong>${escapeHtml(vehicle.vehicle_type)}${vehicle.powertrain ? ` · ${vehicle.powertrain === "ev" ? "EV" : "ICE"}` : ""}</strong><small>${escapeHtml(vehicle.make_model || "Model not set")}</small></div>
-      <div><span class="row-label">Amoeba</span>${vehicle.amoeba_id
-        ? `<strong>${escapeHtml(nameForAmoeba(vehicle.amoeba_id))}</strong>`
-        : `<strong class="muted">Unassigned (warehouse)</strong>`}<small>${escapeHtml(vehicle.color || "Colour not set")}</small></div>
+    <article class="data-row" data-vehicle-id="${escapeHtml(vehicle.vehicle_id)}">
+      <div><strong>${escapeHtml(vehicle.plate || (vehicle.tracker_device_id ? "VIN " + vehicle.tracker_device_id : "(no plate)"))}</strong><small>${escapeHtml(vehicle.vehicle_type)}${vehicle.powertrain ? ` · ${vehicle.powertrain === "ev" ? "EV" : "ICE"}` : ""}${vehicle.make_model ? " · " + escapeHtml(vehicle.make_model) : ""}</small></div>
+      <div><span class="row-label">Reg. plate</span><input class="row-field" aria-label="Registration plate" data-vehicle-plate value="${escapeHtml(vehicle.plate || "")}" placeholder="not set yet" autocapitalize="characters" /></div>
+      <div><span class="row-label">Amoeba</span><select class="row-field" aria-label="Amoeba" data-vehicle-amoeba><option value="" ${vehicle.amoeba_id ? "" : "selected"}>Unassigned (warehouse)</option>${optionHtml(state.amoebas, "amoeba_id", "name", vehicle.amoeba_id || "")}</select></div>
       <div><span class="row-label">Operator</span>${(() => {
         const holder = operatorForVehicle(vehicle.vehicle_id);
         return holder
@@ -918,6 +916,7 @@ function render() {
         return `${head}<span class="pill ${t.cls}">${escapeHtml(t.text)}</span>`;
       })()}</div>
       <div class="row-actions"><span class="pill">${escapeHtml(vehicle.status)}</span>
+        <button type="button" data-save-vehicle="${escapeHtml(vehicle.vehicle_id)}">Save</button>
         <button type="button" class="secondary" data-vehicle-docs="${escapeHtml(vehicle.vehicle_id)}">Documents</button></div>
     </article>
   `).join("") : `<div class="empty">${hasVehicleScope ? "No vehicles match this scope." : "Choose a fleet scope to view vehicles."}</div>`;
@@ -2275,6 +2274,7 @@ document.addEventListener("click", async (event) => {
   const registerOperator = event.target.closest("[data-register-operator]");
   const operatorDocs = event.target.closest("[data-operator-docs]");
   const vehicleDocs = event.target.closest("[data-vehicle-docs]");
+  const saveVehicle = event.target.closest("[data-save-vehicle]");
   const replayJob = event.target.closest("[data-replay-job]");
   const openTeam = event.target.closest("[data-open-team]");
   const closeTeam = event.target.closest("[data-close-team]");
@@ -2452,6 +2452,21 @@ document.addEventListener("click", async (event) => {
   if (operatorDocs) {
     const operator = state.operators.find((o) => o.operator_id === operatorDocs.dataset.operatorDocs);
     openDocuments("operator", operatorDocs.dataset.operatorDocs, operator ? nameForPerson(operator.person_id) : operatorDocs.dataset.operatorDocs);
+    return;
+  }
+
+  if (saveVehicle) {
+    const row = saveVehicle.closest("[data-vehicle-id]");
+    const plate = row.querySelector("[data-vehicle-plate]").value.trim().toUpperCase();
+    const amoebaId = row.querySelector("[data-vehicle-amoeba]").value;
+    try {
+      await ops(`/ops/v1/vehicles/${saveVehicle.dataset.saveVehicle}`, {
+        method: "PATCH",
+        headers: { "Idempotency-Key": key("vehicle-update") },
+        body: JSON.stringify({ plate: plate || null, amoeba_id: amoebaId || null })
+      });
+      await refresh("Vehicle updated.");
+    } catch (error) { showError(error); }
     return;
   }
 
