@@ -192,3 +192,12 @@ dialog::backdrop { background: rgba(7, 46, 35, .34); }
 .fp-form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .fp-form button[type="submit"] { grid-column: 1 / -1; justify-self: start; }
 .subtle.error { color: #b3392b; }
+
+/* Site ↔ amoeba sharing (M:N) */
+.site-amoebas .amoeba-chip { display: inline-flex; align-items: center; gap: 4px; background: #eef1ee; color: var(--green-dark); border-radius: 999px; padding: 3px 10px; margin: 0 4px 4px 0; font-size: 11px; font-weight: 700; }
+.site-amoebas .amoeba-chip.primary { background: var(--green-bg); }
+.site-amoebas .chip-x { border: 0; background: transparent; color: var(--red); font-size: 12px; line-height: 1; padding: 0 2px; cursor: pointer; font-weight: 700; }
+.site-amoebas .chip-x:hover { color: #000; }
+.site-amoebas .amoeba-share-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.site-amoebas .amoeba-share-row select { font-size: 12px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; }
+button.ghost.tiny { padding: 4px 10px; font-size: 11px; }

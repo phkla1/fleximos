@@ -296,9 +296,18 @@ function renderSites() {
         <td><select data-field="status">${statusOptions("site", s.status)}</select></td>
         ${actionsCell("sites", id, s.status)}</tr>`;
     }
+    const linked = (s.amoeba_ids && s.amoeba_ids.length) ? s.amoeba_ids : [s.amoeba_id].filter(Boolean);
+    const chips = linked.map((aid) => {
+      const isPrimary = aid === s.amoeba_id;
+      return `<span class="amoeba-chip${isPrimary ? " primary" : ""}">${escapeHtml(amoebaName(aid))}${isPrimary ? " ★" : `<button type="button" class="chip-x" data-unshare-site="${escapeHtml(id)}" data-unshare-amoeba="${escapeHtml(aid)}" title="Stop sharing with this amoeba">✕</button>`}</span>`;
+    }).join(" ");
+    const addable = state.amoebas.filter((a) => !linked.includes(a.amoeba_id) && a.status !== "archived");
+    const shareCtl = addable.length
+      ? `<div class="amoeba-share-row"><select data-share-pick="${escapeHtml(id)}">${optionList(addable, (a) => a.amoeba_id, (a) => a.name)}</select><button type="button" class="ghost tiny" data-share-site="${escapeHtml(id)}">＋ share</button></div>`
+      : "";
     return `<tr data-row="sites:${escapeHtml(id)}">
       <td><strong>${escapeHtml(s.name)}</strong>${s.address ? `<small>${escapeHtml(s.address)}</small>` : ""}</td>
-      <td>${escapeHtml(amoebaName(s.amoeba_id))}</td>
+      <td class="site-amoebas">${chips}${shareCtl}</td>
       <td>${s.gps_lat != null && s.gps_lng != null ? `${Number(s.gps_lat).toFixed(4)}, ${Number(s.gps_lng).toFixed(4)}` : "—"}</td>
       <td>${escapeHtml(s.alert_radius_m)} m</td>
       <td>${Number(s.accommodation_capacity ?? 0)}${Number(s.accommodation_capacity ?? 0) ? " 🛏" : ""}</td>
@@ -771,6 +780,34 @@ document.addEventListener("click", async (event) => {
     save.disabled = true;
     try { const msg = await SAVE[section](id, row); editing[section] = null; roleDraft = null; await refresh(); setNotice(msg); }
     catch (error) { save.disabled = false; setNotice(error.message, true); }
+    return;
+  }
+
+  const shareSite = event.target.closest("[data-share-site]");
+  if (shareSite) {
+    const id = shareSite.dataset.shareSite;
+    const pick = document.querySelector(`[data-share-pick="${CSS.escape(id)}"]`);
+    const amoebaId = pick?.value;
+    if (!amoebaId) { setNotice("Pick an amoeba to share this site with.", true); return; }
+    shareSite.disabled = true;
+    try {
+      await api(`/amoeba/v1/sites/${id}/amoebas`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey("site-share") }, body: JSON.stringify({ amoeba_id: amoebaId }) });
+      await refresh();
+      setNotice(`Site shared with ${amoebaName(amoebaId)}.`);
+    } catch (error) { shareSite.disabled = false; setNotice(error.message, true); }
+    return;
+  }
+
+  const unshareSite = event.target.closest("[data-unshare-site]");
+  if (unshareSite) {
+    const id = unshareSite.dataset.unshareSite; const amoebaId = unshareSite.dataset.unshareAmoeba;
+    askConfirm(`Stop sharing this site with ${amoebaName(amoebaId)}?`, "Operators in that amoeba will no longer have this site available. The site and its other amoeba links are kept.", "Stop sharing", async () => {
+      try {
+        await api(`/amoeba/v1/sites/${id}/amoebas/${amoebaId}`, { method: "DELETE", headers: { "Idempotency-Key": idempotencyKey("site-unshare") } });
+        await refresh();
+        setNotice("Sharing removed.");
+      } catch (error) { setNotice(error.message, true); }
+    });
     return;
   }
 
