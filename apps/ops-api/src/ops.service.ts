@@ -17,6 +17,7 @@ export class OpsService {
   // all the existing scope/report SQL keeps working, and keep the mirror in step
   // with foundation. Cached briefly to avoid hammering the amoeba service.
   private amoebaSupervisorCache: { at: number; map: Map<string, string | null> } | null = null;
+  private amoebaSiteCache: { at: number; map: Map<string, string> } | null = null;
 
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
@@ -61,18 +62,65 @@ export class OpsService {
     return (await this.amoebaSupervisorMap()).get(String(amoebaId)) ?? null;
   }
 
+  // amoeba_id -> its primary site_id, read from foundation and cached 60s. Used so
+  // an operator placed in an amoeba inherits that amoeba's site automatically
+  // (no need to set a site per operator) — the primary site when one is flagged,
+  // otherwise any active site linked to the amoeba.
+  private async amoebaSiteMap(): Promise<Map<string, string>> {
+    const ttl = Number(process.env.FLEXI_AMOEBA_SITE_CACHE_MS ?? 60_000);
+    if (this.amoebaSiteCache && Date.now() - this.amoebaSiteCache.at < ttl) {
+      return this.amoebaSiteCache.map;
+    }
+    try {
+      const response = await fetch(`${this.foundationBase}/amoeba/v1/sites`, {
+        headers: { Authorization: `Bearer ${this.serviceToken}` },
+        signal: AbortSignal.timeout(3000)
+      });
+      if (!response.ok) throw new Error(`sites ${response.status}`);
+      const payload: any = await response.json();
+      const map = new Map<string, string>();
+      for (const site of payload.data || payload || []) {
+        if (String(site.status || "active") !== "active") continue;
+        const amoebaIds: string[] = (site.amoeba_ids && site.amoeba_ids.length) ? site.amoeba_ids : [site.amoeba_id].filter(Boolean);
+        for (const aid of amoebaIds) {
+          // Primary site wins; otherwise keep the first seen for the amoeba.
+          if (site.is_primary || !map.has(aid)) map.set(aid, site.site_id);
+        }
+      }
+      this.amoebaSiteCache = { at: Date.now(), map };
+      return map;
+    } catch {
+      return this.amoebaSiteCache?.map || new Map();
+    }
+  }
+
+  private async siteForAmoeba(amoebaId: unknown): Promise<string | null> {
+    if (!amoebaId) return null;
+    return (await this.amoebaSiteMap()).get(String(amoebaId)) ?? null;
+  }
+
   // Bring every operator's mirrored supervisor in line with its amoeba's. Cheap
   // (one UPDATE per amoeba, touching only mismatched rows); called on reads that
   // depend on supervisor grouping/scoping.
   private async syncOperatorSupervisors() {
     const map = await this.amoebaSupervisorMap();
-    if (!map.size) return;
     const timestamp = this.now();
     for (const [amoebaId, supervisor] of map) {
       await this.db.exec(
         `UPDATE ops_operators SET supervisor_person_id = $1, updated_at = $2
          WHERE amoeba_id = $3 AND COALESCE(supervisor_person_id, '') <> COALESCE($1, '')`,
         [supervisor, timestamp, amoebaId]
+      );
+    }
+    // Backfill a missing site from the operator's amoeba (only when the operator
+    // has no site of its own — never overrides a deliberately chosen site). Lets an
+    // operator inherit the amoeba's site without HR setting it per operator.
+    const siteMap = await this.amoebaSiteMap();
+    for (const [amoebaId, siteId] of siteMap) {
+      await this.db.exec(
+        `UPDATE ops_operators SET site_id = $1, updated_at = $2
+         WHERE amoeba_id = $3 AND site_id IS NULL`,
+        [siteId, timestamp, amoebaId]
       );
     }
   }
@@ -424,7 +472,8 @@ export class OpsService {
       operator_class: this.operatorClassOf(body.operator_class, body.operator_type),
       operator_status: body.operator_status || "pending_activation",
       amoeba_id: body.amoeba_id || null,
-      site_id: body.site_id || null,
+      // Inherit the amoeba's site when none is given explicitly.
+      site_id: body.site_id || (body.amoeba_id ? await this.siteForAmoeba(body.amoeba_id) : null),
       supervisor_person_id: await this.supervisorForAmoeba(body.amoeba_id),
       vehicle_id: body.vehicle_id || null,
       daily_revenue_target_ngn: body.daily_revenue_target_ngn ?? null,
@@ -474,6 +523,9 @@ export class OpsService {
     for (const key of ["amoeba_id", "site_id", "vehicle_id"]) if (updated[key] === "") updated[key] = null;
     // A site belongs to an amoeba, so unassigning the amoeba clears the site too.
     if (!updated.amoeba_id) updated.site_id = null;
+    // Inherit the amoeba's site when the operator is in an amoeba but has no site
+    // set — so HR needn't pick a site per operator once the amoeba has one.
+    if (updated.amoeba_id && !updated.site_id) updated.site_id = await this.siteForAmoeba(updated.amoeba_id);
     // Supervisor is derived from the amoeba, never set per operator.
     updated.supervisor_person_id = await this.supervisorForAmoeba(updated.amoeba_id);
     if ("operator_class" in body) updated.operator_class = this.operatorClassOf(body.operator_class, updated.operator_type);
