@@ -350,8 +350,9 @@ async function load() {
   if (!token) return showLogin();
   el.connectionStatus.textContent = "Loading";
   const profile = await api(foundationBase, "/identity/v1/me");
-  const roster = await api(opsBase, "/ops/v1/operators");
-  const operator = roster.data[0];
+  // Resolve THIS person's own operator record (works even if they're also a
+  // supervisor, whose data scope would otherwise return the people they oversee).
+  const operator = (await api(opsBase, "/ops/v1/operators/me")).data;
   if (!operator) throw new Error("No active Ops assignment is linked to this account.");
 
   currentOperator = operator;

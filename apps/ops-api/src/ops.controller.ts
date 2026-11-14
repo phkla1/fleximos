@@ -112,6 +112,18 @@ export class OpsController {
     return { data: await this.ops.listOperators({ status, amoeba_id: amoebaId }, this.identity.dataScope(actor)), next_cursor: null };
   }
 
+  // The signed-in user's OWN operator record, resolved by person (not by data
+  // scope) — so a rider who is also a supervisor still gets their own rider
+  // profile in the operator PWA. Must be declared before :operatorId.
+  @ApiTags("Operators")
+  @ApiBearerAuth()
+  @Get("ops/v1/operators/me")
+  async myOperator(@Req() req: Request) {
+    const actor = await this.auth(req);
+    const operators = await this.ops.listOperators({}, { person_id: actor.person_id });
+    return { data: operators.find((o: any) => o.person_id === actor.person_id) || null };
+  }
+
   @ApiTags("Operators")
   @ApiBearerAuth()
   @Get("ops/v1/operators/:operatorId")
