@@ -8,6 +8,7 @@ Improvements captured from real use, starting with the first onboarding sessions
 | 2 | Warn in "new user" dialog when the person already has a login | 2026-11-14 | open |
 | 3 | Sites lat/lng reject high-precision coords from Google Maps | 2026-11-14 | open |
 | 4 | Fold hospital geocoding into the importer (background) | 2026-11-14 | open |
+| 5 | Speedaf pull crash takes down ops-api (unhandled rejection) | 2026-11-14 | open |
 
 ---
 
@@ -60,3 +61,27 @@ Today HR must run a separate CLI (`tools/geocode-hospitals/geocode.mts`) on the 
 - Import stays idempotent; re-running a sheet should only geocode genuinely new addresses.
 - Surface per-facility `coords_quality` in the ops-admin hospitals view so `lga_centroid`/`failed` rows can be eyeballed/corrected (the sites lat/lng paste fix, item 3, helps here).
 - Keep the CLI as a fallback/bulk path.
+
+## 5. Speedaf pull crash takes down ops-api (unhandled rejection)
+**Raised:** 2026-11-14 (noticed while deploying operator changes) · **Status:** open
+
+On **prod**, the scheduled Speedaf delivery pull threw an uncaught error on 2026-11-12 that crashed the whole ops-api process (pm2 restarted it several times; stable afterwards). A single connector failure should never take down the API.
+
+**Observed stack:**
+```
+browserContext.waitForEvent: Target page, context or browser has been closed
+  at SpeedafConnector.pullTodayRows (apps/ops-api/src/connectors/speedaf.connector.ts:115)
+  at async DeliveriesImportService.pullSpeedaf (apps/ops-api/src/deliveries-import.service.ts:462)
+  at async JobRunnerService.execute (apps/ops-api/src/job-runner.service.ts:92)
+  at async JobRunnerService.runNext (apps/ops-api/src/job-runner.service.ts:66)
+  at async Timeout._onTimeout (apps/ops-api/src/main.ts:50)
+```
+It surfaced as a `triggerUncaughtException` (an unhandled promise rejection escaping the job timer), so Node exited.
+
+**Fixes to consider:**
+- Harden the Speedaf connector: wrap `pullTodayRows` so a closed/crashed Playwright context is caught and the run is marked failed (not thrown past the job runner); always close the browser in a `finally`.
+- Defensive: the job runner's timer callback (`main.ts:50` / `runNext`) should never let a job's rejection become an uncaught exception — catch at the scheduler boundary and record a failed run.
+- Add a process-level `unhandledRejection` handler that logs and keeps serving, as a last resort.
+- Playwright/Chromium headless on the box can be flaky under memory/zombie conditions — consider a retry with a fresh context (the connector already has a retry helper for the ride connectors).
+
+**Impact:** medium-high — a delivery-connector hiccup shouldn't interrupt the whole ops API (dashboards, ingest, alerts). Not a blocker today (it recovered), but should be hardened before heavy production reliance.
